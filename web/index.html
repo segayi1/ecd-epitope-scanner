@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ECD Epitope Workbench</title>
+  <link rel="stylesheet" href="/assets/vendor/pdbe-molstar-light-3.10.1.css">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳到结构工作区</a>
+  <header class="appbar">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">E</div>
+      <div>
+        <strong>ECD Epitope Workbench</strong>
+        <span>胞外区结构分区组合突变设计</span>
+      </div>
+    </div>
+    <form id="run-form" class="run-form">
+      <fieldset class="segmented" aria-label="输入类型">
+        <label><input type="radio" name="input-type" value="uniprot" checked><span>UniProt</span></label>
+        <label><input type="radio" name="input-type" value="pdb_id"><span>PDB ID</span></label>
+      </fieldset>
+      <label class="field compact-field">
+        <span id="identifier-label">蛋白 accession</span>
+        <input id="identifier" name="identifier" value="Q9NZQ7" autocomplete="off" required>
+      </label>
+      <label class="field chain-field">
+        <span>链</span>
+        <input id="chain" name="chain" maxlength="4" placeholder="自动">
+      </label>
+      <button id="run-button" class="primary-button" type="submit">运行设计</button>
+      <button id="open-upload" class="secondary-button" type="button">上传结构</button>
+    </form>
+  </header>
+
+  <nav class="mobile-view-nav" aria-label="移动端视图">
+    <button data-mobile-view="structure" class="active">结构</button>
+    <button data-mobile-view="residues">位点</button>
+    <button data-mobile-view="regions">分区</button>
+    <button data-mobile-view="sequence">序列</button>
+  </nav>
+
+  <main id="workspace" class="workspace">
+    <section class="structure-column" data-mobile-section="structure" aria-label="蛋白结构与序列">
+      <div class="viewer-shell">
+        <div id="viewer" class="viewer" aria-label="蛋白三维结构"></div>
+        <div id="viewer-placeholder" class="viewer-placeholder">
+          <strong>结构审查画布</strong>
+          <span>载入示例或提交蛋白后显示结构</span>
+          <button id="load-demo" type="button" class="secondary-button">载入 PD-L1 示例</button>
+        </div>
+        <div class="viewer-toolbar" aria-label="结构显示控制">
+          <div class="representation-switch" role="group" aria-label="结构展示模式">
+            <button data-representation="cartoon" type="button" aria-pressed="true" title="卡通主链">卡通</button>
+            <button data-representation="ball-and-stick" type="button" aria-pressed="false" title="球棍显示侧链几何">球棍</button>
+            <button data-representation="molecular-surface" type="button" aria-pressed="false" title="分子表面展示">表面</button>
+          </div>
+          <button id="reset-view" type="button" title="复位结构视角">复位</button>
+          <button id="spin-view" type="button" aria-pressed="false" title="切换结构旋转">旋转</button>
+          <button id="clear-focus" type="button" title="清除当前位点高亮">清除定位</button>
+        </div>
+        <div id="legend" class="legend" aria-label="结构图例"></div>
+      </div>
+
+      <section class="sequence-panel" data-mobile-section="sequence" aria-labelledby="sequence-heading">
+        <header class="panel-heading sequence-heading-row">
+          <div>
+            <h2 id="sequence-heading">序列审查</h2>
+            <p id="sequence-subtitle">UniProt 编号与结构选择保持同步</p>
+          </div>
+          <div class="sequence-controls">
+            <fieldset class="segmented small" aria-label="序列类型">
+              <label><input type="radio" name="sequence-mode" value="aa" checked><span>氨基酸</span></label>
+              <label><input type="radio" name="sequence-mode" value="dna"><span>编码片段</span></label>
+            </fieldset>
+            <label class="inline-select">构建体
+              <select id="sequence-design"><option value="wt">WT ECD</option></select>
+            </label>
+          </div>
+        </header>
+        <div class="sequence-compare">
+          <div class="sequence-track">
+            <div class="sequence-label"><strong>WT</strong><span id="wt-sequence-meta"></span></div>
+            <div id="wt-sequence" class="sequence" tabindex="0" aria-label="野生型序列"></div>
+          </div>
+          <div class="sequence-track">
+            <div class="sequence-label"><strong>设计</strong><span id="mutant-sequence-meta">选择一个构建体</span></div>
+            <div id="mutant-sequence" class="sequence" tabindex="0" aria-label="突变体序列"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <aside class="inspector" data-mobile-section="residues" aria-label="分析审查面板">
+      <section class="job-strip" aria-live="polite">
+        <div class="job-state-row">
+          <div>
+            <span id="job-state" class="status-badge neutral">未运行</span>
+            <strong id="job-message">可载入冻结示例，或提交 UniProt/PDB。</strong>
+          </div>
+          <span id="job-percent" class="tabular">0%</span>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span id="job-progress"></span></div>
+        <p id="job-error" class="error-message" hidden></p>
+      </section>
+
+      <nav class="primary-pages" role="tablist" aria-label="一级工作区">
+        <button role="tab" data-primary="overview" class="active" aria-selected="true">概览</button>
+        <button role="tab" data-primary="residues">位点审查</button>
+        <button role="tab" data-primary="regions">区域方案</button>
+        <button role="tab" data-primary="design">构建设计</button>
+      </nav>
+
+      <div class="review-shell">
+        <nav class="secondary-nav" aria-label="二级审查菜单">
+          <button data-panel="overview" class="active"><span>摘要</span><small>输入与门槛</small></button>
+          <button data-panel="layers"><span>显示图层</span><small>可叠加</small></button>
+          <button data-panel="residues"><span>位点详情</span><small>逐残基审查</small></button>
+          <button data-panel="regions"><span>分区方案</span><small>结构语义</small></button>
+          <button data-panel="design"><span>组合构建</span><small>序列与导出</small></button>
+        </nav>
+        <div class="inspector-scroll">
+        <section id="panel-overview" class="inspector-panel active" data-panel-content="overview">
+          <div id="stage-rail" class="stage-rail" aria-label="分析阶段导航"></div>
+          <div id="summary-stats" class="stats-grid"></div>
+          <div class="section-block">
+            <h2>结构来源</h2>
+            <div id="source-detail" class="key-value-list empty-state">尚未载入分析。</div>
+          </div>
+          <div class="section-block">
+            <h2>方法与结论边界</h2>
+            <div id="method-detail" class="method-note">
+              “通过折叠风险筛选”是计算预筛，不等于实验确认不影响折叠。
+            </div>
+          </div>
+          <div class="section-block">
+            <h2>运行警告</h2>
+            <ul id="warning-list" class="warning-list"><li>等待分析结果。</li></ul>
+          </div>
+        </section>
+
+        <section id="panel-residues" class="inspector-panel" data-panel-content="residues">
+          <div class="filter-row">
+            <label class="search-field">搜索位点
+              <input id="residue-search" type="search" placeholder="如 123、K123 或 interface">
+            </label>
+            <label class="inline-select">筛选
+              <select id="residue-filter">
+                <option value="folding">折叠风险通过</option>
+                <option value="surface">表面可及</option>
+                <option value="interface">功能界面</option>
+                <option value="protected">受保护/排除</option>
+                <option value="all">全部 ECD</option>
+              </select>
+            </label>
+          </div>
+          <div id="residue-list" class="residue-list" role="listbox" aria-label="候选残基列表"></div>
+          <div class="section-block residue-detail-block">
+            <h2>位点详情</h2>
+            <div id="residue-detail" class="empty-state">在结构、序列或列表中选择残基。</div>
+          </div>
+        </section>
+
+        <section id="panel-layers" class="inspector-panel" data-panel-content="layers">
+          <div class="section-block no-top-border">
+            <h2>结构叠加图层</h2>
+            <p class="section-intro compact">每个图层可独立开启；分区、功能界面与当前组合会同时显示。</p>
+            <div id="layer-controls" class="layer-controls"></div>
+            <div id="criterion" class="criterion layer-criterion">载入结果后显示筛选标准。</div>
+          </div>
+        </section>
+
+        <section id="panel-regions" class="inspector-panel" data-panel-content="regions">
+          <div class="section-intro">
+            分区受结构域、膜方向、表面测地距离和结构边界约束；不按坐标做简单聚类。
+          </div>
+          <div id="region-list" class="region-list"></div>
+        </section>
+
+        <section id="panel-design" class="inspector-panel" data-panel-content="design">
+          <div class="section-block no-top-border">
+            <h2>区域组合构建</h2>
+            <div id="design-list" class="design-list"></div>
+          </div>
+          <div class="section-block custom-builder">
+            <div class="heading-action-row">
+              <h2>自定义跨分区构建</h2>
+              <button id="clear-custom" type="button" class="text-button">清空</button>
+            </div>
+            <label class="field">
+              <span>构建名称</span>
+              <input id="custom-name" value="Custom construct">
+            </label>
+            <div id="custom-mutations" class="custom-mutations empty-state">从位点详情或区域设计中添加突变。</div>
+            <label class="check-row">
+              <input id="force-risk" type="checkbox">
+              <span>显式保留高风险替换（受保护位点仍不可强制）</span>
+            </label>
+            <button id="save-custom" class="primary-button full-width" type="button" disabled>确认并导出此组合</button>
+            <p id="custom-feedback" class="inline-feedback" aria-live="polite"></p>
+          </div>
+          <div class="section-block export-block">
+            <h2>导出</h2>
+            <div id="export-links" class="export-links empty-state">完成分析后提供 JSON、CSV、FASTA、GenBank、方法报告和 ZIP。</div>
+          </div>
+        </section>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="upload-dialog" class="upload-dialog">
+    <form id="upload-form" method="dialog">
+      <header class="dialog-heading">
+        <div>
+          <h2>上传已下载结构</h2>
+          <p>PDB/mmCIF；建议同时提供 UniProt accession 以建立规范编号。</p>
+        </div>
+        <button id="close-upload" type="button" class="icon-close" aria-label="关闭">×</button>
+      </header>
+      <label class="field"><span>结构文件</span><input id="upload-structure" type="file" accept=".pdb,.ent,.cif,.mmcif" required></label>
+      <div class="dialog-grid">
+        <label class="field"><span>UniProt accession</span><input id="upload-accession" placeholder="推荐填写"></label>
+        <label class="field"><span>目标链</span><input id="upload-chain" placeholder="自动"></label>
+      </div>
+      <details>
+        <summary>没有 UniProt 时手动提供序列与 ECD</summary>
+        <label class="field"><span>完整蛋白序列</span><textarea id="upload-sequence" rows="4"></textarea></label>
+        <div class="dialog-grid">
+          <label class="field"><span>ECD 起点</span><input id="upload-ecd-start" type="number" min="1"></label>
+          <label class="field"><span>ECD 终点</span><input id="upload-ecd-end" type="number" min="1"></label>
+        </div>
+      </details>
+      <button id="submit-upload" class="primary-button full-width" type="submit">提交结构分析</button>
+    </form>
+  </dialog>
+
+  <dialog id="af3-dialog" class="upload-dialog">
+    <form id="af3-form" method="dialog">
+      <header class="dialog-heading">
+        <div>
+          <h2>补充官方 AF3 输出</h2>
+          <p>需要 top-ranked mmCIF 和对应 confidences JSON。</p>
+        </div>
+        <button id="close-af3" type="button" class="icon-close" aria-label="关闭">×</button>
+      </header>
+      <label class="field"><span>AF3 model CIF</span><input id="af3-structure" type="file" accept=".cif,.mmcif" required></label>
+      <label class="field"><span>AF3 confidences JSON</span><input id="af3-confidence" type="file" accept=".json" required></label>
+      <label class="check-row"><input id="af3-confirm" type="checkbox" required><span>确认文件来自官方 AlphaFold 3 输出；系统不会把 AFDB/AF2 当作 AF3。</span></label>
+      <button class="primary-button full-width" type="submit">上传并继续作业</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/assets/vendor/pdbe-molstar-plugin-3.10.1.js"></script>
+  <script type="module" src="/assets/app.js"></script>
+</body>
+</html>

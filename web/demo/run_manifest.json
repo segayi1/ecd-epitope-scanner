@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-09-02T10:31:26.934191+00:00",
+  "software": {
+    "ecd_epitope_workbench": "ecd_epitope_scanner 1.0.0",
+    "python": "3.12.4",
+    "biopython": "1.87",
+    "numpy": "1.26.4",
+    "networkx": "3.2.1",
+    "platform": "Windows-11-10.0.26200-SP0"
+  },
+  "request": {
+    "input_type": "structure",
+    "identifier": "pdl1_fixture",
+    "accession": null,
+    "chain": null,
+    "structure_path": "ecd_epitope_scanner/examples/pdl1_run/structure.pdb",
+    "confidence_path": null,
+    "sequence": "MRIFAVFIFMTYWHLLNAFTVTVPKDLYVVEYGSNMTIECKFPVEKQLDLAALIVYWEMEDKNIIQFVHGEEDLKVQHSSYRQRARLLKDQLSLGNAALQITDVKLQDAGVYRCMISYGGADYKRITVKVNAPYNKINQRILVVDPVTSEHELTCQAEGYPKAEVIWTSSDHQVLSGKTTTTNSKREEKLFNVTSTLRINTTTNEIFYCTFRRLDPEENHTAELVIPELPLAHPPNERTHLVILGAILLCLGVALTFIFRLRKGRMMDVKKCGIQDTNSKKQSDTHLEET",
+    "ecd_start": 19,
+    "ecd_end": 238,
+    "original_cds": null,
+    "strict_af3": true,
+    "allow_partial": true,
+    "structure_candidate_id": null,
+    "minimum_regions": 5,
+    "maximum_regions": 8,
+    "output_dir": "ecd_epitope_scanner/web/demo",
+    "metadata": {}
+  },
+  "source": {
+    "kind": "downloaded structure upload",
+    "provider": "user",
+    "identifier": "structure.pdb",
+    "original_path": "E:\\user\\New project\\ecd_epitope_scanner\\examples\\pdl1_run\\structure.pdb",
+    "explicit_af3": false,
+    "structure_sha256": "bcb549c7e999e4676e1191f72c0a252008edc5a0ecf84e608e37b9d2855c1722"
+  },
+  "parameters": {
+    "strict_af3_fallback": true,
+    "minimum_regions": 5,
+    "maximum_regions": 8,
+    "regional_mutations": "adaptive 3-5; may reduce to 2 if no larger combination passes",
+    "functional_interfaces": "included with persistent risk flag",
+    "output_sequence": "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region",
+    "random_seed": null
+  },
+  "files": {
+    "analysis.json": "8d0979d492e314ca959ae9e5a225a4f53ad18e9e6ad6e763c951c9d7e1a69cad",
+    "mapping.csv": "71a7f9b761e6f3b8aa0d5ad8179f20ade4fedfb129f394e9c38a9c5f47f60ddb",
+    "residues.csv": "8dade28853f024654a8c48b33a2dcee6aa4f48b206393f771f376a354ce157fd",
+    "regions.json": "c8d8add1ef286b0f71279b79e189426b9e53bbbeba7166b0012dc1688ab7f563",
+    "designs.json": "f44100fd95f1757f7ae2f2091d2bd095d705831bba6e9f1b51a858f370e5b342",
+    "designs.csv": "ec48811ef7f8a70cf1032f0d71d905951c4dfd06eaba96026089bffb4568e988",
+    "sequences.fasta": "b70963dce9a7d9b9f3f7dc431ef9806daea640a3270b877c1795616b52159ee9",
+    "coding_sequences.fasta": "b6bbf2951a6b58b0e1b74e0e521e7215793c85583b5d356633a61c815b2e4396",
+    "sequences.gb": "ec000d5434372f7e8cb0ffb94acb910fea6f810c2c1118df3010515987749504",
+    "methods_report.md": "a7bcfb7158e59e68ae837f39266543c56e7f7c682cade33fc9d3616be6a9b94d",
+    "structure.cif": "bcb549c7e999e4676e1191f72c0a252008edc5a0ecf84e608e37b9d2855c1722",
+    "ecd_structure.cif": "17427f5449b74836aa3857d448665f56f18c1879021a0e4e54d73bb890f66b65"
+  }
+}

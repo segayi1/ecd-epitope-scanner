@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "arguments": {
+    "accession": "Q9NZQ7",
+    "pdb": null,
+    "chain": "A",
+    "sequence_fasta": null,
+    "ecd": "19:238",
+    "interface_chains": "",
+    "output": "examples\\pdl1_run",
+    "access": 0.55,
+    "plddt": 70
+  },
+  "sha256_pdb": "90e3b759bfc301b5906f4fc49307af76badf2a8040fbae6f110fadb4142a7e12",
+  "analysis_sha256": "8d5f56852fa522266b7af04c24b9c8f741bddf166a536fddf35bdac90202a4fe"
+}

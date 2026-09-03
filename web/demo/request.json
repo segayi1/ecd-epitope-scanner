@@ -1,0 +1,19 @@
+{
+  "input_type": "structure",
+  "identifier": "pdl1_fixture",
+  "accession": null,
+  "chain": null,
+  "structure_path": "ecd_epitope_scanner/examples/pdl1_run/structure.pdb",
+  "confidence_path": null,
+  "sequence": "MRIFAVFIFMTYWHLLNAFTVTVPKDLYVVEYGSNMTIECKFPVEKQLDLAALIVYWEMEDKNIIQFVHGEEDLKVQHSSYRQRARLLKDQLSLGNAALQITDVKLQDAGVYRCMISYGGADYKRITVKVNAPYNKINQRILVVDPVTSEHELTCQAEGYPKAEVIWTSSDHQVLSGKTTTTNSKREEKLFNVTSTLRINTTTNEIFYCTFRRLDPEENHTAELVIPELPLAHPPNERTHLVILGAILLCLGVALTFIFRLRKGRMMDVKKCGIQDTNSKKQSDTHLEET",
+  "ecd_start": 19,
+  "ecd_end": 238,
+  "original_cds": null,
+  "strict_af3": true,
+  "allow_partial": true,
+  "structure_candidate_id": null,
+  "minimum_regions": 5,
+  "maximum_regions": 8,
+  "output_dir": "ecd_epitope_scanner/web/demo",
+  "metadata": {}
+}

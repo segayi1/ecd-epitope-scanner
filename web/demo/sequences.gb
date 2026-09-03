@@ -1,0 +1,251 @@
+LOCUS       WT_ECD                   660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   WT_ECD
+VERSION     WT_ECD
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcgagg aggacctgaa ggtgcagcac
+      181 agcagctaca ggcagagggc cagactgctg aaggaccagc ttagcctggg caacgccgcc
+      241 ttgcagatca ccgacgtgaa gctgcaggat gctggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 cagaggatcc tggtggttga ccctgtgacc agcgagcacg agctgacctg ccaggctgag
+      421 ggctacccca aagccgaggt gatttggacc agcagcgacc accaggtgct gagcggcaag
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gatcttctac tgcaccttca ggaggctgga ccccgaggag
+      601 aaccacaccg ccgagcttgt gatccccgag ctgcccctgg cccaccctcc taacgagagg
+//
+LOCUS       REGION_01                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_01
+VERSION     REGION_01
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       658..660
+                     /note="R238A"
+                     /replace="A"
+     variation       637..639
+                     /note="L231D"
+                     /replace="D"
+     variation       655..657
+                     /note="E237F"
+                     /replace="F"
+     variation       640..642
+                     /note="A232R"
+                     /replace="R"
+     variation       643..645
+                     /note="H233D"
+                     /replace="D"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcgagg aggacctgaa ggtgcaacac
+      181 agcagctata ggcagagggc caggctgctg aaggaccagc tgagcctggg caacgccgct
+      241 ctgcagatca ccgatgtgaa gctgcaggat gctggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 cagaggatcc tggtggtgga ccccgtgaca agcgagcatg agctgacctg ccaggccgaa
+      421 ggctacccca aggccgaggt gatctggacc agcagcgacc accaagttct gagcggcaag
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gatcttctac tgcaccttca ggaggctgga ccccgaggag
+      601 aaccacaccg ccgagcttgt gatccccgag ctgcccgaca gggacccccc taacttcgcc
+//
+LOCUS       REGION_02                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_02
+VERSION     REGION_02
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       385..387
+                     /note="V147R"
+                     /replace="R"
+     variation       478..480
+                     /note="K178A"
+                     /replace="A"
+     variation       628..630
+                     /note="E228F"
+                     /replace="F"
+     variation       370..372
+                     /note="L142D"
+                     /replace="D"
+     variation       364..366
+                     /note="R140A"
+                     /replace="A"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcgagg aggacctgaa agtgcagcac
+      181 agcagctaca ggcagagggc caggctgctg aaggaccagc tgagcctggg aaatgccgcc
+      241 ctgcagatca ccgacgtgaa gctgcaagat gccggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 caggccatcg acgtggtgga ccccaggacc agcgagcacg agctgacctg ccaggccgag
+      421 ggctatccca aggccgaagt gatctggacc tcttctgatc accaggtgct gtctggcgcc
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gatcttctac tgcacattca gaaggctgga ccccgaggag
+      601 aaccacaccg ccgagctggt gatccccttc ctgcccctgg cccacccccc taacgagagg
+//
+LOCUS       REGION_03                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_03
+VERSION     REGION_03
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       466..468
+                     /note="V174R"
+                     /replace="R"
+     variation       460..462
+                     /note="H172D"
+                     /replace="D"
+     variation       613..615
+                     /note="E223A"
+                     /replace="A"
+     variation       619..621
+                     /note="V225D"
+                     /replace="D"
+     variation       472..474
+                     /note="S176R"
+                     /replace="R"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcgagg aggacttgaa ggtgcagcac
+      181 agcagctaca ggcagagggc caggctgctg aaggaccagc tgagccttgg aaacgccgcc
+      241 ctgcagatca ccgacgtgaa actgcaagac gccggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 cagaggatcc tggtggtgga ccctgtgacc agcgaacatg agctgacctg ccaagccgag
+      421 ggctacccca aggccgaggt gatttggacc agcagcgacg accagaggct gaggggcaag
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccacaaacga gattttctac tgcaccttca ggaggctgga ccccgaggag
+      601 aaccacaccg ccgccctgga catccccgag ctgcccctgg cccaccctcc taatgagagg
+//
+LOCUS       REGION_04                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_04
+VERSION     REGION_04
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       499..501
+                     /note="K185A"
+                     /replace="A"
+     variation       589..591
+                     /note="D215F"
+                     /replace="F"
+     variation       508..510
+                     /note="E188F"
+                     /replace="F"
+     variation       430..432
+                     /note="K162A"
+                     /replace="A"
+     variation       424..426
+                     /note="Y160D"
+                     /replace="D"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcgagg aggacttgaa ggttcagcac
+      181 agcagctaca ggcagagggc caggctgctg aaggaccagc tgagcctggg caacgccgcc
+      241 cttcagatca ccgacgtgaa actgcaggat gccggagtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 cagaggatcc tggtggtgga ccccgtgacc agcgaacacg agcttacctg tcaggccgag
+      421 ggcgaccccg ccgccgaagt tatctggacc tctagcgacc accaggtttt aagcggcaag
+      481 accaccacca ccaacagcgc cagggagttc aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gatcttctac tgtaccttca ggaggctgtt ccccgaggag
+      601 aaccacaccg ccgagctggt gatccccgag ctgcccctgg cccacccccc taacgagagg
+//
+LOCUS       REGION_05                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_05
+VERSION     REGION_05
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       169..171
+                     /note="K75A"
+                     /replace="A"
+     variation       352..354
+                     /note="K136A"
+                     /replace="A"
+     variation       202..204
+                     /note="R86A"
+                     /replace="A"
+     variation       319..321
+                     /note="R125A"
+                     /replace="A"
+     variation       127..129
+                     /note="D61F"
+                     /replace="F"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgga gaagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggagttca agaacatcat ccagttcgtg cacggcgagg aggacctggc cgttcaacac
+      181 agcagctaca ggcagagggc cgccctgctt aaagatcagc tgagcctggg caacgctgcc
+      241 ctgcagatca ccgacgtgaa gcttcaggac gccggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg actacaaggc catcaccgtg aaggtgaacg ccccctacaa cgccatcaat
+      361 cagaggatcc tggtggtgga ccccgttacc agcgagcacg agctgacctg tcaggccgag
+      421 ggctacccca aggccgaggt gatttggacc agctctgacc accaagtgct gagcggcaag
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gatcttctac tgcaccttca ggaggctgga ccccgaggag
+      601 aaccataccg ccgagctggt gatccccgag ctgcccctgg ctcacccccc taacgagagg
+//
+LOCUS       REGION_06                660 bp    DNA     linear   SYN 02-SEP-2026
+DEFINITION  ECD coding fragment for USER_STRUCTURE; no signal
+            peptide/start/stop/tag.
+ACCESSION   REGION_06
+VERSION     REGION_06
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+     variation       79..81
+                     /note="E45F"
+                     /replace="F"
+     variation       226..228
+                     /note="L94D"
+                     /replace="D"
+     variation       157..159
+                     /note="E71F"
+                     /replace="F"
+     variation       211..213
+                     /note="K89A"
+                     /replace="A"
+     variation       313..315
+                     /note="Y123D"
+                     /replace="D"
+ORIGIN
+        1 ttcaccgtga ccgtgcccaa ggacctgtac gtggtggagt acggcagcaa catgaccatc
+       61 gagtgcaagt tccccgtgtt caagcagctg gacctggccg ccctgatcgt gtactgggag
+      121 atggaggaca agaacatcat ccagttcgtg cacggcttcg aggacctgaa ggtgcagcac
+      181 tctagctaca ggcagagggc caggctgctg gccgaccagc tgagcgatgg caatgccgcc
+      241 ttacagatca ccgacgtgaa gctgcaagac gccggcgtgt acaggtgcat gatcagctac
+      301 ggcggcgccg acgacaagag gatcaccgtg aaggtgaacg ccccctacaa caagatcaac
+      361 cagaggatcc tggtggtgga ccccgtgaca agcgagcacg agcttacctg ccaggccgag
+      421 ggctacccca aggccgaggt tatttggacc agcagcgatc accaggtgct gagcggcaag
+      481 accaccacca ccaacagcaa gagggaggag aagctgttca acgtgaccag caccctgagg
+      541 atcaacacca ccaccaacga gattttctac tgcaccttca ggaggctgga ccccgaggag
+      601 aaccacaccg ccgagctggt gatccccgag ctgcccctgg ctcacccccc taacgagagg
+//
