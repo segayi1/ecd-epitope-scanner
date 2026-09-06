@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -42,7 +43,10 @@ def sha256_file(path: Path) -> str:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(value, ensure_ascii=False, indent=2)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def read_json(path: Path) -> Any:
@@ -63,6 +67,15 @@ class RemoteClient:
                 response = self.session.request(method, url, timeout=self.timeout, **kwargs)
                 response.raise_for_status()
                 return response
+            except requests.HTTPError as exc:
+                # 4xx answers are deterministic; retrying them only burns time
+                # and masks the real error.  Only 5xx/network faults retry.
+                status = exc.response.status_code if exc.response is not None else None
+                if status is not None and status < 500:
+                    raise PipelineError(f"Remote request rejected: {url}: {status}") from exc
+                last = exc
+                if attempt + 1 < self.retries:
+                    time.sleep(0.8 * (attempt + 1))
             except requests.RequestException as exc:
                 last = exc
                 if attempt + 1 < self.retries:
@@ -78,8 +91,15 @@ class RemoteClient:
     def download(self, url: str, path: Path) -> Path:
         response = self.request("GET", url, stream=True)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("wb") as handle:
-            for chunk in response.iter_content(1024 * 256):
-                if chunk:
-                    handle.write(chunk)
+        # Atomic: a previously interrupted half-written file must never be
+        # mistaken for a complete structure on a later run.
+        tmp = path.with_suffix(path.suffix + ".part")
+        try:
+            with tmp.open("wb") as handle:
+                for chunk in response.iter_content(1024 * 256):
+                    if chunk:
+                        handle.write(chunk)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
         return path

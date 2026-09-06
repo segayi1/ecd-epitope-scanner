@@ -114,6 +114,12 @@ class ResidueRecord:
     reasons: list[str] = field(default_factory=list)
     region_id: int | None = None
     token_index: int | None = None
+    # Fraction of aligned reviewed orthologs carrying the same residue
+    # (1.0 = fully conserved).  None when conservation was not computed.
+    conservation_score: float | None = None
+    # Terminal run with no observed secondary structure (docs: linear-epitope
+    # candidate, excluded from patch design by default).
+    flexible_terminal: bool = False
 
 
 @dataclass(slots=True)
@@ -131,6 +137,13 @@ class RegionRecord:
     auto_design_allowed: bool
     rationale: str
     color: str
+    # --- epitope-mapping patch extensions (backwards compatible) ---
+    domain_id: str = "ECD"                  # dominant structural domain label
+    epitope_prior: float | None = None      # dimensionless 0..~1
+    prior_components: dict[str, float] = field(default_factory=dict)
+    tier: str = "MEDIUM"                    # HIGH | MEDIUM | LOW
+    assay_accessible: bool = True           # IgG reachability for the assay format
+    required_probe_coverage: int = 1        # primary + alternates demanded by plan
 
 
 @dataclass(slots=True)
@@ -145,6 +158,12 @@ class MutationChoice:
     reasons: list[str] = field(default_factory=list)
     foldx_ddg: float | None = None
     stability_class: str = "proxy"
+    # --- epitope-mapping extensions ---
+    menu_class: str = "other"
+    # charge_reversal | hotspot_to_ala | bulky_to_ala | trp_insert |
+    # conservative | other
+    disruption_score: float = 0.0           # instrument-power score
+    esm_llr: float | None = None            # PLM zero-shot log-likelihood ratio
 
     @property
     def notation(self) -> str:
@@ -167,11 +186,27 @@ class DesignRecord:
     mutant_coding_sequence: str
     saturation_scan: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     custom: bool = False
+    # Provenance of `combined_stability_score`.  MUST stay consistent with
+    # `stability_engine`: a "FoldX 5.1" engine label is only legal when
+    # score_origin == "foldx" (i.e. the number really is kcal/mol).
+    score_origin: str = "proxy"          # foldx | evoef2 | proxy
+    foldx_diagnostics: dict[str, Any] = field(default_factory=dict)
+    # --- epitope-mapping extensions ---
+    design_role: str = "STAGE1_PROBE"
+    # STAGE1_PROBE | ALTERNATE_PROBE | STAGE2_SINGLE | STAGE2_PAIRWISE
+    parent_design_id: str | None = None  # links stage-2 designs to their probe
+    disruption_score: float | None = None    # probe instrument power (sum of D)
+    anchor_notation: str | None = None       # the anchor mutation, if any
 
 
 def to_dict(value: Any) -> Any:
     if hasattr(value, "__dataclass_fields__"):
-        return {key: to_dict(item) for key, item in asdict(value).items()}
+        data = {key: to_dict(item) for key, item in asdict(value).items()}
+        # `notation` is a derived property (WT+position+mutant); include it in
+        # every serialized choice so JSON/CSV consumers never re-derive it.
+        if isinstance(value, MutationChoice):
+            data["notation"] = value.notation
+        return data
     if isinstance(value, list):
         return [to_dict(item) for item in value]
     if isinstance(value, dict):

@@ -43,6 +43,13 @@ MAX_ASA = {
     "V": 174.0,
 }
 BACKBONE_ATOMS = {"N", "CA", "C", "O", "OXT"}
+# Reference table MAX_ASA below is Tien et al. 2013 (PLoS ONE 8(11):e80635),
+# generated with the DSSP radius set.  Any SASA path must use THE SAME radii,
+# otherwise rsasa >= 0.25 means different things depending on which solver
+# happened to be installed.  Bio.PDB's default ATOMIC_RADII are Bondi 1964
+# (O 1.52 vs DSSP 1.40 -- an 8.6% difference on oxygen-rich side chains), so
+# the element radii are pinned explicitly everywhere SASA is computed.
+TIEN_DSSP_RADII = {"C": 1.80, "N": 1.60, "O": 1.40, "S": 1.85}
 GLYCAN_RESNAMES = {
     "NAG",
     "NDG",
@@ -408,7 +415,11 @@ def _sasa_with_freesasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tu
                     float(area.total),
                     float(area.sideChain),
                 )
-        return output, "FreeSASA Shrake-Rupley 1.4A/960 points"
+        return output, (
+            "FreeSASA Shrake-Rupley 1.4A/960 points"
+            " (FreeSASA default classifier radii -- not pinned to the"
+            " Tien-2013/DSSP set; cross-check against the Bio.PDB fallback)"
+        )
     except Exception:
         return None
 
@@ -417,7 +428,11 @@ def calculate_sasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tuple[s
     free = _sasa_with_freesasa(parsed, workdir)
     if free is not None:
         return free
-    calculator = ShrakeRupley(probe_radius=1.4, n_points=960)
+    calculator = ShrakeRupley(
+        probe_radius=1.4,
+        n_points=960,
+        radii_dict=dict(TIEN_DSSP_RADII),   # pin to the reference-table radius set
+    )
     calculator.compute(parsed.model, level="A")
     output: dict[tuple[str, int, str], tuple[float, float]] = {}
     for chain in parsed.model:
@@ -431,7 +446,10 @@ def calculate_sasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tuple[s
                 if atom.name not in BACKBONE_ATOMS
             )
             output[(chain.id, int(residue.id[1]), _clean_icode(residue.id[2]))] = (total, side)
-    return output, "Bio.PDB Shrake-Rupley fallback 1.4A/960 points"
+    return output, (
+        "Bio.PDB Shrake-Rupley fallback 1.4A/960 points, "
+        "element radii pinned to the Tien-2013/DSSP set (C 1.80 N 1.60 O 1.40 S 1.85)"
+    )
 
 
 def _sequon_positions(sequence: str) -> set[int]:
@@ -681,6 +699,7 @@ def analyze_residues(
                 if "domain-interface" not in other.risk_flags:
                     other.risk_flags.append("domain-interface")
 
+    flexible_ranges = flag_flexible_terminal_segments(records)
     metadata = {
         "sasa_method": sasa_method,
         "rsasa_threshold": rsasa_threshold,
@@ -688,9 +707,56 @@ def analyze_residues(
         "plddt_threshold": plddt_threshold if predicted else None,
         "interface_definition": "any target heavy atom within 5.0 A of a non-target-chain or hetero residue",
         "glycan_shield_definition": "any target heavy atom within 8.0 A of a recognized glycan residue",
+        "flexible_terminal_ranges": [
+            {"start": start, "end": end} for start, end in flexible_ranges
+        ],
         "mapped_ecd_residues": len(records),
     }
     return records, metadata
+
+
+def flag_flexible_terminal_segments(records: list[ResidueRecord]) -> list[tuple[int, int]]:
+    """Mark terminal runs with no observed secondary structure.
+
+    Long unstructured N/C-terminal tails are the least trustworthy part of
+    any structure — a crystal truncation artefact, one frame of an ensemble,
+    or a low-pLDDT model segment — and they are poor mapping instruments: the
+    tail conformation adapts, so a retained antibody binding cannot be read
+    as "epitope not here".  Flagged residues are excluded from patch design
+    (config.EXCLUDE_FLEXIBLE_TERMINAL) and reported separately as
+    linear-epitope candidates.  The walk stops at the first helix/strand
+    residue, which keeps the rule conservative.
+    """
+    from . import config as _config
+
+    ordered = sorted(
+        (record for record in records if record.ca is not None),
+        key=lambda record: record.uniprot_pos,
+    )
+    if not ordered:
+        return []
+    # Guard: the terminal walk only means something when the structure actually
+    # carries SSE annotation.  A PDB without HELIX/SHEET records (or an mmCIF
+    # without parsed sec-struct) makes every residue look "C" -- flagging then
+    # would mark the whole ECD as tail.  Require a minimal annotated fraction.
+    structured = sum(1 for record in ordered if record.secondary_structure in {"H", "E"})
+    if structured / len(ordered) < _config.FLEXIBLE_TERMINAL_MIN_SSE_FRACTION:
+        return []
+    ranges: list[tuple[int, int]] = []
+    for from_start in (True, False):
+        run: list[ResidueRecord] = []
+        for record in (ordered if from_start else reversed(ordered)):
+            if record.secondary_structure != "C":
+                break
+            run.append(record)
+        if len(run) >= _config.FLEXIBLE_TERMINAL_MIN_RESIDUES:
+            positions = sorted(record.uniprot_pos for record in run)
+            ranges.append((positions[0], positions[-1]))
+            for record in run:
+                record.flexible_terminal = True
+                if "flexible-terminal" not in record.risk_flags:
+                    record.risk_flags.append("flexible-terminal")
+    return ranges
 
 
 def median_region_pae(region_positions: list[int], records: list[ResidueRecord], confidence: dict[str, Any] | None) -> float | None:

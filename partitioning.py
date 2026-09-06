@@ -1,53 +1,45 @@
+"""Fab-footprint-scale surface patch partitioning for epitope mapping.
+
+Replaces the old domain-quota geodesic partitioning.  Rationale
+(docs/改进方案.md): conformational epitopes span 15-25 residues / ~600-900
+A2 (Kringelum 2012) and routinely cross domain boundaries, so patches are
+enumerated at antibody-footprint scale directly on the surface graph instead
+of being forced into domain quotas.  Each patch carries an epitope prior
+(exposure, protrusion, loop content, variability, glycan/membrane penalties)
+that drives the Stage-1 probe panel: HIGH-prior patches get two probes,
+others one, and anything untestable is declared a blind spot rather than
+silently skipped.
+"""
 from __future__ import annotations
 
 import math
-from collections import Counter, defaultdict
+from collections import Counter
 from statistics import mean
 from typing import Any
 
 import networkx as nx
 import numpy as np
 
+from . import config
 from .models import ProteinContext, RegionRecord, ResidueRecord
 from .structure_analysis import median_region_pae
-
-
-REGION_COLORS = [
-    "#087E8B",
-    "#E4572E",
-    "#6A4C93",
-    "#2E7D32",
-    "#C47F00",
-    "#1565C0",
-    "#AD1457",
-    "#5D4037",
-]
 
 
 def _distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
     return float(np.linalg.norm(np.asarray(a, dtype=float) - np.asarray(b, dtype=float)))
 
 
-def _target_region_count(count: int, domains: int, minimum: int, maximum: int) -> int:
-    if count < 8:
-        return 1
-    if count < 18:
-        return min(3, max(2, count // 5))
-    if count < 30:
-        return min(4, max(3, count // 7))
-    target = max(minimum, round(count / 18))
-    target = max(target, min(domains, maximum))
-    return min(maximum, target)
-
-
 def _build_graph(records: list[ResidueRecord]) -> nx.Graph:
     graph = nx.Graph()
     for record in records:
         graph.add_node(record.uniprot_pos)
+    by_pos = {record.uniprot_pos: record for record in records}
     for index, left in enumerate(records):
-        assert left.ca is not None
+        if left.ca is None:
+            continue
         for right in records[index + 1 :]:
-            assert right.ca is not None
+            if right.ca is None:
+                continue
             distance = _distance(left.ca, right.ca)
             sequence_neighbor = abs(left.uniprot_pos - right.uniprot_pos) <= 2
             if distance <= 12.5 or (sequence_neighbor and distance <= 16.0):
@@ -60,21 +52,22 @@ def _build_graph(records: list[ResidueRecord]) -> nx.Graph:
                     euclidean=distance,
                 )
 
-    # Surface islands can arise around flexible loops. Connect each island to its nearest
-    # neighbor so every eligible residue is auditable and assigned exactly once.
+    # Surface islands can arise around flexible loops.  Connect each island to
+    # its nearest neighbor so every eligible residue is auditable and assigned
+    # exactly once.
     components = list(nx.connected_components(graph))
     while len(components) > 1:
-        best: tuple[float, int, int] | None = None
         first = components[0]
         rest = set().union(*components[1:])
-        by_pos = {record.uniprot_pos: record for record in records}
+        best: tuple[float, int, int] | None = None
         for left_pos in first:
             for right_pos in rest:
                 distance = _distance(by_pos[left_pos].ca, by_pos[right_pos].ca)  # type: ignore[arg-type]
                 candidate = (distance, left_pos, right_pos)
                 if best is None or candidate < best:
                     best = candidate
-        assert best is not None
+        if best is None:
+            break
         distance, left_pos, right_pos = best
         domain_penalty = 4.0 if by_pos[left_pos].domain != by_pos[right_pos].domain else 0.0
         graph.add_edge(left_pos, right_pos, weight=distance + domain_penalty + 6.0, euclidean=distance)
@@ -82,112 +75,193 @@ def _build_graph(records: list[ResidueRecord]) -> nx.Graph:
     return graph
 
 
-def _allocate_quotas(records: list[ResidueRecord], target: int) -> dict[str, int]:
-    counts = Counter(record.domain for record in records)
-    domains = sorted(counts, key=lambda name: (-counts[name], name))
-    quotas = {domain: 1 for domain in domains[:target]}
-    remaining = target - len(quotas)
-    if remaining <= 0:
-        return quotas
-    total = sum(counts[domain] for domain in quotas)
-    fractional: list[tuple[float, str]] = []
-    for domain in quotas:
-        exact = remaining * counts[domain] / max(1, total)
-        whole = int(math.floor(exact))
-        quotas[domain] += whole
-        fractional.append((exact - whole, domain))
-    assigned = sum(quotas.values())
-    for _, domain in sorted(fractional, key=lambda item: (-item[0], item[1])):
-        if assigned >= target:
-            break
-        quotas[domain] += 1
-        assigned += 1
-    return quotas
+def _exposure_priority(record: ResidueRecord) -> float:
+    score = record.rsasa * 2.0 + min(1.2, record.sidechain_sasa / 100.0)
+    return score + 0.6 / (1 + record.contacts / 6.0)
 
 
-def _select_seeds(
-    graph: nx.Graph, records: list[ResidueRecord], quotas: dict[str, int]
+def _enumerate_patch_seeds(
+    graph: nx.Graph, records: list[ResidueRecord], radius: float
 ) -> list[int]:
+    """Farthest-point seeding until every residue is within reach of a seed.
+
+    "Reach" = geodesic distance <= `radius` AND euclidean distance <=
+    PATCH_EUCLIDEAN_CAP_A.  The euclidean condition stops patches from
+    wrapping around thin sheets: a residue 12 A along the surface but 40 A
+    through space belongs to a different face, not this patch.
+    """
     by_pos = {record.uniprot_pos: record for record in records}
-    seeds: list[int] = []
-    for domain in sorted(quotas):
-        nodes = sorted(record.uniprot_pos for record in records if record.domain == domain)
-        if not nodes:
-            continue
-        local = graph.subgraph(nodes)
-        first = max(
-            nodes,
-            key=lambda position: (
-                by_pos[position].rsasa
-                + min(1.0, by_pos[position].sidechain_sasa / 120.0)
-                + 1.0 / (1 + by_pos[position].contacts),
-                -position,
-            ),
-        )
-        local_seeds = [first]
-        while len(local_seeds) < min(quotas[domain], len(nodes)):
-            distances: dict[int, float] = {}
-            for node in nodes:
-                if node in local_seeds:
-                    continue
-                values = []
-                for seed in local_seeds:
-                    try:
-                        values.append(nx.shortest_path_length(local, node, seed, weight="weight"))
-                    except nx.NetworkXNoPath:
-                        values.append(float("inf"))
-                distances[node] = min(values)
-            if not distances:
-                break
-            next_seed = max(distances, key=lambda position: (distances[position], -position))
-            local_seeds.append(next_seed)
-        seeds.extend(local_seeds)
+    nodes = sorted(by_pos)
+    first = max(
+        nodes,
+        key=lambda position: (_exposure_priority(by_pos[position]), -position),
+    )
+    seeds = [first]
+    distance_to_seeds = nx.single_source_dijkstra_path_length(graph, first, weight="weight")
+
+    def effective_distances() -> dict[int, float]:
+        output: dict[int, float] = {}
+        for node in nodes:
+            if node in seeds:
+                continue
+            reachable = [
+                distance_to_seeds[node]
+                for seed in seeds
+                if _distance(by_pos[node].ca, by_pos[seed].ca) <= config.PATCH_EUCLIDEAN_CAP_A  # type: ignore[arg-type]
+                and distance_to_seeds.get(node, math.inf) <= radius
+            ]
+            output[node] = min(reachable) if reachable else math.inf
+        return output
+
+    effective = effective_distances()
+    while True:
+        candidates = {node: value for node, value in effective.items() if node not in seeds}
+        if not candidates:
+            break
+        next_seed, worst = max(candidates.items(), key=lambda item: (item[1], -item[0]))
+        if worst <= radius:
+            break
+        seeds.append(next_seed)
+        fresh = nx.single_source_dijkstra_path_length(graph, next_seed, weight="weight")
+        distance_to_seeds = {
+            node: min(distance_to_seeds.get(node, math.inf), fresh.get(node, math.inf))
+            for node in nodes
+        }
+        effective = effective_distances()
     return seeds
 
 
-def _assign_to_seeds(
+def _assign_to_patches(
     graph: nx.Graph, records: list[ResidueRecord], seeds: list[int]
 ) -> dict[int, list[int]]:
     by_pos = {record.uniprot_pos: record for record in records}
+    seed_distances = {
+        seed: nx.single_source_dijkstra_path_length(graph, seed, weight="weight")
+        for seed in seeds
+    }
     assignments: dict[int, list[int]] = {seed: [] for seed in seeds}
     for record in records:
-        same_domain = [seed for seed in seeds if by_pos[seed].domain == record.domain]
-        candidates = same_domain or seeds
-        ranked: list[tuple[float, int]] = []
-        for seed in candidates:
-            try:
-                distance = float(nx.shortest_path_length(graph, record.uniprot_pos, seed, weight="weight"))
-            except nx.NetworkXNoPath:
-                distance = _distance(record.ca, by_pos[seed].ca) + 100.0  # type: ignore[arg-type]
-            ranked.append((distance, seed))
-        _, selected = min(ranked, key=lambda item: (item[0], item[1]))
-        assignments[selected].append(record.uniprot_pos)
+        local_seeds = [
+            seed for seed in seeds
+            if _distance(record.ca, by_pos[seed].ca) <= config.PATCH_EUCLIDEAN_CAP_A  # type: ignore[arg-type]
+        ]
+        if local_seeds:
+            best_distance, best_seed = min(
+                ((seed_distances[seed].get(record.uniprot_pos, math.inf), seed) for seed in local_seeds),
+                key=lambda item: (item[0], item[1]),
+            )
+        else:
+            # Stray residue beyond the euclidean cap of every seed: fall back
+            # to the spatially nearest seed so coverage stays complete while
+            # the patch stays locally compact.
+            best_seed = min(
+                seeds,
+                key=lambda seed: (_distance(record.ca, by_pos[seed].ca), seed),  # type: ignore[arg-type]
+            )
+            best_distance = 0.0
+        if math.isinf(best_distance):
+            best_seed = min(
+                seeds,
+                key=lambda seed: (_distance(record.ca, by_pos[seed].ca), seed),  # type: ignore[arg-type]
+            )
+        assignments[best_seed].append(record.uniprot_pos)
+    return assignments
 
-    # Merge regions too small to support a meaningful multi-site perturbation.
+
+def _merge_small_patches(
+    assignments: dict[int, list[int]], by_pos: dict[int, ResidueRecord]
+) -> dict[int, list[int]]:
     for seed in list(assignments):
         members = assignments.get(seed, [])
-        if len(members) >= 3 or len(assignments) == 1:
+        if len(members) >= config.PATCH_MIN_RESIDUES or len(assignments) == 1:
             continue
         alternatives = [item for item in assignments if item != seed]
         if not alternatives:
             continue
         replacement = min(
             alternatives,
-            key=lambda other: (
-                _distance(by_pos[seed].ca, by_pos[other].ca),  # type: ignore[arg-type]
-                other,
-            ),
+            key=lambda other: (_distance(by_pos[seed].ca, by_pos[other].ca), other),  # type: ignore[arg-type]
         )
         assignments[replacement].extend(members)
         del assignments[seed]
     return assignments
 
 
+def _merge_down_to_limit(
+    assignments: dict[int, list[int]],
+    priors: dict[int, float],
+    by_pos: dict[int, ResidueRecord],
+    limit: int,
+) -> tuple[dict[int, list[int]], list[int]]:
+    """Fold the weakest-prior patch into its spatial nearest neighbor.
+
+    Returns the new assignment map plus the seeds that absorbed a neighbour
+    (so rationales can flag patches whose extent grew beyond footprint scale).
+    """
+    merged_targets: list[int] = []
+    while len(assignments) > limit:
+        weakest = min(assignments, key=lambda seed: (priors.get(seed, 0.0), seed))
+        alternatives = [item for item in assignments if item != weakest]
+        replacement = min(
+            alternatives,
+            key=lambda other: (_distance(by_pos[weakest].ca, by_pos[other].ca), other),  # type: ignore[arg-type]
+        )
+        priors[replacement] = min(priors.get(replacement, 0.0), priors.get(weakest, 0.0))
+        assignments[replacement].extend(assignments[weakest])
+        del assignments[weakest]
+        merged_targets.append(replacement)
+    return assignments, merged_targets
+
+
+def _patch_prior(items: list[ResidueRecord]) -> tuple[float, dict[str, float]]:
+    exposure = mean(min(1.0, item.rsasa / 0.5) for item in items)
+    protrusion = mean(1.0 / (1.0 + item.contacts / 6.0) for item in items)
+    loop = sum(item.secondary_structure == "C" for item in items) / len(items)
+    conservation_values = [item.conservation_score for item in items if item.conservation_score is not None]
+    if conservation_values:
+        variability = 1.0 - mean(conservation_values)
+    else:
+        variability = 0.4  # neutral placeholder when conservation is unavailable
+    glycan = sum(item.glycan_shielded for item in items) / len(items)
+    interface = sum(item.interface for item in items) / len(items)
+    prior = (
+        config.PRIOR_W_EXPOSURE * exposure
+        + config.PRIOR_W_PROTRUSION * protrusion
+        + config.PRIOR_W_LOOP * loop
+        + config.PRIOR_W_VARIABILITY * variability
+        + config.PRIOR_W_INTERFACE * min(1.0, interface * 2.0)
+        - config.PRIOR_PENALTY_GLYCAN * glycan
+    )
+    components = {
+        "exposure": round(exposure, 3),
+        "protrusion": round(protrusion, 3),
+        "loop_fraction": round(loop, 3),
+        "variability": round(variability, 3),
+        "glycan_fraction": round(glycan, 3),
+        "interface_fraction": round(interface, 3),
+        "conservation_available": 1.0 if conservation_values else 0.0,
+    }
+    return round(prior, 4), components
+
+
+def _assign_tiers(priors: dict[int, float]) -> dict[int, str]:
+    ordered = sorted(priors, key=lambda seed: (-priors[seed], seed))
+    total = len(ordered)
+    tiers: dict[int, str] = {}
+    for rank, seed in enumerate(ordered):
+        if rank < max(1, round(total * config.TIER_HIGH_FRACTION)):
+            tiers[seed] = "HIGH"
+        elif rank < max(1, round(total * (config.TIER_HIGH_FRACTION + config.TIER_MEDIUM_FRACTION))):
+            tiers[seed] = "MEDIUM"
+        else:
+            tiers[seed] = "LOW"
+    return tiers
+
+
 def _geodesic_diameter(graph: nx.Graph, members: list[int]) -> float:
     subgraph = graph.subgraph(members)
     maximum = 0.0
-    for source, lengths in nx.all_pairs_dijkstra_path_length(subgraph, weight="weight"):
-        del source
+    for _, lengths in nx.all_pairs_dijkstra_path_length(subgraph, weight="weight"):
         finite = [float(value) for value in lengths.values() if math.isfinite(value)]
         if finite:
             maximum = max(maximum, max(finite))
@@ -213,30 +287,50 @@ def partition_surface(
     minimum_regions: int = 5,
     maximum_regions: int = 8,
     predicted: bool = False,
+    assay_format: str = "cell_surface",
 ) -> tuple[list[RegionRecord], dict[str, Any]]:
-    eligible = [record for record in records if record.folding_screen_pass and record.ca is not None]
+    eligible = [
+        record for record in records
+        if record.folding_screen_pass and record.ca is not None
+        and not (config.EXCLUDE_FLEXIBLE_TERMINAL and record.flexible_terminal)
+    ]
+    excluded_tail = sum(
+        1 for record in records
+        if record.folding_screen_pass and record.ca is not None and record.flexible_terminal
+    )
     if not eligible:
         return [], {
             "eligible_residues": 0,
             "assigned_residues": 0,
             "coverage": 0.0,
+            "excluded_flexible_terminal_residues": excluded_tail,
             "warnings": ["No residues passed the configured surface and folding-risk screen."],
-            "method": "domain-constrained geodesic surface partitioning",
+            "method": "Fab-footprint patch partitioning with epitope priors",
         }
-    graph = _build_graph(eligible)
-    domains = len({record.domain for record in eligible})
-    target = _target_region_count(len(eligible), domains, minimum_regions, maximum_regions)
-    quotas = _allocate_quotas(eligible, target)
-    seeds = _select_seeds(graph, eligible, quotas)
-    assignments = _assign_to_seeds(graph, eligible, seeds)
-    by_pos = {record.uniprot_pos: record for record in eligible}
 
+    graph = _build_graph(eligible)
+    by_pos = {record.uniprot_pos: record for record in eligible}
+    seeds = _enumerate_patch_seeds(graph, eligible, config.PATCH_GEODESIC_RADIUS_A)
+    assignments = _assign_to_patches(graph, eligible, seeds)
+    assignments = _merge_small_patches(assignments, by_pos)
+
+    priors: dict[int, float] = {}
+    for seed, members in assignments.items():
+        items = [by_pos[position] for position in members]
+        prior, _ = _patch_prior(items)
+        priors[seed] = prior
+
+    patch_limit = max(1, maximum_regions)
+    assignments, merged_targets = _merge_down_to_limit(assignments, priors, by_pos, patch_limit)
+
+    # Membrane orientation, unchanged from the previous partitioning.  Computed
+    # BEFORE tier assignment so the cell-surface accessibility penalty can
+    # actually move a membrane-proximal patch out of the HIGH tier.
     anchor_record = min(
         eligible,
         key=lambda item: abs(item.uniprot_pos - protein.membrane_anchor_position),
     )
     anchor = anchor_record.ca
-    assert anchor is not None
     membrane_distances = {
         record.uniprot_pos: _distance(record.ca, anchor)  # type: ignore[arg-type]
         for record in eligible
@@ -245,46 +339,73 @@ def partition_surface(
     lower = float(np.quantile(distance_values, 0.33))
     upper = float(np.quantile(distance_values, 0.67))
 
+    membrane_positions: dict[int, str] = {}
+    for seed, members in assignments.items():
+        patch_mean = mean(membrane_distances[position] for position in members)
+        if patch_mean <= lower:
+            membrane_positions[seed] = "membrane-proximal"
+        elif patch_mean >= upper:
+            membrane_positions[seed] = "membrane-distal"
+        else:
+            membrane_positions[seed] = "middle ECD"
+
+    if assay_format == "cell_surface":
+        for seed in assignments:
+            if membrane_positions[seed] == "membrane-proximal":
+                priors[seed] = round(priors[seed] * config.MEMBRANE_PROXIMAL_PRIOR_SCALE, 4)
+
+    tiers = _assign_tiers({seed: priors[seed] for seed in assignments})
+
     ordered = sorted(
         assignments.items(),
-        key=lambda pair: (
-            mean(membrane_distances[position] for position in pair[1]),
-            min(pair[1]),
-        ),
+        key=lambda pair: (mean(membrane_distances[position] for position in pair[1]), min(pair[1])),
     )
     regions: list[RegionRecord] = []
-    for index, (_, members) in enumerate(ordered, start=1):
+    coverage_plan: list[dict[str, Any]] = []
+    for index, (seed, members) in enumerate(ordered, start=1):
         members = sorted(set(members))
         items = [by_pos[position] for position in members]
         domain = Counter(item.domain for item in items).most_common(1)[0][0]
         mean_distance = mean(membrane_distances[position] for position in members)
-        if mean_distance <= lower:
-            membrane_position = "membrane-proximal"
-        elif mean_distance >= upper:
-            membrane_position = "membrane-distal"
-        else:
-            membrane_position = "middle ECD"
-        character = _structural_character(items)
+        membrane_position = membrane_positions[seed]
+
+        prior, components = _patch_prior(items)
+        assay_accessible = not (
+            assay_format == "cell_surface" and membrane_position == "membrane-proximal"
+        )
+        if not assay_accessible:
+            prior = round(prior * config.MEMBRANE_PROXIMAL_PRIOR_SCALE, 4)
+        tier = tiers.get(seed, "MEDIUM")
+        required_probes = 2 if tier == "HIGH" else 1
+
         interface_fraction = sum(item.interface for item in items) / len(items)
         pae_median = median_region_pae(members, records, confidence) if predicted else None
         auto_allowed = not predicted or pae_median is None or pae_median <= 10.0
-        name = f"{domain} / {membrane_position} / surface {index}"
+
         rationale_parts = [
+            f"patch scale: antibody-footprint (geodesic radius <= {config.PATCH_GEODESIC_RADIUS_A:g} A)",
             f"domain anchor: {domain}",
             f"orientation: {membrane_position}",
-            f"surface character: {character}",
-            "boundary follows geodesic distance, low-accessibility bottlenecks and domain/secondary-structure penalties",
+            f"surface character: {_structural_character(items)}",
+            f"epitope prior={prior:.3f}",
         ]
-        if interface_fraction:
-            rationale_parts.append(f"native-interface fraction={interface_fraction:.2f}")
+        if seed in merged_targets:
+            rationale_parts.append(
+                "absorbed a weaker neighbour to respect the Stage-1 panel budget"
+            )
+        if not assay_accessible:
+            rationale_parts.append(
+                "membrane-proximal for a cell-surface assay; IgG accessibility is limited"
+            )
         if predicted and pae_median is not None:
             rationale_parts.append(f"median intra-region PAE={pae_median:.2f} A")
+
         region = RegionRecord(
             id=index,
-            name=name,
+            name=f"{domain} / {membrane_position} / patch {index}",
             domain=domain,
             membrane_position=membrane_position,
-            structural_character=character,
+            structural_character=_structural_character(items),
             residues=members,
             surface_area=round(sum(item.sidechain_sasa for item in items), 2),
             geodesic_diameter=_geodesic_diameter(graph, members),
@@ -292,27 +413,54 @@ def partition_surface(
             pae_median=pae_median,
             auto_design_allowed=auto_allowed,
             rationale="; ".join(rationale_parts),
-            color=REGION_COLORS[(index - 1) % len(REGION_COLORS)],
+            color=config.LEGACY_REGION_COLORS[(index - 1) % len(config.LEGACY_REGION_COLORS)],
+            domain_id=domain,
+            epitope_prior=prior,
+            prior_components=components,
+            tier=tier,
+            assay_accessible=assay_accessible,
+            required_probe_coverage=required_probes,
         )
         regions.append(region)
         for position in members:
             by_pos[position].region_id = index
+        coverage_plan.append(
+            {
+                "patch_id": index,
+                "tier": tier,
+                "epitope_prior": prior,
+                "required_probes": required_probes,
+                "residues": len(members),
+                "assay_accessible": assay_accessible,
+            }
+        )
 
     assigned = sum(len(region.residues) for region in regions)
     coverage = assigned / len(eligible)
     warnings: list[str] = []
     if len(regions) < minimum_regions:
         warnings.append(
-            f"Only {len(regions)} structurally defensible regions were produced; the ECD surface did not support the requested minimum of {minimum_regions}."
+            f"Only {len(regions)} structurally defensible patches were produced; the ECD surface did not support the requested minimum of {minimum_regions}."
         )
     if coverage < 0.9:
         warnings.append(f"Eligible-surface assignment coverage is only {coverage:.1%}.")
+    if not any(item.conservation_score is not None for item in eligible):
+        warnings.append(
+            "Sequence conservation was not computed; epitope priors used a neutral variability term."
+        )
+    if excluded_tail:
+        warnings.append(
+            f"{excluded_tail} flexible terminal residues (no observed secondary structure) were excluded from patch design; they remain candidates for a linear alanine scan."
+        )
     return regions, {
         "eligible_residues": len(eligible),
         "assigned_residues": assigned,
         "coverage": round(coverage, 4),
-        "target_regions": target,
+        "patch_radius_a": config.PATCH_GEODESIC_RADIUS_A,
         "actual_regions": len(regions),
-        "method": "domain- and membrane-orientation-constrained geodesic surface partitioning",
+        "assay_format": assay_format,
+        "excluded_flexible_terminal_residues": excluded_tail,
+        "coverage_plan": coverage_plan,
+        "method": "Fab-footprint patch partitioning with epitope priors (see docs/改进方案.md)",
         "warnings": warnings,
     }

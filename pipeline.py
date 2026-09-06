@@ -14,6 +14,7 @@ import numpy as np
 from Bio.PDB import MMCIFIO
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
+from . import config
 from . import models
 from .design import design_regions
 from .exporting import write_scientific_outputs
@@ -65,6 +66,7 @@ class PipelineRequest:
     minimum_regions: int = 5
     maximum_regions: int = 8
     output_dir: str | None = None
+    assay_format: str = "cell_surface"   # cell_surface | purified
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -423,14 +425,52 @@ def run_pipeline(
         predicted=predicted,
         confidence=confidence,
     )
-    progress("PARTITIONING", 0.62, "Building domain- and membrane-constrained geodesic surface regions")
+
+    conservation_warnings: list[str] = []
+    if input_type != "uniprot" and not request.accession:
+        conservation_warnings.append(
+            "No UniProt accession; per-residue conservation was not computed."
+        )
+    else:
+        try:
+            from .conservation import fetch_conservation
+
+            progress("ANALYZING", 0.48, "Fetching reviewed orthologs for conservation scoring")
+            scores = fetch_conservation(protein, client, output_dir)
+            if scores is None:
+                conservation_warnings.append(
+                    "Fewer than three reviewed same-gene orthologs (or gene unknown); conservation was not computed."
+                )
+            else:
+                matched = 0
+                for record in records:
+                    value = scores.get(record.uniprot_pos)
+                    if value is not None:
+                        record.conservation_score = value
+                        matched += 1
+                if not matched:
+                    conservation_warnings.append(
+                        "Ortholog alignment covered none of the mapped ECD positions; conservation was not applied."
+                    )
+        except Exception as exc:
+            conservation_warnings.append(
+                f"Conservation computation failed ({type(exc).__name__}); continuing without it."
+            )
+
+    progress("PARTITIONING", 0.62, "Building Fab-footprint surface patches with epitope priors")
+    # Panel budget adapts to ECD size (config.adaptive_maximum_regions) and is
+    # additionally capped by any explicit user request.
+    adaptive_cap = config.adaptive_maximum_regions(protein.ecd_length)
+    effective_max = min(request.maximum_regions, adaptive_cap)
+    effective_min = min(request.minimum_regions, effective_max)
     regions, partition_summary = partition_surface(
         records,
         protein,
         confidence=confidence,
-        minimum_regions=request.minimum_regions,
-        maximum_regions=request.maximum_regions,
+        minimum_regions=effective_min,
+        maximum_regions=effective_max,
         predicted=predicted,
+        assay_format=request.assay_format,
     )
     inventory = find_engine_inventory()
     if request.metadata.get("disable_external_engines"):
@@ -447,6 +487,16 @@ def run_pipeline(
         output_dir,
         request.original_cds,
     )
+    foldx_diag = design_summary.get("foldx_diagnostics") or {}
+    if foldx_diag.get("all_failed"):
+        # P1-3: a completely silent FoldX batch is an engine failure, not a
+        # scientific conclusion.  Fail the job loudly instead of stamping every
+        # region FOLDX_REVIEW_REQUIRED around proxy numbers.
+        raise PipelineError(
+            "ERROR_FOLDX_ENGINE: FoldX BuildModel returned no parsable scores for "
+            f"{foldx_diag.get('batch_constructs', 0)} constructs "
+            "(single-point screen included). See run_manifest.json foldx block."
+        )
 
     selected_candidate = candidates[0] if input_type != "uniprot" else next(
         (item for item in candidates if item.identifier == source.get("identifier")), candidates[0]
@@ -467,7 +517,7 @@ def run_pipeline(
         "candidate_count": len(candidates),
         "candidates_file": "structure_candidates.json",
     }
-    warnings = list(partition_summary.get("warnings", []))
+    warnings = list(partition_summary.get("warnings", [])) + list(conservation_warnings)
     if methods["sasa_method"].startswith("Bio.PDB"):
         warnings.append(
             "FreeSASA was unavailable; the auditable Bio.PDB Shrake-Rupley fallback was used with the same probe/point settings."
@@ -478,6 +528,10 @@ def run_pipeline(
         )
     if predicted:
         warnings.append("Predicted structure confidence gates do not establish biological correctness.")
+    if request.assay_format == "cell_surface":
+        warnings.append(
+            "cell_surface assay: membrane-proximal patches were down-weighted because IgG cannot reach them on intact cells."
+        )
 
     wt_coding_sequence, wt_coding_source = coding_fragment(
         protein, protein.ecd_sequence, request.original_cds
@@ -508,9 +562,16 @@ def run_pipeline(
         "structure_selection": selection,
         "parameters": {
             "strict_af3_fallback": request.strict_af3,
-            "minimum_regions": request.minimum_regions,
-            "maximum_regions": request.maximum_regions,
-            "regional_mutations": "adaptive 3-5; may reduce to 2 if no larger combination passes",
+            "assay_format": request.assay_format,
+            "minimum_regions": effective_min,
+            "maximum_regions": effective_max,
+            "adaptive_region_budget": {
+                "requested_maximum": request.maximum_regions,
+                "adaptive_cap_from_ecd_length": adaptive_cap,
+                "policy": "~1 patch per 22 ECD residues, capped at 7 (config.ADAPTIVE_REGIONS_*)",
+            },
+            "patch_scale": "Fab footprint: geodesic radius 13 A, 15-25 residues (docs/改进方案.md)",
+            "regional_mutations": "directed alphabet + anchor mutation; exhaustive enumeration of cleared menus",
             "functional_interfaces": "included with persistent risk flag",
             "output_sequence": "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region",
             "random_seed": None,
@@ -519,10 +580,12 @@ def run_pipeline(
         "stability": engine_metadata(inventory),
         "partitioning": partition_summary,
         "design_summary": design_summary,
+        "epitope_mapping_plan": design_summary.get("epitope_mapping_plan", {}),
         "summary": {
             "mapped_ecd_residues": len(records),
             "surface_accessible": sum(item.surface_accessible for item in records),
             "folding_screen_pass": sum(item.folding_screen_pass for item in records),
+            "flexible_terminal_excluded": sum(item.flexible_terminal for item in records),
             "functional_interface": sum(item.interface for item in records),
             "regions": len(regions),
             "recommended_constructs": sum(
@@ -542,6 +605,10 @@ def run_pipeline(
         "files": {},
     }
     progress("EXPORTING", 0.91, "Writing auditable JSON, CSV, FASTA, GenBank and methods outputs")
+    # structure.cif was written before residue analysis; hashing it here lets
+    # the export run exactly once instead of twice (the old second pass existed
+    # only to refresh this hash into the manifest).
+    analysis["source"]["structure_sha256"] = sha256_file(structure_cif)
     files = write_scientific_outputs(
         output_dir,
         analysis,
@@ -552,17 +619,23 @@ def run_pipeline(
         request.original_cds,
     )
     analysis["files"] = files
-    analysis["source"]["structure_sha256"] = sha256_file(structure_cif)
-    write_json(output_dir / "analysis.json", analysis)
-    # Refresh manifest after the final analysis file is written.
-    write_scientific_outputs(
-        output_dir,
-        analysis,
-        protein,
-        records,
-        regions,
-        designs,
-        request.original_cds,
-    )
-    progress("COMPLETE", 1.0, "Analysis and regional combination design completed")
+    # Flexible terminal segments: excluded from patches, kept as linear-epitope
+    # candidates with a ready-to-order alanine-scan block list.
+    tail_ranges = methods.get("flexible_terminal_ranges") or []
+    if tail_ranges:
+        analysis["epitope_mapping_plan"]["linear_epitope_candidates"] = [
+            {
+                "range": f"{item['start']}-{item['end']}",
+                "reason": (
+                    "flexible terminal segment (no observed secondary structure): excluded from "
+                    "patch probes because tail conformation adapts and negative results would be uninterpretable"
+                ),
+                "alanine_scan_blocks": [
+                    f"{start}-{min(start + 2, item['end'])}"
+                    for start in range(item["start"], item["end"] + 1, 3)
+                ],
+            }
+            for item in tail_ranges
+        ]
+    progress("COMPLETE", 1.0, "Analysis and epitope-mapping panel design completed")
     return analysis

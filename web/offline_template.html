@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ECD Epitope Workbench · Offline Report</title>
+<style>
+:root{
+  --bg:#faf7f1; --panel:#ffffff; --line:#e4dcc9; --ink:#2b2f33; --muted:#8a8577;
+  --red:#C0564A; --sel:#8a2f1d; --off:#cfc8bb; --ok:#3B6D11; --warn:#854F0B;
+}
+*{box-sizing:border-box; margin:0}
+body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink)}
+#bar{display:flex; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap}
+#bar b{font-size:14px}
+#bar .sp{flex:1}
+.btn{border:1px solid var(--line); background:#fff; border-radius:8px; padding:4px 10px; cursor:pointer; font-size:12px}
+.btn.on{background:#2b2f33; color:#fff; border-color:#2b2f33}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+#steps{display:flex; gap:4px; flex-wrap:wrap}
+.step{display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:9px; padding:3px 9px; cursor:pointer; background:#fff}
+.step .n{width:18px; height:18px; border-radius:50%; background:var(--line); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px}
+.step.active{border-color:#2b2f33; box-shadow:0 0 0 1px #2b2f33 inset}
+.step.active .n{background:#2b2f33}
+.step.done .n{background:var(--ok)}
+#main{display:flex; height:calc(100vh - 108px)}
+#viewportWrap{flex:1.35; position:relative; min-width:420px}
+#viewport{position:absolute; inset:0}
+#legend{position:absolute; left:10px; bottom:10px; background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:12px; max-width:280px}
+#legend .li{display:flex; gap:6px; align-items:center; margin:2px 0}
+#legend .sw{width:11px; height:11px; border-radius:3px; display:inline-block}
+#viewhud{position:absolute; left:10px; top:10px; display:flex; gap:6px}
+#panel{width:400px; border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; padding:12px}
+#panel h2{font-size:15px; margin-bottom:8px}
+.box{border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:10px; background:#fffdf8}
+.box h3{font-size:13px; margin-bottom:6px}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:12px; background:#fff}
+.note{font-size:12px; color:var(--muted); line-height:1.65; margin-bottom:10px}
+.li{display:flex; gap:7px; align-items:center; padding:4px 6px; border-radius:8px; font-size:12.5px}
+.li.click{cursor:pointer}
+.li.click:hover{background:#f3eede}
+.li.on{background:#f3eede; box-shadow:0 0 0 1px var(--sel) inset}
+.li .sw{width:12px; height:12px; border-radius:3px}
+.li .cnt{margin-left:auto; color:var(--muted); font-size:11.5px}
+table{width:100%; border-collapse:collapse; font-size:12px}
+th,td{border-bottom:1px solid var(--line); padding:4px 6px; text-align:left}
+th{color:var(--muted); font-weight:500}
+.mut{background:#f7e3de; border-radius:4px; padding:0 2px}
+.tag{display:inline-block; border-radius:6px; padding:1px 7px; font-size:11px; border:1px solid var(--line); margin:1px}
+.tag.ok{background:#eaf3de; color:var(--ok)}
+.tag.warn{background:#faeeda; color:var(--warn)}
+.tag.bad{background:#fcebeb; color:#A32D2D}
+#seqbar{border-top:1px solid var(--line); background:var(--panel); padding:8px 14px}
+.seqrow{display:flex; gap:8px; align-items:flex-start; margin:3px 0}
+.seqlabel{width:70px; flex:none; font-size:11px; color:var(--muted); padding-top:3px}
+.seq{font:12px/1.5 ui-monospace,Consolas,monospace; word-break:break-all; flex:1}
+.seq span{cursor:pointer; border-radius:3px; padding:0 1px}
+.seq span.mut{background:#f7c8bd; color:var(--sel); font-weight:bold}
+.seq span.dim{color:#b9b3a2}
+#inspector{position:absolute; right:10px; top:10px; width:250px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:12px; padding:10px; font-size:12px; display:none; max-height:70%; overflow:auto}
+.grid2{display:grid; grid-template-columns:auto 1fr; gap:2px 10px}
+.grid2 .k{color:var(--muted)}
+select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding:4px 8px; font-size:12px; background:#fff}
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>ECD Epitope Workbench</b>
+  <span class="sp"></span>
+  <div id="steps"></div>
+  <span class="sp"></span>
+  <button class="btn" id="btn-beads"></button>
+  <button class="btn" id="btn-cartoon"></button>
+  <button class="btn" id="btn-lang"></button>
+</div>
+<div id="main">
+  <div id="viewportWrap">
+    <div id="viewport"></div>
+    <div id="viewhud">
+      <button class="btn" id="btn-iface"></button>
+      <button class="btn" id="btn-glycan"></button>
+      <button class="btn" id="btn-reset">⌂</button>
+    </div>
+    <div id="legend"></div>
+    <div id="inspector"></div>
+  </div>
+  <div id="panel"></div>
+</div>
+<div id="seqbar"></div>
+
+<script>/*__3DMOL__*/</script>
+<script>
+window.APP_DATA = __DATA__;
+window.APP_I18N = __I18N__;
+window.APP_PDB  = __PDB__;
+window.APP_LANG = "__LANG__";
+</script>
+<script>
+(function(){
+"use strict";
+var D = window.APP_DATA, LANG = window.APP_LANG === "en" ? "en" : "zh";
+var I18N = window.APP_I18N;
+var residues = D.residues || [];
+var regions  = D.regions  || [];
+var designs  = (D.designs || []).filter(function(d){ return d.mutations && d.mutations.length; });
+var protein  = D.protein  || {};
+var byPos = {}; residues.forEach(function(r){ byPos[r.uniprot_pos] = r; });
+var ecdStart = protein.ecd_start || 1;
+var wtSeq = protein.ecd_sequence || "";
+var OFF = "#cfc8bb", RED = "#C0564A", SEL = "#8a2f1d", DIM = "#b9b3a2";
+
+var state = {
+  step: 1, renderer: "beads", showIface: true, showGlycan: false,
+  focusRegion: null, designId: (designs[0] ? designs[0].id : null),
+  custom: {},          // uniprot_pos -> mutant aa
+  lastPick: null
+};
+var viewer = null;
+
+function t(key, vars){
+  var s = (I18N[LANG] && I18N[LANG][key]) || (I18N.en && I18N.en[key]) || key;
+  if (I18N[LANG] && !I18N[LANG][key] && I18N.en && I18N.en[key]) console.warn("i18n missing", key);
+  if (vars) Object.keys(vars).forEach(function(k){ s = s.replace("{{"+k+"}}", vars[k]); });
+  return s;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function el(id){ return document.getElementById(id); }
+
+/* ---------- colour semantics (single source of truth) ---------- */
+function regionColor(pos){
+  var r = byPos[pos];
+  if (!r || r.region_id == null) return null;
+  for (var i=0;i<regions.length;i++) if (regions[i].id === r.region_id) return regions[i].color;
+  return null;
+}
+function isInterface(r){ return state.showIface && r.interface; }
+function isSelected(pos){ return state.custom[pos] != null; }
+function isDesignSite(pos){
+  var d = designById(state.designId);
+  if (!d) return false;
+  return d.mutations.some(function(m){ return m.position === pos; });
+}
+function colorOf(r){
+  if (isSelected(r.uniprot_pos) || isDesignSite(r.uniprot_pos)) return SEL;
+  if (isInterface(r)) return RED;
+  if (state.showGlycan && r.glycan_shielded) return "#C9A87F";
+  var c = regionColor(r.uniprot_pos);
+  if (r.surface_accessible || r.folding_screen_pass) return c || "#9CB89C";
+  return OFF;
+}
+function designById(id){ for (var i=0;i<designs.length;i++) if (designs[i].id===id) return designs[i]; return null; }
+
+/* ---------- 3D ---------- */
+function initViewer(){
+  var cfg = {backgroundColor:"#faf7f1", antialias:true};
+  viewer = $3Dmol.createViewer(el("viewport"), cfg);
+  viewer.addModel(window.APP_PDB, "pdb");
+  viewer.zoomTo(); viewer.zoom(1.35);
+  applyStyles();
+}
+function applyStyles(){
+  if (!viewer) return;
+  viewer.setStyle({}, {});
+  viewer.removeAllLabels();
+  residues.forEach(function(r){
+    var col = colorOf(r);
+    var spec = (state.renderer === "cartoon")
+      ? {cartoon:{color:col}}
+      : {sphere:{radius:(isSelected(r.uniprot_pos)||isDesignSite(r.uniprot_pos))?2.0:1.8, color:col}};
+    viewer.addStyle({chain:r.chain_id, resi:r.auth_seq_id}, spec);
+  });
+  /* picking must be armed AFTER styles and BEFORE render */
+  viewer.setClickable({}, true, function(atom){
+    var r = byPos[posFromAtom(atom)]; if (r) showInspector(r);
+  });
+  viewer.setHoverable({}, true, function(atom){
+    var r = byPos[posFromAtom(atom)];
+    if (r) el("viewport").title = r.aa + r.uniprot_pos + "  rSASA=" + (r.rsasa!=null?r.rsasa.toFixed(2):"-");
+  }, function(){ el("viewport").title = ""; });
+  viewer.render();
+  renderLegend();
+}
+function posFromAtom(atom){
+  /* 3Dmol reports author numbering; map back to uniprot_pos */
+  for (var i=0;i<residues.length;i++){
+    var r = residues[i];
+    if (r.chain_id === atom.chain && r.auth_seq_id === atom.resi) return r.uniprot_pos;
+  }
+  return null;
+}
+function renderLegend(){
+  var items = [];
+  function li(c,txt){ items.push('<div class="li"><span class="sw" style="background:'+c+'"></span>'+esc(txt)+'</div>'); }
+  if (isSelectedCount()) li(SEL, t("legend.selected")+ " ("+isSelectedCount()+")");
+  else if (designById(state.designId)) li(SEL, t("legend.designSites")+" ("+designById(state.designId).mutations.length+")");
+  if (state.showIface && interfaceResidues().length) li(RED, t("legend.interface"));
+  if (state.showGlycan) li("#C9A87F", t("legend.glycan"));
+  regions.forEach(function(g){ li(g.color, esc(g.name)+" ("+g.residues.length+")"); });
+  li(OFF, t("legend.off"));
+  el("legend").innerHTML = items.join("");
+}
+function isSelectedCount(){ return Object.keys(state.custom).length; }
+function interfaceResidues(){ return residues.filter(function(r){ return r.interface; }); }
+function interfacePartners(){
+  var set = {};
+  interfaceResidues().forEach(function(r){ (r.interface_partners||[]).forEach(function(p){
+    set[p.split(":")[0]] = 1; }); });
+  return Object.keys(set).sort();
+}
+
+/* ---------- inspector ---------- */
+function showInspector(r){
+  state.lastPick = r.uniprot_pos;
+  var tags = [];
+  if (r.interface) tags.push('<span class="tag bad">'+esc(t("tag.interface"))+'</span>');
+  if (r.glycan_shielded) tags.push('<span class="tag warn">'+esc(t("tag.glycan"))+'</span>');
+  if (r.disulfide) tags.push('<span class="tag bad">'+esc(t("tag.disulfide"))+'</span>');
+  if (r.salt_bridge) tags.push('<span class="tag warn">'+esc(t("tag.saltbridge"))+'</span>');
+  if (r.surface_accessible) tags.push('<span class="tag ok">'+esc(t("tag.surface"))+'</span>');
+  (r.risk_flags||[]).forEach(function(f){ tags.push('<span class="tag warn">'+esc(f)+'</span>'); });
+  (r.hard_exclusions||[]).forEach(function(f){ tags.push('<span class="tag bad">'+esc(f)+'</span>'); });
+  var sel = state.custom[r.uniprot_pos];
+  var aa = "ACDEFGHIKLMNPQRSTVWY".split("").map(function(a){
+    return '<option'+(sel===a?" selected":"")+'>'+a+'</option>';
+  }).join("");
+  el("inspector").innerHTML =
+    '<div style="font-size:14px"><b>'+esc(r.aa)+r.uniprot_pos+'</b> <span style="color:var(--muted)">auth '+esc(String(r.auth_seq_id))+esc(r.insertion_code||"")+'</span></div>'
+    +'<div style="margin:4px 0">'+tags.join("")+'</div>'
+    +'<div class="grid2">'
+    +'<span class="k">rSASA</span><span>'+(r.rsasa!=null?r.rsasa.toFixed(3):"-")+'</span>'
+    +'<span class="k">SC SASA</span><span>'+(r.sidechain_sasa!=null?r.sidechain_sasa.toFixed(1)+" Å²":"-")+'</span>'
+    +'<span class="k">'+esc(t("insp.region"))+'</span><span>'+(r.region_id!=null?esc(regionName(r.region_id)):"-")+'</span>'
+    +'<span class="k">'+esc(t("insp.sse"))+'</span><span>'+esc(r.secondary_structure||"-")+'</span>'
+    +'</div>'
+    +'<div style="margin-top:6px">'+esc(t("insp.mutantTo"))+' <select id="insp-aa"><option value="">--</option>'+aa+'</select> '
+    +'<button class="btn" id="insp-add">'+esc(t("insp.add"))+'</button>'
+    +(sel?'<button class="btn" id="insp-rm">'+esc(t("insp.remove"))+'</button>':'')
+    +'</div>';
+  el("inspector").style.display = "block";
+  el("insp-add").onclick = function(){
+    var v = el("insp-aa").value;
+    if (!v) return;
+    state.custom[r.uniprot_pos] = v;
+    showInspector(r); applyStyles(); renderSeq(); renderPanel();
+  };
+  var rm = el("insp-rm");
+  if (rm) rm.onclick = function(){ delete state.custom[r.uniprot_pos]; showInspector(r); applyStyles(); renderSeq(); renderPanel(); };
+}
+function regionName(id){ for (var i=0;i<regions.length;i++) if (regions[i].id===id) return regions[i].name; return "-"; }
+
+/* ---------- sequence bar ---------- */
+function designedSeq(){
+  var d = designById(state.designId);
+  var base = wtSeq.split("");
+  var map = {};
+  if (isSelectedCount()) map = state.custom;
+  else if (d) d.mutations.forEach(function(m){ map[m.position] = m.mutant; });
+  var out = wtSeq.split("");
+  Object.keys(map).forEach(function(p){
+    var idx = Number(p) - ecdStart;
+    if (idx >= 0 && idx < out.length) out[idx] = map[p];
+  });
+  return {seq: out.join(""), map: map};
+}
+function renderSeq(){
+  var des = designedSeq();
+  function html(seq, map){
+    var h = "";
+    for (var i=0;i<seq.length;i++){
+      var pos = ecdStart + i;
+      var mut = map && map[pos] != null;
+      h += '<span class="'+(mut?"mut":"")+'" data-pos="'+pos+'" title="'+pos+'">'+seq[i]+'</span>';
+    }
+    return h;
+  }
+  var d = designById(state.designId);
+  el("seqbar").innerHTML =
+    '<div class="seqrow"><span class="seqlabel">'+esc(t("seq.wt"))+' ['+ecdStart+'–'+(ecdStart+wtSeq.length-1)+']</span>'
+    +'<div class="seq">'+html(wtSeq, null)+'</div>'
+    +'<button class="btn" id="cp-wt-aa">⧉ '+esc(t("seq.copyAA"))+'</button>'
+    +'<button class="btn" id="cp-wt-nt">⧉ '+esc(t("seq.copyCDS"))+'</button></div>'
+    +'<div class="seqrow"><span class="seqlabel">'+esc(t("seq.designed"))+'</span>'
+    +'<div class="seq">'+html(des.seq, des.map)+'</div>'
+    +'<button class="btn" id="cp-mu-aa">⧉ '+esc(t("seq.copyAA"))+'</button>'
+    +'<button class="btn" id="cp-mu-nt"'+(d?"":" disabled")+'>⧉ '+esc(t("seq.copyCDS"))+(d?"":" — "+esc(t("seq.customNoCDS")))+'</button></div>';
+  function copy(txt, msg){
+    function done(){ el("toast") ; alertFallback(msg); }
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt); done(); });
+    else { fallbackCopy(txt); done(); }
+  }
+  function fallbackCopy(txt){
+    var ta = document.createElement("textarea"); ta.value = txt;
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(e){}
+    document.body.removeChild(ta);
+  }
+  function alertFallback(msg){
+    var b = el("bar"); b.title = msg;
+  }
+  el("cp-wt-aa").onclick = function(){ copy(wtSeq, t("msg.copied")); };
+  el("cp-wt-nt").onclick = function(){ copy(protein.ecd_coding_sequence||"", t("msg.copied")); };
+  el("cp-mu-aa").onclick = function(){ copy(des.seq, t("msg.copied")); };
+  var b = el("cp-mu-nt");
+  if (d) b.onclick = function(){ copy(d.mutant_coding_sequence||"", t("msg.copied")); };
+  /* letter click -> inspector (WT row) */
+  Array.prototype.forEach.call(el("seqbar").querySelectorAll(".seq span"), function(sp){
+    sp.onclick = function(){
+      var r = byPos[Number(sp.getAttribute("data-pos"))];
+      if (r) showInspector(r);
+    };
+  });
+}
+
+/* ---------- panel / steps ---------- */
+var STEPS = ["step.surface","step.tolerance","step.regions","step.interface","step.design","step.custom"];
+function renderSteps(){
+  el("steps").innerHTML = STEPS.map(function(k,i){
+    var cls = "step"+(state.step===i+1?" active":"")+(i+1<state.step?" done":"");
+    return '<div class="'+cls+'" data-step="'+(i+1)+'"><span class="n">'+(i+1)+'</span><span>'+esc(t(k))+'</span></div>';
+  }).join("");
+  Array.prototype.forEach.call(el("steps").querySelectorAll(".step"), function(s){
+    s.onclick = function(){ state.step = Number(s.getAttribute("data-step")); renderSteps(); renderPanel(); };
+  });
+}
+function renderPanel(){
+  var h = '<h2>'+esc(t(STEPS[state.step-1]))+'</h2>';
+  if (state.step===1) h += stepSurface();
+  else if (state.step===2) h += stepTolerance();
+  else if (state.step===3) h += stepRegions();
+  else if (state.step===4) h += stepInterface();
+  else if (state.step===5) h += stepDesign();
+  else h += stepCustom();
+  h += '<div class="note">'+esc(t("note.disclaimer"))+'</div>';
+  el("panel").innerHTML = h;
+  wirePanel();
+}
+function chip(label, val){ return '<span class="chip">'+esc(label)+' <b>'+val+'</b></span>'; }
+function stepSurface(){
+  var surf = residues.filter(function(r){ return r.surface_accessible; });
+  var h = '<div class="note">'+esc(t("surface.note"))+'</div><div class="box"><h3>'+esc(t("surface.counts"))+'</h3><div class="chips">'
+    + chip(t("surface.total"), residues.length) + chip(t("surface.passed"), surf.length)
+    + chip(t("surface.threshold"), "rSASA≥0.25 · SC≥20Å²") + '</div></div>';
+  var reasons = {};
+  residues.forEach(function(r){ (r.hard_exclusions||[]).forEach(function(x){ reasons[x]=(reasons[x]||0)+1; }); });
+  h += '<div class="box"><h3>'+esc(t("surface.excluded"))+'</h3>'+ Object.keys(reasons).sort().map(function(k){
+    return '<div class="li"><span>'+esc(k)+'</span><span class="cnt">'+reasons[k]+'</span></div>'; }).join("") + '</div>';
+  return h;
+}
+function stepTolerance(){
+  var d = designById(state.designId);
+  var h = '<div class="note">'+esc(t("tol.note"))+'</div>';
+  if (!d) return h + '<div class="box">'+esc(t("tol.noDesign"))+'</div>';
+  var rows = "";
+  Object.keys(d.saturation_scan||{}).forEach(function(pos){
+    (d.saturation_scan[pos]||[]).forEach(function(c){
+      if (!c.allowed) return;
+      rows += '<tr><td><b>'+esc(c.wt)+c.position+'</b></td><td>'+esc(c.mutant)+'</td><td>'
+        +(c.foldx_ddg!=null?c.foldx_ddg.toFixed(3):"—")+'</td><td>'+esc(c.stability_class||"")+'</td></tr>';
+    });
+  });
+  h += '<div class="box"><h3>'+esc(t("tol.passed"))+' · '+esc(d.name)+'</h3><table><tr><th>'+esc(t("tol.site"))+'</th><th>AA</th><th>ΔΔG</th><th>'+esc(t("tol.class"))+'</th></tr>'+rows+'</table></div>';
+  return h;
+}
+function stepRegions(){
+  var h = '<div class="note">'+esc(t("region.note"))+'</div><div class="box">';
+  regions.forEach(function(g){
+    var on = state.focusRegion===g.id ? " on":"";
+    h += '<div class="li click'+on+'" data-region="'+g.id+'"><span class="sw" style="background:'+g.color+'"></span>'
+      + esc(g.name) + '<span class="cnt">'+g.residues.length+' · '+esc(g.membrane_position||"")+'</span></div>';
+  });
+  return h + '</div>';
+}
+function stepInterface(){
+  var partners = interfacePartners();
+  var ifs = interfaceResidues();
+  var h = '<div class="note">'+esc(t("iface.note"))+'</div><div class="box"><h3>'+esc(t("iface.detected"))+'</h3>';
+  if (!partners.length) h += '<div class="li"><span>'+esc(t("iface.none"))+'</span></div>';
+  else partners.forEach(function(p){
+    var n = {}; ifs.forEach(function(r){ (r.interface_partners||[]).forEach(function(q){ if (q.split(":")[0]===p) n[q]=1; }); });
+    h += '<div class="li"><span class="sw" style="background:'+RED+'"></span>'+esc(t("iface.with"))+' '+esc(p)
+      +'<span class="cnt">'+Object.keys(n).length+' '+esc(t("iface.contacts"))+'</span></div>';
+  });
+  h += '</div><div class="box"><div class="li click'+(state.showIface?" on":"")+'" id="tg-iface"><span class="sw" style="background:'+RED+'"></span>'+esc(t("iface.toggle"))+'</div>';
+  h += '<div class="li click'+(state.showGlycan?" on":"")+'" id="tg-glycan"><span class="sw" style="background:#C9A87F"></span>'+esc(t("glycan.toggle"))+'</div></div>';
+  return h;
+}
+function stepDesign(){
+  var h = '<div class="note">'+esc(t("design.note"))+'</div>';
+  designs.forEach(function(d){
+    var on = state.designId===d.id ? " on":"";
+    var origin = d.score_origin || "proxy";
+    var unit = origin==="proxy" ? "" : " kcal/mol";
+    h += '<div class="box"><div class="li click'+on+'" data-design="'+esc(d.id)+'" style="margin:-4px -6px 4px"><b>'+esc(d.name)+'</b>'
+      +'<span class="cnt">'+esc(d.status)+'</span></div>'
+      +'<div>'+d.mutations.map(function(m){ return '<span class="tag mut">'+esc(m.wt)+m.position+'→'+esc(m.mutant)+'</span>'; }).join("")+'</div>'
+      +'<div style="margin-top:5px">'+chip(t("design.engine"), esc(d.stability_engine)) + (d.combined_stability_score!=null?chip("ΔΔG", d.combined_stability_score+unit):"")+'</div>'
+      +(origin==="proxy"?'<div class="note" style="margin-top:4px">'+esc(t("design.proxyWarn"))+'</div>':"");
+    (d.warnings||[]).forEach(function(w){ h += '<div class="note" style="margin-top:3px">· '+esc(w)+'</div>'; });
+    h += '</div>';
+  });
+  return h;
+}
+function stepCustom(){
+  var keys = Object.keys(state.custom).sort(function(a,b){ return a-b; });
+  var h = '<div class="note">'+esc(t("custom.note"))+'</div><div class="box"><h3>'+esc(t("custom.current"))+' ('+keys.length+')</h3>';
+  if (!keys.length) h += '<div class="note">'+esc(t("custom.empty"))+'</div>';
+  keys.forEach(function(p){
+    h += '<div class="li"><span><b>'+esc(byPos[p].aa+p)+'</b> → '+esc(state.custom[p])+'</span>'
+      +'<span class="cnt"><button class="btn" data-rm="'+p+'">✕</button></span></div>';
+  });
+  return h + '</div>';
+}
+function wirePanel(){
+  Array.prototype.forEach.call(document.querySelectorAll("[data-region]"), function(s){
+    s.onclick = function(){
+      var id = Number(s.getAttribute("data-region"));
+      state.focusRegion = (state.focusRegion===id) ? null : id;
+      renderPanel(); applyStyles();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-design]"), function(s){
+    s.onclick = function(){
+      state.designId = s.getAttribute("data-design");
+      state.custom = {};
+      renderPanel(); applyStyles(); renderSeq();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-rm]"), function(s){
+    s.onclick = function(){ delete state.custom[s.getAttribute("data-rm")]; renderPanel(); applyStyles(); renderSeq(); };
+  });
+  var ti = el("tg-iface"); if (ti) ti.onclick = function(){ state.showIface=!state.showIface; renderPanel(); applyStyles(); renderLegend(); };
+  var tg = el("tg-glycan"); if (tg) tg.onclick = function(){ state.showGlycan=!state.showGlycan; renderPanel(); applyStyles(); renderLegend(); };
+}
+
+/* ---------- hud ---------- */
+function applyStaticText(){
+  el("btn-beads").textContent = t("hud.beads");
+  el("btn-cartoon").textContent = t("hud.cartoon");
+  el("btn-iface").textContent = t("hud.iface");
+  el("btn-glycan").textContent = t("hud.glycan");
+  el("btn-lang").textContent = LANG==="zh" ? "EN" : "中文";
+}
+function setRenderer(mode){
+  state.renderer = mode;
+  el("btn-beads").className = "btn"+(mode==="beads"?" on":"");
+  el("btn-cartoon").className = "btn"+(mode==="cartoon"?" on":"");
+  applyStyles();
+}
+el("btn-beads").onclick = function(){ setRenderer("beads"); };
+el("btn-cartoon").onclick = function(){ setRenderer("cartoon"); };
+el("btn-reset").onclick = function(){ if (viewer){ viewer.zoomTo(); viewer.zoom(1.35); viewer.render(); } };
+el("btn-lang").onclick = function(){
+  LANG = LANG==="zh" ? "en" : "zh";
+  try{ localStorage.setItem("ecd.lang", LANG); }catch(e){}
+  applyStaticText(); renderSteps(); renderPanel(); renderSeq(); applyStyles();
+};
+
+/* ---------- boot ---------- */
+try{ var saved = localStorage.getItem("ecd.lang"); if (saved==="en"||saved==="zh") LANG = saved; }catch(e){}
+applyStaticText();
+renderSteps();
+renderPanel();
+renderSeq();
+initViewer();
+})();
+</script>
+</body>
+</html>

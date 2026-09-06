@@ -10,9 +10,13 @@
 - 没有合格实验结构时，只接受带明确 AF3 来源的公开模型；否则状态为 `WAITING_FOR_AF3_UPLOAD`，网页要求上传官方 AF3 mmCIF 与 confidences JSON。AFDB 不会被伪装为 AF3。
 - 用 FreeSASA（若可用）或同参数的 Bio.PDB Shrake-Rupley 回退计算 rSASA/侧链 SASA；默认候选标准为 `rSASA >=0.25` 且 `side-chain SASA >=20 A2`。
 - 自动排除二硫键 Cys、注释糖基化/PTM、低置信度 AF3 位点、坐标缺失和埋藏位点；功能界面保留在候选中但显示风险标签。
-- 以结构域、膜近端/远端、二级结构边界和表面测地距离分成目标 5-8 区；结构不支持时如实输出更少区域与原因。
-- 每区内部评估最多 8 个关键位点的 19 种替换，最终只输出一条 2-5 点组合突变体；无满足约束的组合则输出 `NO_LOW_RISK_COMBINATION`。
-- 输出仅含 ECD 的氨基酸序列和编码片段，不自动添加信号肽、标签、起始/终止密码子、TM 或胞内区。无原始 CDS 时使用 DNA Chisel 的人源/HEK293 密码子优化。
+- 以 Fab 足迹尺度（测地半径 13 Å，约 15-25 残基，Kringelum 2012）在表面测地图上枚举补丁并允许跨结构域；每个补丁带表位先验（暴露度/外凸度/环区占比/进化可变性/糖屏蔽/膜近端惩罚）并分级 HIGH/MEDIUM/LOW；面板预算随 ECD 大小自适应（~1 补丁/22 残基，上限 7），结构不支持时如实输出更少补丁与原因。
+- 实验形式 `assay_format=cell_surface|purified` 是一等参数：细胞表面实验时膜近端补丁先验降权并标记 IgG 不可及；`purified` 时全部保留。
+- 每个补丁按 WT 残基类型定向选择替换字母表（大侧链→Ala、小侧链→Trp 插入、带电→电荷反转），Stage-1 探针必须含至少一个锚点突变（电荷反转或 W/Y/F/R/K→A）；在 FoldX/proxy 清空的候选菜单上**全枚举** 3-6 点组合（两两间距 ≥5.5 Å、最大展开 ≤22 Å），按**帕累托前沿**（破坏势 vs 稳定性风险）选点：主探针取膝点（单位风险破坏力最大），备选探针取激进端，完整前沿写入 `epitope_mapping_plan.pareto_fronts` 审计；无满足约束的组合则输出 `NO_LOW_RISK_COMBINATION`。
+- 每个探针自动生成 Stage-2 预设：单点去卷积构建体（`STAGE2_SINGLE`）与确认性双点组合（`STAGE2_PAIRWISE`），并输出面板覆盖矩阵、决策规则与显式盲区清单（`epitope_mapping_plan`）。
+- FoldX 单点门限与暴露度联动（rSASA≥0.35 → +0.80；0.25-0.35 → +0.60 kcal/mol；文献 RMSE 0.85-1.1），组合门限维持 +2.0 kcal/mol。
+- 可选证据线：UniProt 同源保守性（自动，离线优雅降级）与 ESM zero-shot LLR（设置 `ECD_ESM_MODEL` 且本机装有 torch/fair-esm 时启用，LLR<-3 共识否决）。
+- 输出仅含 ECD 的氨基酸序列和编码片段，不自动添加信号肽、标签、起始/终止密码子、TM 或胞内区；`original_cds` 可解析为全长 CDS 时额外导出**全长**膜蛋白突变编码序列（细胞流式实验需要），无 CDS 时导出全长蛋白序列供基因合成反向翻译。无原始 CDS 时使用 DNA Chisel 的人源/HEK293 密码子优化。
 
 计算预筛只能说明“低预测风险”。进行表位归因时仍需同时验证表达/膜表面表达、构象对照抗体或折叠控制、稳定性，以及必要时的配体或功能读出。
 
@@ -28,6 +32,21 @@ $env:PIP_CACHE_DIR = "$PWD\ecd_epitope_scanner\.pip-cache"
 ```
 
 浏览器打开 `http://127.0.0.1:8765`。首页会先显示冻结的 PD-L1 示例；提交真实作业后可下载完整结果和保存自定义组合。
+
+### 双击启动（无需命令行）
+
+整个项目自包含在本文件夹内（源码 + `.venv` 虚拟环境 + FoldX/EvoEF2 引擎 + 前端资源）。
+双击本文件夹里的 **`run_ecd_epitope_workbench.bat`**：
+
+- 在最小化窗口后台启动服务，并**轮询等待**端口就绪（最多 25 秒）后再打开浏览器，
+  避免服务还没起来就打开页面；
+- 已经在运行时不会重复启动，直接复用并打开浏览器；
+- 找不到虚拟环境或启动失败时，窗口会停在错误信息上而不是一闪而过。
+
+用完后双击 **`stop_ecd_epitope_workbench.bat`** 结束服务（释放 8765 端口）。
+
+文件夹可整体移动或复制到本机其他位置后继续使用（`.venv` 依赖本机的 Anaconda 基础解释器）；
+换电脑则需要重建虚拟环境：`python -m venv .venv --system-site-packages` 后安装 requirements-dev.txt。
 
 ## CLI 调用
 
@@ -53,11 +72,13 @@ $env:PIP_CACHE_DIR = "$PWD\ecd_epitope_scanner\.pip-cache"
 
 - `structure.cif`：完整来源结构，用于复现和外部能量引擎。
 - `ecd_structure.cif`：只含映射 ECD 的网页显示结构。
-- `mapping.csv`、`residues.csv`：UniProt/PDB 编号与逐位点审计表。
-- `regions.json`：结构语义分区、表面积、测地直径、界面比例与原因。
-- `designs.json`、`designs.csv`：关键位点饱和扫描及每区推荐组合。
+- `mapping.csv`、`residues.csv`：UniProt/PDB 编号与逐位点审计表（含保守性分数）。
+- `regions.json`：Fab 足迹尺度补丁、表位先验、tier、覆盖方案与原因。
+- `designs.json`、`designs.csv`：Stage-1 探针、备选探针与 Stage-2 去卷积/双点确认预设。
+- `panel_coverage_matrix.csv`：构建体 × 补丁的扰动覆盖矩阵（解读阴性结果用）。
 - `sequences.fasta`、`coding_sequences.fasta`、`sequences.gb`：ECD WT/突变蛋白与编码片段。
-- `methods_report.md`：阈值、方法、实验确认门槛。
+- `full_length_protein_sequences.fasta` / `full_length_coding_sequences.gb`：全长膜蛋白突变序列（细胞表面结合实验用）。
+- `methods_report.md`：阈值、方法、补丁 tier、Stage-1/Stage-2 实验计划、盲区与实验确认门槛。
 - `run_manifest.json`：来源 URL、参数、软件版本和 SHA-256。
 - `ecd_epitope_design.zip`：完整导出包。
 
@@ -76,14 +97,28 @@ $env:FOLDX_PATH = 'C:\tools\foldx\foldx.exe'
 
 当 FoldX 不可用时，结果会明确降级为无量纲代理并标记为不可推荐；不会把代理分数写成 kcal/mol。FoldX 官方说明建议先 `RepairPDB`，再运行 `PositionScan`/`BuildModel`；程序输出能量项单位为 kcal/mol。
 
+`vendor/foldx/foldx_1_20270131.exe`（FoldX 5.1）已实测可用：该构建**无需 rotabase.txt**（rotamer 库内嵌），PD-L1 ECD 的 `RepairPDB` 约 4 分钟（按结构哈希**跨作业缓存**于 `workspace_data/foldx_repair_cache/`，同一靶点重复运行直接复用）。执行性能设计：
+
+- BuildModel 批次按近等分块**并行**跑（`config.FOLDX_MAX_WORKERS`，默认 8 进程），结果按输入顺序聚合；
+- 单点筛选 runs=1（门限判断足够）；Stage-1 探针/备选组合复评 runs=5 取中位数；**Stage-2 预设只做 runs=1 筛查**（订购前可要求补 5-run 中位数，警告会写明）；
+- 每位点候选 top-2 进入 FoldX（`MAX_CANDIDATES_PER_SITE`），关键位点数 4（`KEY_SITES_PER_PATCH`）；
+- 批次超时按 60 s/构建-run 自动缩放（上限 4 小时），引擎挂起只降级不炸作业。
+
+150 aa ECD 的完整面板（含真实 FoldX）实测约 10 分钟量级；同一靶点第二次运行因修复缓存再省数分钟。
+
 ## 关键实现模块
 
 - `retrieval.py`：UniProt、3D-Beacons、PDBe/SIFTS 结构来源与候选审计。
 - `structure_analysis.py`：mmCIF/PDB 解析、三套残基编号、SASA、界面、糖链、二硫键、二级结构和置信度。
-- `partitioning.py`：结构域/膜方向约束的表面测地分区。
-- `design.py`、`stability.py`：19 种替换扫描、组合突变选择、EvoEF2/FoldX 适配器。
+- `conservation.py`：UniProt reviewed 直系同源比对，逐残基保守性打分（离线优雅降级）。
+- `partitioning.py`：Fab 足迹尺度表面补丁枚举 + 表位先验 + 覆盖方案。
+- `design.py`、`stability.py`：定向替换字母表、锚点突变、组合全枚举、Stage-2 去卷积设计、EvoEF2/FoldX 适配器。
+- `esm_scores.py`：可选 ESM zero-shot PLM 证据线（opt-in，见模块说明）。
+- `config.py`：全部科学阈值集中管理（含文献依据，输出到 manifest/methods report）。
 - `api.py`、`jobs.py`：FastAPI、SQLite、本机单队列、SSE、AF3 恢复和自定义构建。
 - `web/`：固定版本 PDBe Mol* 结构显示、步骤筛选、位点审查、分区、AA/CDS 对照和导出。
+
+方法学与实验设计依据见 `docs/改进方案.md`。
 
 ## 验证
 
@@ -91,4 +126,4 @@ $env:FOLDX_PATH = 'C:\tools\foldx\foldx.exe'
 .\ecd_epitope_scanner\.venv\Scripts\python.exe -m pytest .\ecd_epitope_scanner\tests -q --basetemp .\ecd_epitope_scanner\test_output\pytest_tmp -p no:cacheprovider
 ```
 
-测试包含 SIFTS/拓扑解析、AF3 严格识别、序列反向翻译、冻结 PD-L1 全流水线、区域构建约束与 FastAPI 静态资源检查。
+测试包含 SIFTS/拓扑解析、AF3 严格识别、AF3 恢复回归（UniProt 作业回填 accession）、序列反向翻译、冻结 PD-L1 全流水线（补丁分区/探针锚点/Stage-2 预设/实验计划）、补丁分区与定向菜单单测、区域构建约束与 FastAPI 静态资源检查。

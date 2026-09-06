@@ -14,8 +14,56 @@ from Bio.SeqFeature import FeatureLocation, SeqFeature
 from Bio.SeqRecord import SeqRecord
 
 from .models import DesignRecord, ProteinContext, RegionRecord, ResidueRecord, to_dict
-from .sequences import coding_fragment
+from .sequences import HUMAN_PREFERRED_CODONS, apply_mutations, coding_fragment, normalize_cds, translate_cds
 from .util import sha256_file, write_json
+
+ROOT = Path(__file__).resolve().parent
+WEB_ROOT = ROOT / "web"
+OFFLINE_TEMPLATE = WEB_ROOT / "offline_template.html"
+VENDOR_3DMOL = WEB_ROOT / "vendor" / "3Dmol-min.js"
+
+
+def _js_safe(chunk: str) -> str:
+    """Make an arbitrary text blob safe to inline inside a <script> block."""
+    return chunk.replace("</script", "<\\/script").replace("<!--", "<\\!--")
+
+
+def _json_inline(value: Any) -> str:
+    """JSON for inline embedding; '</' is escaped the JSON-legal way."""
+    return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
+
+
+def build_offline_html(
+    analysis: dict[str, Any],
+    workdir: Path | None = None,
+    lang: str = "zh",
+) -> str:
+    """Render one self-contained offline report (no network, file:// openable).
+
+    Embeds 3Dmol.js, the ECD PDB text, the full analysis payload and both i18n
+    dictionaries.  The offline page offers beads + 3Dmol-cartoon rendering
+    (PDBe Mol* stays online-only: embedding it would roughly sextuple the file).
+    """
+    template = OFFLINE_TEMPLATE.read_text(encoding="utf-8")
+    js = _js_safe(VENDOR_3DMOL.read_text(encoding="utf-8"))
+    i18n = {
+        name: json.loads((WEB_ROOT / "i18n" / f"{name}.json").read_text(encoding="utf-8"))
+        for name in ("zh", "en")
+    }
+    pdb_path = (workdir or ROOT) / "structure_for_energy.pdb"
+    if not pdb_path.exists():
+        raise FileNotFoundError(f"structure_for_energy.pdb not found under {pdb_path.parent}")
+    pdb_text = pdb_path.read_text(encoding="utf-8", errors="replace")
+
+    html = template
+    html = html.replace("__DATA__", _json_inline(analysis))
+    html = html.replace("__I18N__", _json_inline(i18n))
+    html = html.replace("__PDB__", json.dumps(pdb_text))
+    html = html.replace("__LANG__", "en" if lang == "en" else "zh")
+    # 3Dmol last: it is the biggest blob and the others' placeholders cannot
+    # plausibly occur inside it, but the reverse is not true.
+    html = html.replace("/*__3DMOL__*/", _js_safe(js))
+    return html
 
 
 def _join(value: Any) -> Any:
@@ -77,6 +125,7 @@ def write_scientific_outputs(
             "salt_bridge",
             "domain_interface",
             "region_id",
+            "flexible_terminal",
             "hard_exclusions",
             "risk_flags",
             "reasons",
@@ -102,10 +151,15 @@ def write_scientific_outputs(
                 "id": design.id,
                 "name": design.name,
                 "region_id": design.region_id,
+                "parent_design_id": design.parent_design_id,
+                "design_role": design.design_role,
                 "status": design.status,
                 "mutations": ";".join(item.notation for item in design.mutations),
+                "anchor": design.anchor_notation,
                 "stability_engine": design.stability_engine,
                 "combined_stability_score": design.combined_stability_score,
+                "score_origin": design.score_origin,
+                "disruption_score": design.disruption_score,
                 "perturbation_score": design.perturbation_score,
                 "rationale": design.rationale,
                 "warnings": design.warnings,
@@ -118,14 +172,25 @@ def write_scientific_outputs(
             "id",
             "name",
             "region_id",
+            "parent_design_id",
+            "design_role",
             "status",
             "mutations",
+            "anchor",
             "stability_engine",
             "combined_stability_score",
+            "score_origin",
+            "disruption_score",
             "perturbation_score",
             "rationale",
             "warnings",
         ],
+    )
+    plan = analysis.get("epitope_mapping_plan") or {}
+    _write_csv(
+        output_dir / "panel_coverage_matrix.csv",
+        plan.get("coverage_matrix", []),
+        ["design_id", "patch_id", "perturbed_fraction"],
     )
 
     wt_dna, dna_source = coding_fragment(protein, protein.ecd_sequence, original_cds)
@@ -170,9 +235,72 @@ def write_scientific_outputs(
         genbank_records.append(record)
     SeqIO.write(genbank_records, output_dir / "sequences.gb", "genbank")
 
+    # Full-length constructs for cell-surface binding assays: flow cytometry on
+    # intact cells needs the mutations expressed in the full membrane protein,
+    # not an ECD fragment.
+    full_length_records: list[SeqRecord] = []
+    full_length_protein_lines: list[str] = []
+    for design in designs:
+        if not design.mutations:
+            continue
+        try:
+            full_protein = apply_mutations(protein.sequence, design.mutations, 1)
+        except Exception:
+            continue  # a mutation outside the canonical sequence must never abort export
+        full_length_protein_lines.append(
+            (f">{design.id} full-length {protein.accession} mutations="
+             + ";".join(item.notation for item in design.mutations))
+        )
+        full_length_protein_lines.extend(textwrap.wrap(full_protein, 80))
+        if original_cds:
+            normalized = normalize_cds(original_cds)
+            if translate_cds(normalized) == protein.sequence:
+                codons = [normalized[i : i + 3] for i in range(0, len(normalized), 3)]
+                for mutation in design.mutations:
+                    codons[mutation.position - 1] = HUMAN_PREFERRED_CODONS[mutation.mutant]
+                full_dna = "".join(codons)
+                full_length_records.append(
+                    SeqRecord(
+                        Seq(full_dna),
+                        id=f"{design.id}_full",
+                        name=design.id[:16],
+                        description=(
+                            f"Full-length coding sequence for {protein.accession}; only the mapped "
+                            "ECD codons are changed; verify signal peptide/TM boundaries before ordering"
+                        ),
+                    )
+                )
+    if full_length_protein_lines:
+        (output_dir / "full_length_protein_sequences.fasta").write_text(
+            "\n".join(full_length_protein_lines) + "\n", encoding="ascii"
+        )
+    if full_length_records:
+        SeqIO.write(full_length_records, output_dir / "full_length_coding_sequences.gb", "genbank")
+
     methods = analysis.get("methods", {})
     partition = analysis.get("partitioning", {})
     selection = analysis.get("structure_selection", {})
+    plan = analysis.get("epitope_mapping_plan", {}) or {}
+    coverage_plan = partition.get("coverage_plan", [])
+    tier_lines = "\n".join(
+        f"- Patch {row.get('patch_id')}: tier {row.get('tier')}, epitope prior {row.get('epitope_prior')}, "
+        f"probes required {row.get('required_probes')}, assay-accessible {row.get('assay_accessible')}"
+        for row in coverage_plan
+    ) or "- (no patch plan available)"
+    probe_lines = "\n".join(
+        f"- {probe.get('design_id')} (patch {probe.get('patch_id')}): "
+        f"{', '.join(probe.get('mutations', [])) or 'none'}; anchor {probe.get('anchor') or 'none'}"
+        for probe in plan.get("stage1_probes", [])
+    ) or "- (no probes)"
+    blind_lines = "\n".join(
+        f"- Patch {item.get('patch_id')}: {item.get('reason')}"
+        for item in plan.get("blind_spots", [])
+    ) or "- (none; every patch carries at least one probe)"
+    preset_lines = "\n".join(
+        f"- {item.get('design_id')} [{item.get('role')}] parent {item.get('parent_design_id')}: "
+        f"{', '.join(item.get('mutations', []))}"
+        for item in plan.get("stage2_presets", [])
+    ) or "- (none)"
     report = f"""# ECD epitope-region mutation design report
 
 ## Interpretation boundary
@@ -197,14 +325,42 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 - Protected features: disulfide cysteines, annotated glycosylation/PTMs, missing mappings and low-confidence AF3 residues
 - Native interfaces participate in design but retain a function-risk flag
 
-## Partition and design
+## Patch partition and probe design
 
 - Partition method: {partition.get('method', '')}
-- Regions: {partition.get('actual_regions', len(regions))}
+- Patches: {partition.get('actual_regions', len(regions))} at antibody-footprint scale (geodesic radius {partition.get('patch_radius_a', 13)} A)
+- Assay format: {partition.get('assay_format', 'cell_surface')}
 - Eligible-surface coverage: {partition.get('coverage', 0):.1%}
+- Flexible terminal residues excluded from patches: {partition.get('excluded_flexible_terminal_residues', 0)} (screened separately as linear alanine-scan candidates, see epitope_mapping_plan)
 - In-silico substitutions evaluated: {analysis.get('design_summary', {}).get('in_silico_substitutions_evaluated', 0)}
 - Final constructs: {len(designs)}
 - Stability interpretation: {analysis.get('design_summary', {}).get('score_interpretation', '')}
+
+### Patch tiers and epitope priors
+
+{tier_lines}
+
+### Stage-1 probe panel
+
+Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, stability); primary = knee, alternate = aggressive end.')}
+
+{probe_lines}
+
+### Declared blind spots
+
+{blind_lines}
+
+### Stage-2 presets (order only after a Stage-1 hit)
+
+{preset_lines}
+
+## How to read the binding assay
+
+{plan.get('assay_note', 'See analysis.json epitope_mapping_plan.')}
+
+- panel_coverage_matrix.csv holds the construct-by-patch perturbation matrix; use it to weigh negative results.
+- Identical loss patterns across antibodies are binning evidence, not proof of identical epitopes.
+- A patch with no probe is UNTESTED, not negative.
 
 ## Required experimental gates
 
@@ -223,9 +379,12 @@ This workflow designs antigen mutants for experimental testing. It does not infe
         "regions.json",
         "designs.json",
         "designs.csv",
+        "panel_coverage_matrix.csv",
         "sequences.fasta",
         "coding_sequences.fasta",
         "sequences.gb",
+        "full_length_protein_sequences.fasta",
+        "full_length_coding_sequences.gb",
         "methods_report.md",
         "structure.cif",
         "ecd_structure.cif",
@@ -237,6 +396,16 @@ This workflow designs antigen mutants for experimental testing. It does not infe
         "request": analysis.get("request", {}),
         "source": analysis.get("source", {}),
         "parameters": analysis.get("parameters", {}),
+        # Auditable solver/engine provenance (P1-3/P1-4): which SASA path and
+        # radius set produced the numbers, and whether the FoldX engine was
+        # actually used or silently degraded.
+        "sasa_method": (analysis.get("methods") or {}).get("sasa_method", ""),
+        "stability": {
+            "engine": (analysis.get("stability") or {}).get("primary", ""),
+            "foldx_available": bool((analysis.get("stability") or {}).get("foldx_available")),
+            "evoef2_available": bool((analysis.get("stability") or {}).get("evoef2_available")),
+            "foldx_diagnostics": (analysis.get("design_summary") or {}).get("foldx_diagnostics", {}),
+        },
         "files": {
             name: sha256_file(output_dir / name)
             for name in export_names

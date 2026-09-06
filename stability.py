@@ -4,13 +4,54 @@ import os
 import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
 from tempfile import TemporaryDirectory
 from typing import Any
+from uuid import uuid4
 
+from . import config
 from .models import MutationChoice, ProteinContext, ResidueRecord
+
+
+def _engine_run_dir(workdir: Path, prefix: str) -> Path:
+    """Persistent per-invocation working directory for an external engine.
+
+    FoldX drops ~25 model PDBs plus its own rotabase.txt/molecules copies per
+    invocation.  Deleting that many files has proven fatal inside sandboxed
+    hosts (bulk-delete guards kill the process AFTER the scores were computed),
+    so run directories are intentionally KEPT: they live under the job folder,
+    cost a few MB, and double as diagnostics for engine failures.  Never
+    replace this with TemporaryDirectory cleanup.
+    """
+    root = Path(workdir) / "engine_runs"
+    root.mkdir(parents=True, exist_ok=True)
+    run = root / f"{prefix}_{uuid4().hex[:8]}"
+    run.mkdir(parents=True, exist_ok=False)
+    return run
+
+
+def _run_engine(command: list[str], cwd: Path, timeout: int) -> subprocess.CompletedProcess | None:
+    """Run an external engine step; a hang degrades to None instead of raising.
+
+    The upstream binaries can hang on modern Windows hosts (see the EvoEF2
+    opt-in note below).  A hung engine must cost a degraded score, never the
+    whole job, so TimeoutExpired is caught here at every call site.
+    """
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None
 
 
 AA_PROPERTIES = {
@@ -57,6 +98,60 @@ def changes_sequon(protein: ProteinContext, position: int, mutant: str) -> bool:
     return any(index in before.symmetric_difference(after) for index in relevant)
 
 
+def _menu_class(record: ResidueRecord, mutant: str) -> str:
+    """Directed substitution class for the mapping assay.
+
+    Bulky/hotspot WT residues are best probed by Ala removal (Bogan & Thorn
+    1998 hot-spot enrichment); small WT residues need bulk insertion (Ala is
+    nearly neutral there); charged WT residues are probed by full charge
+    reversal, the most reliable interface disruptor.
+    """
+    wt = record.aa
+    if wt in "KR" and mutant in "ED":
+        return "charge_reversal"
+    if wt in "ED" and mutant in "KR":
+        return "charge_reversal"
+    if wt in config.HOTSPOT_WT and mutant == "A":
+        return "hotspot_to_ala"
+    if wt in "WYF" and mutant == "A":
+        return "bulky_to_ala"
+    if wt in config.SMALL_WT and mutant == "W":
+        return "trp_insert"
+    if wt in config.BULKY_WT and mutant == "A":
+        return "bulky_to_ala"
+    return "other"
+
+
+def disruption_score(record: ResidueRecord, mutant: str) -> float:
+    """Instrument-power of one substitution for binding-disruption assays.
+
+    Dimensionless by design: this is a probe-strength prior, not an energy.
+    """
+    score = config.D_W_EXPOSURE * min(1.2, record.rsasa * 2.0)
+    volume_delta = AA_PROPERTIES[mutant][1] - AA_PROPERTIES[record.aa][1]
+    score += config.D_W_VOLUME_GAIN * abs(volume_delta) / 85.0
+    charge_delta = abs(AA_PROPERTIES[mutant][2] - AA_PROPERTIES[record.aa][2])
+    if charge_delta >= 1.0:
+        score += config.D_W_CHARGE_FLIP
+    elif charge_delta > 0:
+        score += config.D_W_PARTIAL_CHARGE
+    if record.aa in config.HOTSPOT_WT and mutant == "A":
+        score += config.D_W_HOTSPOT_REMOVAL
+    if mutant in "WFY" and record.aa not in "WFY":
+        score += config.D_W_AROMATIC_INSERT
+    return round(score, 4)
+
+
+def is_anchor(record: ResidueRecord, mutant: str) -> bool:
+    """Anchors are substitutions with reliable interface-disruption chemistry:
+    full charge reversal, hotspot removal (W/Y/F -> A), or charge removal
+    from K/R (K/R -> A strips a full charge from the interface)."""
+    menu = _menu_class(record, mutant)
+    if menu in {"charge_reversal", "hotspot_to_ala"}:
+        return True
+    return menu == "bulky_to_ala" and record.aa in "KR"
+
+
 def evaluate_substitution(
     record: ResidueRecord,
     mutant: str,
@@ -67,7 +162,9 @@ def evaluate_substitution(
     if mutant not in AA_PROPERTIES:
         raise ValueError(f"Unsupported amino acid: {mutant}")
     if mutant == wt:
-        return MutationChoice(record.uniprot_pos, wt, mutant, 99.0, 0.0, 1.0, False, ["WT-to-WT"])
+        choice = MutationChoice(record.uniprot_pos, wt, mutant, 99.0, 0.0, 1.0, False, ["WT-to-WT"])
+        choice.menu_class = "other"
+        return choice
     wt_h, wt_v, wt_q, wt_ar = AA_PROPERTIES[wt]
     new_h, new_v, new_q, new_ar = AA_PROPERTIES[mutant]
     density = min(1.5, record.contacts / 14.0)
@@ -92,6 +189,8 @@ def evaluate_substitution(
         + abs(new_q - wt_q) * 1.2
         + abs(new_ar - wt_ar) * 0.45
     )
+    menu = _menu_class(record, mutant)
+    disruption = disruption_score(record, mutant)
     reasons: list[str] = []
     allowed = True
     if mutant in AUTO_EXCLUDED_MUTANTS:
@@ -107,14 +206,23 @@ def evaluate_substitution(
     if record.disulfide or record.glycosylation_site or record.ptm:
         reasons.append("protected structural/PTM site")
         allowed = False
-    if risk > 1.45:
-        reasons.append("high structural-risk proxy")
+    # Exposure-linked risk gate: a fully exposed side chain is structurally
+    # cheap to change, so the same proxy number must not veto it as eagerly as
+    # it vetoes a partially buried one.  Gates live in config (see the FoldX
+    # RMSE citation in docs/改进方案.md).
+    gate = config.risk_gate(record.rsasa)
+    if risk > gate:
+        reasons.append(f"high structural-risk proxy (>{gate:.2f})")
         allowed = False
+    if record.conservation_score is not None and record.conservation_score >= 0.95:
+        reasons.append("fully conserved residue; function/epitope prior reduced")
+        risk += 0.3
+        disruption = round(disruption * 0.8, 4)
     if record.interface:
         reasons.append("native interface; function-risk flag retained")
     if not reasons:
         reasons.append("passes deterministic chemistry and structural-risk constraints")
-    return MutationChoice(
+    choice = MutationChoice(
         position=record.uniprot_pos,
         wt=wt,
         mutant=mutant,
@@ -124,6 +232,9 @@ def evaluate_substitution(
         allowed=allowed,
         reasons=reasons,
     )
+    choice.menu_class = menu
+    choice.disruption_score = disruption
+    return choice
 
 
 def assign_percentiles(choices: list[MutationChoice]) -> None:
@@ -185,24 +296,21 @@ def score_with_evoef2(
     workdir: Path,
 ) -> float | None:
     """Return EvoEF2 mutant-minus-WT energy units, or None when output is unparseable."""
-    with TemporaryDirectory(prefix="evoef2_", dir=workdir) as temp_name:
-        temp = Path(temp_name)
+    temp = _engine_run_dir(workdir, "evoef2")
+    with nullcontext(temp):
         local_pdb = temp / "input.pdb"
         shutil.copy2(pdb_path, local_pdb)
-        repair = subprocess.run(
+        repair = _run_engine(
             [binary, "--command=RepairStructure", f"--pdb={local_pdb.name}", "--num_of_runs=3"],
-            cwd=temp,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
+            temp,
+            300,
         )
         repaired = temp / "input_Repair.pdb"
-        if repair.returncode != 0 or not repaired.exists():
+        if repair is None or repair.returncode != 0 or not repaired.exists():
             return None
         mutation_text = ",".join(f"{wt}{chain}{number}{mutant}" for wt, number, chain, mutant in mutations) + ";\n"
         (temp / "individual_list.txt").write_text(mutation_text, encoding="ascii")
-        build = subprocess.run(
+        build = _run_engine(
             [
                 binary,
                 "--command=BuildMutant",
@@ -210,26 +318,20 @@ def score_with_evoef2(
                 "--mutant_file=individual_list.txt",
                 "--num_of_runs=10",
             ],
-            cwd=temp,
-            capture_output=True,
-            text=True,
-            timeout=600,
-            check=False,
+            temp,
+            600,
         )
         mutant_files = sorted(temp.glob("*_Model_1.pdb"))
-        if build.returncode != 0 or not mutant_files:
+        if build is None or build.returncode != 0 or not mutant_files:
             return None
 
         def stability(path: Path) -> float | None:
-            result = subprocess.run(
+            result = _run_engine(
                 [binary, "--command=ComputeStability", f"--pdb={path.name}"],
-                cwd=temp,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
+                temp,
+                300,
             )
-            if result.returncode:
+            if result is None or result.returncode:
                 return None
             return _parse_evoef_total(result.stdout + "\n" + result.stderr)
 
@@ -270,6 +372,16 @@ def _parse_dif_fxout(path: Path) -> list[float]:
     return values
 
 
+def _buildmodel_timeout(constructs: int, runs: int) -> int:
+    """Scale the BuildModel wall-clock guard with the batch size.
+
+    Measured on the bundled FoldX: ~4 s per construct-run.  A fixed guard
+    either kills large legitimate batches or leaves a hung engine unchecked;
+    scale at 60 s per construct-run, floor 30 min, cap 4 h.
+    """
+    return int(min(max(1800, constructs * runs * 60), 4 * 3600))
+
+
 def score_with_foldx(
     binary: str,
     pdb_path: Path,
@@ -279,29 +391,26 @@ def score_with_foldx(
     already_repaired: bool = False,
 ) -> float | None:
     """Return FoldX BuildModel median delta-delta-G in kcal/mol when parseable."""
-    with TemporaryDirectory(prefix="foldx_", dir=workdir) as temp_name:
-        temp = Path(temp_name)
+    temp = _engine_run_dir(workdir, "foldx")
+    with nullcontext(temp):
         local_pdb = temp / "input.pdb"
         shutil.copy2(pdb_path, local_pdb)
         if already_repaired:
             repaired = local_pdb
         else:
-            repair = subprocess.run(
+            repair = _run_engine(
                 [binary, "--command=RepairPDB", f"--pdb={local_pdb.name}"],
-                cwd=temp,
-                capture_output=True,
-                text=True,
-                timeout=1800,
-                check=False,
+                temp,
+                1800,
             )
             repaired = temp / "input_Repair.pdb"
-            if repair.returncode or not repaired.exists():
+            if repair is None or repair.returncode or not repaired.exists():
                 return None
         mutation_text = ",".join(
             f"{wt}{chain}{number}{mutant}" for wt, number, chain, mutant in mutations
         ) + ";\n"
         (temp / "individual_list.txt").write_text(mutation_text, encoding="ascii")
-        build = subprocess.run(
+        build = _run_engine(
             [
                 binary,
                 "--command=BuildModel",
@@ -309,13 +418,10 @@ def score_with_foldx(
                 "--mutant-file=individual_list.txt",
                 f"--numberOfRuns={runs}",
             ],
-            cwd=temp,
-            capture_output=True,
-            text=True,
-            timeout=1800,
-            check=False,
+            temp,
+            _buildmodel_timeout(len(mutation_groups), runs) if mutation_groups else 1800,
         )
-        if build.returncode:
+        if build is None or build.returncode:
             return None
         values: list[float] = []
         for path in temp.glob("Dif_*.fxout"):
@@ -330,38 +436,77 @@ def score_many_with_foldx(
     workdir: Path,
     runs: int = 5,
     already_repaired: bool = False,
+    max_workers: int | None = None,
 ) -> list[float | None]:
-    """Score all regional constructs in one BuildModel invocation.
+    """Score all constructs, splitting the batch across parallel FoldX processes.
 
-    FoldX writes one row per run to Dif_*.fxout. Rows are kept in input order and
-    reduced by median per construct, preserving the requested repeat count.
+    FoldX is single-core per invocation; on a multi-core host the batch is cut
+    into near-equal chunks that run in isolated engine directories and are
+    re-aggregated in input order.  Group indices in Dif row names are per-chunk,
+    so each chunk is parsed independently -- no cross-chunk coupling.
     """
     if not mutation_groups:
         return []
-    with TemporaryDirectory(prefix="foldx_batch_", dir=workdir) as temp_name:
-        temp = Path(temp_name)
+    workers = max_workers or config.FOLDX_MAX_WORKERS
+    workers = max(1, min(int(workers), len(mutation_groups)))
+    if workers <= 1:
+        return _run_foldx_batch(binary, pdb_path, mutation_groups, workdir, runs, already_repaired)
+    chunks = _split_groups(mutation_groups, workers)
+    results: list[list[float | None] | None] = [None] * len(chunks)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            index: pool.submit(
+                _run_foldx_batch, binary, pdb_path, chunk, workdir, runs, already_repaired
+            )
+            for index, chunk in enumerate(chunks)
+        }
+        for index, future in futures.items():
+            results[index] = future.result()
+    return [item for chunk_result in results for item in (chunk_result or [])]
+
+
+def _split_groups(groups: list[Any], n_chunks: int) -> list[list[Any]]:
+    size, remainder = divmod(len(groups), n_chunks)
+    chunks: list[list[Any]] = []
+    start = 0
+    for index in range(n_chunks):
+        end = start + size + (1 if index < remainder else 0)
+        if end > start:
+            chunks.append(groups[start:end])
+        start = end
+    return chunks
+
+
+def _run_foldx_batch(
+    binary: str,
+    pdb_path: Path,
+    mutation_groups: list[list[tuple[str, int, str, str]]],
+    workdir: Path,
+    runs: int,
+    already_repaired: bool,
+) -> list[float | None]:
+    """One BuildModel invocation over `mutation_groups` in a private run dir."""
+    temp = _engine_run_dir(workdir, "foldx_batch")
+    with nullcontext(temp):
         local_pdb = temp / "input.pdb"
         shutil.copy2(pdb_path, local_pdb)
         if already_repaired:
             repaired = local_pdb
         else:
-            repair = subprocess.run(
+            repair = _run_engine(
                 [binary, "--command=RepairPDB", f"--pdb={local_pdb.name}"],
-                cwd=temp,
-                capture_output=True,
-                text=True,
-                timeout=1800,
-                check=False,
+                temp,
+                1800,
             )
             repaired = temp / "input_Repair.pdb"
-            if repair.returncode or not repaired.exists():
+            if repair is None or repair.returncode or not repaired.exists():
                 return [None] * len(mutation_groups)
         lines = [
             ",".join(f"{wt}{chain}{number}{mutant}" for wt, number, chain, mutant in group) + ";"
             for group in mutation_groups
         ]
         (temp / "individual_list.txt").write_text("\n".join(lines) + "\n", encoding="ascii")
-        build = subprocess.run(
+        build = _run_engine(
             [
                 binary,
                 "--command=BuildModel",
@@ -369,44 +514,121 @@ def score_many_with_foldx(
                 "--mutant-file=individual_list.txt",
                 f"--numberOfRuns={runs}",
             ],
-            cwd=temp,
-            capture_output=True,
-            text=True,
-            timeout=3600,
-            check=False,
+            temp,
+            _buildmodel_timeout(len(mutation_groups), runs),
         )
-        if build.returncode:
+        if build is None or build.returncode:
             return [None] * len(mutation_groups)
-        values: list[float] = []
+        rows: list[tuple[str, float]] = []
         for path in temp.glob("Dif_*.fxout"):
-            values.extend(_parse_dif_fxout(path))
-        if len(values) < len(mutation_groups):
-            return [None] * len(mutation_groups)
-        if len(values) >= len(mutation_groups) * runs:
-            return [
-                round(float(median(values[index * runs : (index + 1) * runs])), 4)
-                for index in range(len(mutation_groups))
-            ]
-        return [round(float(value), 4) for value in values[: len(mutation_groups)]]
+            rows.extend(_parse_dif_rows(path))
+        return _median_per_group(rows, len(mutation_groups), runs)
+
+
+def _parse_dif_rows(path: Path) -> list[tuple[str, float]]:
+    """Parse one Dif_*.fxout into (pdb_row_name, ddG) pairs.
+
+    Row names encode the construct group: ``structure_Repair_<group>_<run>.pdb``.
+    Grouping must use that name -- positional chunking silently shifts every
+    median by one construct when a single run fails to appear.
+    """
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    start = 0
+    for index, line in enumerate(lines):
+        if line.startswith("Pdb\t") or line.startswith("Pdb "):
+            start = index + 1
+            break
+    rows: list[tuple[str, float]] = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "Pdb", "SD")):
+            continue
+        fields = re.split(r"\s+", stripped)
+        if not fields or not fields[0].endswith(".pdb"):
+            continue          # banner or metadata line, never a per-run result
+        try:
+            rows.append((fields[0], float(fields[1])))
+        except (IndexError, ValueError):
+            continue
+    return rows
+
+
+def _parse_dif_fxout(path: Path) -> list[float]:
+    """Backwards-compatible view of :func:`_parse_dif_rows` (values only)."""
+    return [value for _, value in _parse_dif_rows(path)]
+
+
+def _median_per_group(
+    rows: list[tuple[str, float]], n_groups: int, runs: int
+) -> list[float | None]:
+    """Reduce parsed BuildModel rows to one median per construct.
+
+    Rows are grouped by the group index encoded in the FoldX row name
+    (``..._<group>_<run>.pdb``).  Only when names carry no group index do we
+    fall back to input order.  A group with fewer rows than ``runs`` yields
+    None for that construct: a partial run count is a review flag, never a
+    silently mis-chunked median.
+    """
+    if not rows:
+        return [None] * n_groups
+    groups: dict[int, list[float]] = {}
+    positional = True
+    for name, value in rows:
+        stem = name[:-4] if name.endswith(".pdb") else name
+        parts = stem.rsplit("_", 2)
+        if len(parts) == 3 and parts[1].isdigit() and parts[2].isdigit():
+            positional = False
+            groups.setdefault(int(parts[1]), []).append(value)
+    if positional:
+        # No group indices in names: chunk positionally only when the row
+        # count matches exactly, else refuse to guess.
+        if len(rows) != n_groups * runs:
+            return [None] * n_groups
+        groups = {
+            index: [value for _, value in rows[index * runs : (index + 1) * runs]]
+            for index in range(n_groups)
+        }
+    elif set(groups) == set(range(1, n_groups + 1)):
+        # FoldX names its constructs 1..N; the caller indexes 0..N-1.
+        groups = {index - 1: values for index, values in groups.items()}
+    elif set(groups) != set(range(n_groups)):
+        # Group indices neither 0-based nor 1-based over the expected range:
+        # refuse to guess which construct each median belongs to.
+        return [None] * n_groups
+    output: list[float | None] = []
+    for index in range(n_groups):
+        values = groups.get(index, [])
+        if len(values) >= runs:
+            output.append(round(float(median(values)), 4))
+        else:
+            # Missing or incomplete run count for this construct.
+            output.append(None)
+    return output
 
 
 def repair_with_foldx(binary: str, pdb_path: Path, workdir: Path) -> Path | None:
-    """Repair one structure once per job and cache the FoldX-ready PDB."""
-    cache_dir = workdir / "foldx_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    """Repair one structure and share the result across ALL jobs on this host.
+
+    RepairPDB costs minutes, so the repaired PDB is cached under
+    ``<jobs-root>/foldx_repair_cache/<sha256-12>/`` -- keyed by the input
+    structure hash, independent of any single job.  Re-running a target with
+    different design parameters skips the repair entirely.
+    """
+    from .util import sha256_file
+
+    digest = sha256_file(pdb_path)[:12]
+    cache_dir = Path(workdir).parent / "foldx_repair_cache" / digest
     repaired = cache_dir / "structure_Repair.pdb"
     if repaired.exists():
         return repaired
+    cache_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(pdb_path, cache_dir / "structure.pdb")
-    result = subprocess.run(
+    result = _run_engine(
         [binary, "--command=RepairPDB", "--pdb=structure.pdb"],
-        cwd=cache_dir,
-        capture_output=True,
-        text=True,
-        timeout=1800,
-        check=False,
+        cache_dir,
+        1800,
     )
-    if result.returncode or not repaired.exists():
+    if result is None or result.returncode or not repaired.exists():
         return None
     return repaired
 
@@ -417,5 +639,11 @@ def engine_metadata(inventory: EngineInventory) -> dict[str, Any]:
         "evoef2_available": bool(inventory.evoef2_path),
         "foldx_available": bool(inventory.foldx_path),
         "proxy_units": "dimensionless within-target ranking score; not kcal/mol",
-        "foldx_thresholds_if_enabled": {"single_kcal_mol": 0.46, "combination_kcal_mol": 0.46},
+        "foldx_thresholds_if_enabled": {
+            "single_kcal_mol_exposed": config.FOLDX_GATE_EXPOSED,
+            "single_kcal_mol_edge": config.FOLDX_GATE_EDGE,
+            "single_kcal_mol_default": config.FOLDX_GATE_DEFAULT,
+            "combination_kcal_mol": config.FOLDX_COMBINATION_GATE,
+            "gate_policy": "exposure-linked; literature FoldX RMSE 0.85-1.1 kcal/mol (docs/改进方案.md)",
+        },
     }

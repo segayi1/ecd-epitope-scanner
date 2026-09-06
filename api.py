@@ -36,6 +36,7 @@ class JobCreate(BaseModel):
     strict_af3: bool = True
     allow_partial: bool = False
     structure_candidate_id: str | None = None
+    assay_format: Literal["cell_surface", "purified"] = "cell_surface"
 
 
 class MutationInput(BaseModel):
@@ -317,6 +318,28 @@ def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]
     write_json(output_dir / "analysis.json", analysis)
     STORE.update(job_id, result_json=analysis, message=f"Custom design {design.id} saved")
     return {"design": to_dict(design), "job": _public_job(STORE.get(job_id))}
+
+
+@app.get("/api/jobs/{job_id}/export/offline")
+def export_offline(job_id: str, lang: str = "zh") -> Response:
+    """Self-contained offline report: structure + data + 3Dmol in one HTML."""
+    job = _job_or_404(job_id)
+    if job.get("status") != "COMPLETE":
+        raise HTTPException(409, "Job is not complete; nothing to export")
+    workdir = Path(job["workdir"])
+    analysis = read_json(workdir / "analysis.json")
+    from .exporting import build_offline_html
+
+    html = build_offline_html(analysis, workdir=workdir, lang=lang)
+    return Response(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="ecd_epitope_offline_{safe_name(job_id)}.html"'
+            )
+        },
+    )
 
 
 @app.get("/api/jobs/{job_id}/files/{filename}")

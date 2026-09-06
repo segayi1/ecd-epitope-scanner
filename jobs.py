@@ -50,6 +50,18 @@ class JobStore:
                 )
                 """
             )
+            # Jobs left QUEUED/RUNNING by a previous process can never finish:
+            # the single worker thread died with the old interpreter.  Mark them
+            # failed so SSE streams terminate and the UI does not spin forever.
+            connection.execute(
+                """
+                UPDATE jobs
+                SET status='FAILED', stage='FAILED', error='interrupted by service restart',
+                    message='Pipeline was interrupted by a service restart', updated_at=?
+                WHERE status IN ('QUEUED', 'RUNNING')
+                """,
+                (_now(),),
+            )
             connection.commit()
 
     def create(self, request: PipelineRequest, job_id: str | None = None) -> dict[str, Any]:
@@ -206,6 +218,12 @@ class JobRunner:
 
     def resume_with_af3(self, job_id: str, structure_path: Path, confidence_path: Path) -> None:
         request = self.store.request_for(job_id)
+        # P0 fix: a UniProt job stores its accession in `identifier` (the API
+        # form does not populate `accession`).  Without this backfill the
+        # af3_upload branch falls into _synthetic_context and fails with
+        # "requires sequence, ecd_start and ecd_end" -- every AF3 resume died.
+        if not request.accession and request.input_type == "uniprot":
+            request.accession = request.identifier
         request.input_type = "af3_upload"
         request.structure_path = str(structure_path)
         request.confidence_path = str(confidence_path)
