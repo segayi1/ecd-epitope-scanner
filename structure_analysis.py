@@ -499,6 +499,55 @@ def _sidechain_direction(residue: Any) -> tuple[float, float, float] | None:
     return tuple(float(value) for value in vector / length)
 
 
+def _fibonacci_sphere(count: int) -> np.ndarray:
+    """Deterministic unit-sphere points used only for local surface normals."""
+    indices = np.arange(count, dtype=float)
+    y = 1.0 - 2.0 * (indices + 0.5) / count
+    radius = np.sqrt(np.maximum(0.0, 1.0 - y * y))
+    theta = np.pi * (3.0 - np.sqrt(5.0)) * indices
+    return np.column_stack((np.cos(theta) * radius, y, np.sin(theta) * radius))
+
+
+def _atomic_radius(atom: Any) -> float:
+    element = str(getattr(atom, "element", "") or "").strip().upper()
+    return float(TIEN_DSSP_RADII.get(element, 1.70))
+
+
+def _solvent_surface_normal(residue: Any, atom_search: NeighborSearch) -> tuple[float, float, float] | None:
+    """Estimate an outward normal from genuinely unoccluded atomic points.
+
+    The same 1.4 A probe and pinned element radii as production SASA are used.
+    This local construction is rotation invariant and does not assume that the
+    domain is spherical.  A small point set is enough for direction; SASA
+    itself continues to use the audited 960-point Shrake-Rupley calculation.
+    """
+    sphere = _fibonacci_sphere(config.COMPACT_SURFACE_NORMAL_POINTS)
+    accumulated = np.zeros(3, dtype=float)
+    exposed = 0
+    for atom in residue:
+        if str(getattr(atom, "element", "")).upper() == "H":
+            continue
+        atom_radius = _atomic_radius(atom) + 1.4
+        center = np.asarray(atom.coord, dtype=float)
+        for direction in sphere:
+            point = center + atom_radius * direction
+            occluded = False
+            for other in atom_search.search(point, 3.7, level="A"):
+                if other is atom or str(getattr(other, "element", "")).upper() == "H":
+                    continue
+                other_radius = _atomic_radius(other) + 1.4
+                if float(np.linalg.norm(point - np.asarray(other.coord, dtype=float))) < other_radius - 1e-4:
+                    occluded = True
+                    break
+            if not occluded:
+                accumulated += direction
+                exposed += 1
+    length = float(np.linalg.norm(accumulated))
+    if exposed == 0 or length < 1e-6:
+        return None
+    return tuple(float(value) for value in accumulated / length)
+
+
 def analyze_residues(
     parsed: ParsedStructure,
     mapping: ChainMapping,
@@ -535,6 +584,11 @@ def analyze_residues(
     ]
     ecd_residues.sort(key=lambda pair: pair[0])
     ca_positions = [residue["CA"].coord for _, residue in ecd_residues if residue.has_id("CA")]
+    ecd_heavy_atoms = [
+        atom for _, residue in ecd_residues for atom in residue
+        if str(getattr(atom, "element", "")).upper() != "H"
+    ]
+    ecd_atom_search = NeighborSearch(ecd_heavy_atoms)
 
     disulfide_positions = _feature_positions(protein, [r"disulfide bond"])
     glyco_positions = _feature_positions(protein, [r"glycosylation"])
@@ -642,6 +696,7 @@ def analyze_residues(
             residue_name=residue.resname,
             ca=ca,
             sidechain_direction=_sidechain_direction(residue),
+            surface_normal=_solvent_surface_normal(residue, ecd_atom_search),
             sasa=round(total_sasa, 3),
             sidechain_sasa=round(side_sasa, 3),
             rsasa=round(rsasa, 4),

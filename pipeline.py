@@ -704,7 +704,12 @@ def run_pipeline(
             "functional_interface": sum(item.interface for item in records),
             "regions": len(regions),
             "recommended_constructs": sum(
-                item.status == "RECOMMENDED_LOW_PREDICTED_RISK" for item in designs
+                item.status in {
+                    "RECOMMENDED_LOW_PREDICTED_RISK",
+                    "RECOMMENDED_MULTI_SITE_PROBE",
+                    "RECOMMENDED_SINGLE_SITE_PROBE",
+                }
+                for item in designs
             ),
         },
         "residues": [to_dict(item) for item in records],

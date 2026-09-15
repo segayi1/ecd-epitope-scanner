@@ -577,7 +577,11 @@ def design_regions(
         # `residues` remains the legacy-compatible active footprint.  Compact
         # surface-face regions additionally expose all mutable face positions,
         # but Stage-1 must stay inside their local footprint.
-        active_positions = region.footprint_residues or region.residues
+        active_positions = (
+            region.mutable_residues
+            if region.partition_mode == "compact_surface_face" and region.mutable_residues
+            else region.footprint_residues or region.residues
+        )
         items = [by_position[position] for position in active_positions if position in by_position]
         max_combo_spread = (
             config.COMPACT_COMBO_MAX_SPREAD_A
@@ -603,7 +607,12 @@ def design_regions(
             probes[region.id] = f"REGION_{region.id:02d}"
             continue
 
-        key_sites = select_key_sites(items, limit=config.KEY_SITES_PER_PATCH)
+        key_site_limit = (
+            config.COMPACT_KEY_SITES_PER_FACE
+            if region.partition_mode == "compact_surface_face"
+            else config.KEY_SITES_PER_PATCH
+        )
+        key_sites = select_key_sites(items, limit=key_site_limit)
         scans = {record.uniprot_pos: saturation_scan(record, protein) for record in key_sites}
         key_sites, scans = _ensure_anchor_site(items, key_sites, scans, protein)
         all_scans += sum(len(values) for values in scans.values())
@@ -614,13 +623,74 @@ def design_regions(
                 key_sites, scans, by_position, inventory.foldx_path, foldx_repaired, workdir
             )
         measured = bool(inventory.foldx_path and foldx_repaired)
-        front, downgrade_notes = _enumerate_combinations(
-            key_sites, scans, by_position, measured, max_combo_spread
-        )
+        if region.partition_mode == "compact_surface_face" and region.candidate_footprints:
+            local_fronts: list[tuple[float, float, list[MutationChoice]]] = []
+            downgrade_notes = []
+            for footprint in region.candidate_footprints:
+                footprint_set = set(footprint)
+                local_sites = [
+                    record for record in key_sites
+                    if record.uniprot_pos in footprint_set
+                ]
+                local_scans = {
+                    position: values for position, values in scans.items()
+                    if position in footprint_set
+                }
+                candidate_front, candidate_notes = _enumerate_combinations(
+                    local_sites, local_scans, by_position, measured, max_combo_spread
+                )
+                local_fronts.extend(candidate_front)
+                downgrade_notes.extend(candidate_notes)
+            front = _pareto_front(local_fronts)
+        else:
+            front, downgrade_notes = _enumerate_combinations(
+                key_sites, scans, by_position, measured, max_combo_spread
+            )
         for note in downgrade_notes:
             downgrades.append(f"Patch {region.id}: {note}")
 
         if not front:
+            allowed_singles = sorted(
+                (choice for values in scans.values() for choice in values if choice.allowed),
+                key=lambda choice: (-_probe_utility(choice), choice.stability_score, choice.position, choice.mutant),
+            )
+            if region.partition_mode == "compact_surface_face" and allowed_singles:
+                best_single = allowed_singles[0]
+                primary_id = f"REGION_{region.id:02d}"
+                designs.append(
+                    _make_design(
+                        primary_id,
+                        region.name,
+                        region.id,
+                        [best_single],
+                        "RECOMMENDED_SINGLE_SITE_PROBE",
+                        inventory,
+                        protein,
+                        coding,
+                        "No spatially valid multi-site probe passed; selected the strongest FoldX-cleared local single-site perturbation.",
+                        [
+                            "Single-site Stage-1 fallback: a negative result cannot exclude the full surface zone.",
+                            "Pair with another independent single-site construct when broader regional coverage is required.",
+                        ],
+                        role="STAGE1_PROBE",
+                        saturation=scans,
+                    )
+                )
+                matching = next(
+                    (
+                        footprint for footprint in region.candidate_footprints
+                        if best_single.position in footprint
+                    ),
+                    [best_single.position],
+                )
+                region.footprint_residues = matching
+                region.residues = matching
+                region.footprint_center = best_single.position
+                probes[region.id] = primary_id
+                downgrades.append(
+                    f"Surface zone {region.id}: multi-site probe unavailable; emitted a FoldX-cleared single-site Stage-1 probe."
+                )
+                continue
             status = (
                 "FOLDX_SINGLE_FILTER_FAILED"
                 if inventory.foldx_path and not foldx_single_ok
@@ -658,6 +728,18 @@ def design_regions(
             for risk, disruption, mutations in front
         ]
         best = _pareto_knee(front)
+        if region.partition_mode == "compact_surface_face":
+            best_positions = {choice.position for choice in best}
+            matching = next(
+                (
+                    footprint for footprint in region.candidate_footprints
+                    if best_positions.issubset(set(footprint))
+                ),
+                sorted(best_positions),
+            )
+            region.footprint_residues = matching
+            region.residues = matching
+            region.footprint_center = next(iter(sorted(best_positions)), region.footprint_center)
         alternate = front[-1][2] if len(front) > 1 and front[-1][2] is not best else None
 
         primary_id = f"REGION_{region.id:02d}"

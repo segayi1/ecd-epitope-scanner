@@ -550,34 +550,17 @@ def _compact_envelope(records: list[ResidueRecord]) -> list[ResidueRecord]:
     """
     return [
         item for item in records
-        if item.surface_accessible and item.ca is not None
+        if item.rsasa >= config.COMPACT_ENVELOPE_RSASA and item.ca is not None
+        and item.surface_normal is not None
         and not (config.EXCLUDE_FLEXIBLE_TERMINAL and item.flexible_terminal)
         and (item.plddt is None or item.plddt >= config.COMPACT_MIN_CORE_CONFIDENCE)
     ]
 
 
-def _outward_normal(record: ResidueRecord, centroid: np.ndarray) -> np.ndarray:
-    """A deterministic residue-level surface normal with a safe fallback."""
-    point = np.asarray(record.ca, dtype=float)
-    radial = point - centroid
-    radial_norm = float(np.linalg.norm(radial))
-    if radial_norm > 1e-6:
-        radial /= radial_norm
-    else:
-        radial = np.asarray((0.0, 0.0, 1.0), dtype=float)
-    if record.sidechain_direction is None:
-        return radial
-    sidechain = np.asarray(record.sidechain_direction, dtype=float)
-    sidechain_norm = float(np.linalg.norm(sidechain))
-    if sidechain_norm < 1e-6:
-        return radial
-    sidechain /= sidechain_norm
-    # Side-chain direction is local evidence.  Do not let an inward/noisy
-    # side chain flip the global, centroid-oriented surface direction.
-    if float(np.dot(sidechain, radial)) < 0.0:
-        sidechain *= -1.0
-    blended = radial + sidechain
-    return blended / max(float(np.linalg.norm(blended)), 1e-6)
+def _outward_normal(record: ResidueRecord) -> np.ndarray:
+    """Read the solvent-derived local normal; V2 has no radial fallback."""
+    normal = np.asarray(record.surface_normal, dtype=float)
+    return normal / max(float(np.linalg.norm(normal)), 1e-6)
 
 
 def _compact_graph(
@@ -605,6 +588,82 @@ def _dominant_domain_fraction(envelope: list[ResidueRecord]) -> tuple[str, float
         return "ECD", 0.0
     domain, count = Counter(labels).most_common(1)[0]
     return domain, count / len(envelope)
+
+
+def _beta_sheet_assignments(
+    records: list[ResidueRecord], protein: ProteinContext, envelope: list[ResidueRecord]
+) -> dict[int, list[int]] | None:
+    """Group annotated beta strands by sheet-like backbone contacts.
+
+    Reviewed UniProt beta-strand annotations are used only as segment bounds;
+    sheet membership is derived from the supplied 3-D coordinates.  Adjacent
+    sequence segments are excluded from the contact graph because a tight
+    beta turn joins different sheets spatially without making them one sheet.
+    """
+    by_pos = {item.uniprot_pos: item for item in records if item.ca is not None}
+    segments: list[list[int]] = []
+    for feature in protein.features:
+        if feature.type.lower() != "beta strand":
+            continue
+        positions = [position for position in range(feature.start, feature.end + 1) if position in by_pos]
+        if len(positions) >= 2:
+            segments.append(positions)
+    if len(segments) < 2 * config.COMPACT_BETA_SHEET_MIN_STRANDS:
+        return None
+    strand_graph = nx.Graph()
+    strand_graph.add_nodes_from(range(len(segments)))
+    for left_index, left in enumerate(segments):
+        for right_index, right in enumerate(segments[left_index + 1 :], start=left_index + 1):
+            sequence_gap = min(abs(a - b) for a in left for b in right)
+            if sequence_gap <= 5:
+                continue
+            contacts = sum(
+                _distance(by_pos[a].ca, by_pos[b].ca) <= config.COMPACT_BETA_STRAND_CONTACT_A  # type: ignore[arg-type]
+                for a in left for b in right
+            )
+            if contacts >= config.COMPACT_BETA_STRAND_MIN_CONTACTS:
+                strand_graph.add_edge(left_index, right_index)
+    components = [
+        component for component in nx.connected_components(strand_graph)
+        if len(component) >= config.COMPACT_BETA_SHEET_MIN_STRANDS
+    ]
+    if not 1 <= len(components) <= config.COMPACT_MAX_SURFACE_REGIONS:
+        return None
+    annotated_positions = {position for segment in segments for position in segment}
+    covered_positions = {
+        position for component in components for index in component for position in segments[index]
+    }
+    if len(covered_positions) / max(1, len(annotated_positions)) < config.COMPACT_BETA_SHEET_MIN_COVERAGE:
+        return None
+    scaffolds = [
+        sorted({position for index in component for position in segments[index]})
+        for component in components
+    ]
+    assignments: dict[int, list[int]] = {min(scaffold): [] for scaffold in scaffolds}
+    for item in envelope:
+        seed, _ = min(
+            (
+                (min(scaffold), min(_distance(item.ca, by_pos[position].ca) for position in scaffold))  # type: ignore[arg-type]
+                for scaffold in scaffolds
+            ),
+            key=lambda pair: (pair[1], pair[0]),
+        )
+        assignments[seed].append(item.uniprot_pos)
+    return {seed: sorted(members) for seed, members in assignments.items() if members}
+
+
+def _add_within_face_geometry_edges(
+    graph: nx.Graph, assignments: dict[int, list[int]], by_pos: dict[int, ResidueRecord]
+) -> nx.Graph:
+    """Fill local surface gaps only after opposite beta sheets are separated."""
+    output = graph.copy()
+    for members in assignments.values():
+        for index, left in enumerate(members):
+            for right in members[index + 1 :]:
+                distance = _distance(by_pos[left].ca, by_pos[right].ca)  # type: ignore[arg-type]
+                if distance <= config.COMPACT_GRAPH_CONTACT_A:
+                    output.add_edge(left, right, weight=distance)
+    return output
 
 
 def _compact_trigger(
@@ -641,7 +700,7 @@ def _compact_seed_positions(
         candidate = max(
             (item for item in items if item.uniprot_pos not in {seed.uniprot_pos for seed in seeds}),
             key=lambda item: min(
-                _distance(item.ca, seed.ca) + 8.0 * (1.0 - float(np.dot(normals[item.uniprot_pos], normals[seed.uniprot_pos])))
+                1.0 - float(np.dot(normals[item.uniprot_pos], normals[seed.uniprot_pos]))
                 for seed in seeds
             ),
         )
@@ -650,22 +709,32 @@ def _compact_seed_positions(
 
 
 def _compact_assignments(
-    graph: nx.Graph, envelope: list[ResidueRecord], normals: dict[int, np.ndarray]
+    graph: nx.Graph, envelope: list[ResidueRecord], normals: dict[int, np.ndarray], seed_count: int
 ) -> dict[int, list[int]] | None:
-    by_pos = {item.uniprot_pos: item for item in envelope}
     components = list(nx.connected_components(graph))
     if len(components) > config.COMPACT_MAX_SURFACE_REGIONS:
         return None
-    diameter = max(
-        (_distance(left.ca, right.ca) for index, left in enumerate(envelope) for right in envelope[index + 1 :]),
-        default=0.0,
-    )
-    seed_count = 1 if diameter <= 18.0 else 2
-    if diameter > config.COMPACT_FACE_SPLIT_DIAMETER_A and len(envelope) >= 45:
-        seed_count = 3
     seed_count = max(seed_count, len(components))
     seed_count = min(seed_count, config.COMPACT_MAX_SURFACE_REGIONS, len(envelope))
-    seeds = _compact_seed_positions(envelope, normals, seed_count)
+    # Guarantee that every pre-existing surface component gets a seed before
+    # angular farthest-point seeding adds optional subdivisions.
+    by_pos = {item.uniprot_pos: item for item in envelope}
+    seeds = [
+        max(component, key=lambda position: (_exposure_priority(by_pos[position]), -position))
+        for component in sorted(components, key=lambda group: min(group))
+    ]
+    if len(seeds) < seed_count:
+        extra_items = [item for item in envelope if item.uniprot_pos not in seeds]
+        while len(seeds) < seed_count and extra_items:
+            chosen = max(
+                extra_items,
+                key=lambda item: min(
+                    1.0 - float(np.dot(normals[item.uniprot_pos], normals[seed]))
+                    for seed in seeds
+                ),
+            )
+            seeds.append(chosen.uniprot_pos)
+            extra_items.remove(chosen)
     lengths = {seed: nx.single_source_dijkstra_path_length(graph, seed, weight="weight") for seed in seeds}
     assignments: dict[int, list[int]] = {seed: [] for seed in seeds}
     for item in envelope:
@@ -673,7 +742,10 @@ def _compact_assignments(
         for seed in seeds:
             route = lengths[seed].get(item.uniprot_pos, math.inf)
             angular = 1.0 - float(np.dot(normals[item.uniprot_pos], normals[seed]))
-            choices.append((route + 5.0 * angular, seed))
+            # Surface direction defines the face; geodesic distance only
+            # regularises its boundary.  This prevents left/middle/right
+            # spatial slices through one flat beta sheet.
+            choices.append((12.0 * angular + 0.15 * route, seed))
         _, selected = min(choices, key=lambda pair: (pair[0], pair[1]))
         assignments[selected].append(item.uniprot_pos)
     assignments = {seed: sorted(members) for seed, members in assignments.items() if members}
@@ -681,23 +753,39 @@ def _compact_assignments(
     # "repaired" by a nearest-C-alpha bridge; the caller safely falls back.
     if any(len(list(nx.connected_components(graph.subgraph(members)))) != 1 for members in assignments.values()):
         return None
+    for members in assignments.values():
+        mean_normal = np.mean([normals[position] for position in members], axis=0)
+        mean_normal /= max(float(np.linalg.norm(mean_normal)), 1e-6)
+        coherence = mean(float(np.dot(normals[position], mean_normal)) for position in members)
+        if coherence < config.COMPACT_SURFACE_NORMAL_MIN_COHERENCE:
+            return None
     return assignments
 
 
-def _compact_footprint(
+def _compact_footprints(
     members: list[int], graph: nx.Graph, by_pos: dict[int, ResidueRecord]
-) -> tuple[int | None, list[int]]:
+) -> list[tuple[int, list[int]]]:
     mutable = [position for position in members if by_pos[position].folding_screen_pass]
     if not mutable:
-        return None, []
-    center = max(mutable, key=lambda position: (_exposure_priority(by_pos[position]), -position))
-    paths = nx.single_source_dijkstra_path_length(graph.subgraph(members), center, weight="weight")
-    footprint = [
-        position for position in mutable
-        if paths.get(position, math.inf) <= config.COMPACT_FOOTPRINT_GEODESIC_RADIUS_A
-        and _distance(by_pos[position].ca, by_pos[center].ca) <= config.COMPACT_FOOTPRINT_EUCLIDEAN_CAP_A  # type: ignore[arg-type]
-    ]
-    return center, sorted(footprint)
+        return []
+    ranked = sorted(mutable, key=lambda position: (-_exposure_priority(by_pos[position]), position))
+    footprints: list[tuple[int, list[int]]] = []
+    for center in ranked:
+        paths = nx.single_source_dijkstra_path_length(graph.subgraph(members), center, weight="weight")
+        footprint = sorted(
+            position for position in mutable
+            if paths.get(position, math.inf) <= config.COMPACT_FOOTPRINT_GEODESIC_RADIUS_A
+            and _distance(by_pos[position].ca, by_pos[center].ca) <= config.COMPACT_FOOTPRINT_EUCLIDEAN_CAP_A  # type: ignore[arg-type]
+        )
+        if not footprint:
+            continue
+        candidate = set(footprint)
+        if any(len(candidate & set(existing)) / len(candidate | set(existing)) >= 0.70 for _, existing in footprints):
+            continue
+        footprints.append((center, footprint))
+        if len(footprints) >= config.COMPACT_MAX_FOOTPRINTS_PER_FACE:
+            break
+    return footprints
 
 
 def _partition_compact_surface_face(
@@ -705,13 +793,28 @@ def _partition_compact_surface_face(
     predicted: bool, assay_format: str, membrane_anchor: tuple[float, float, float] | None,
     membrane_normal: tuple[float, float, float] | None, envelope: list[ResidueRecord], trigger_reasons: list[str],
 ) -> tuple[list[RegionRecord], dict[str, Any]] | None:
-    centroid = np.mean(np.asarray([item.ca for item in envelope], dtype=float), axis=0)
-    normals = {item.uniprot_pos: _outward_normal(item, centroid) for item in envelope}
+    normals = {item.uniprot_pos: _outward_normal(item) for item in envelope}
     graph = _compact_graph(envelope, normals)
-    assignments = _compact_assignments(graph, envelope, normals)
+    assignments = _beta_sheet_assignments(records, protein, envelope)
+    partition_basis = "beta_sheet_backbone_topology" if assignments is not None else "solvent_surface_normals"
+    selected_face_count = None
+    if assignments is None:
+        minimum_alignment = min(
+            (float(np.dot(normals[left], normals[right])) for i, left in enumerate(normals) for right in list(normals)[i + 1 :]),
+            default=1.0,
+        )
+        first_face_count = 2 if minimum_alignment < -0.35 else 1
+        for requested_faces in range(first_face_count, config.COMPACT_MAX_SURFACE_REGIONS + 1):
+            assignments = _compact_assignments(graph, envelope, normals, requested_faces)
+            if assignments is not None:
+                selected_face_count = len(assignments)
+                break
+    else:
+        selected_face_count = len(assignments)
     if assignments is None:
         return None
     by_pos = {item.uniprot_pos: item for item in envelope}
+    graph = _add_within_face_geometry_edges(graph, assignments, by_pos)
     priors = {seed: _patch_prior([by_pos[position] for position in members])[0] for seed, members in assignments.items()}
     membrane_scores, membrane_distances, membrane_geometry = _membrane_accessibility(envelope, membrane_anchor, membrane_normal)
     if assay_format == "cell_surface":
@@ -724,14 +827,21 @@ def _partition_compact_surface_face(
     domain, _ = _dominant_domain_fraction(envelope)
     for index, (seed, members) in enumerate(ordered, start=1):
         items = [by_pos[position] for position in members]
-        center, footprint = _compact_footprint(members, graph, by_pos)
+        footprints = _compact_footprints(members, graph, by_pos)
+        center, footprint = footprints[0] if footprints else (None, [])
         protected = [position for position in members if not by_pos[position].folding_screen_pass]
         mutable = [position for position in members if by_pos[position].folding_screen_pass]
         prior, components = _patch_prior(items)
         accessibility = mean(membrane_scores[position] for position in members)
         if assay_format == "cell_surface":
             prior *= accessibility
-        normal_coherence = mean(float(np.dot(normals[position], normals[seed])) for position in members)
+        mean_normal = np.mean([normals[position] for position in members], axis=0)
+        mean_normal /= max(float(np.linalg.norm(mean_normal)), 1e-6)
+        measured_normal_coherence = mean(float(np.dot(normals[position], mean_normal)) for position in members)
+        normal_coherence = (
+            None if partition_basis == "beta_sheet_backbone_topology"
+            else round(measured_normal_coherence, 4)
+        )
         membrane_position = "orientation unavailable"
         if membrane_distances:
             value = mean(membrane_distances[position] for position in members)
@@ -740,7 +850,9 @@ def _partition_compact_surface_face(
         pae = median_region_pae(footprint, records, confidence) if predicted and footprint else None
         flags = [] if len(footprint) >= 2 else ["insufficient_local_mutable_sites"]
         region = RegionRecord(
-            id=index, name=f"{domain} / surface face {index}", domain=domain,
+            id=index,
+            name=f"{domain} / {'beta-sheet zone' if partition_basis == 'beta_sheet_backbone_topology' else 'surface face'} {index}",
+            domain=domain,
             membrane_position=membrane_position, structural_character=_structural_character(items),
             residues=footprint, surface_area=round(sum(item.sidechain_sasa for item in items), 2),
             geodesic_diameter=_geodesic_diameter(graph, members),
@@ -748,16 +860,27 @@ def _partition_compact_surface_face(
             pae_median=pae, auto_design_allowed=(not predicted or pae is None or pae <= 10.0) and len(footprint) >= 2,
             rationale=(f"compact single-domain continuous surface face; envelope={len(members)} residues; "
                        f"mutable={len(mutable)}; local footprint={len(footprint)}; "
-                       f"surface-normal coherence={normal_coherence:.2f}; " + "; ".join(trigger_reasons)),
+                       + (
+                           "beta-sheet membership derived from backbone contact topology; "
+                           if partition_basis == "beta_sheet_backbone_topology"
+                           else f"surface-normal coherence={measured_normal_coherence:.2f}; "
+                       )
+                       + "; ".join(trigger_reasons)),
             color=config.LEGACY_REGION_COLORS[(index - 1) % len(config.LEGACY_REGION_COLORS)],
             domain_id=domain, epitope_prior=round(prior, 4), prior_components=components,
             tier=tiers[seed], assay_accessible=accessibility >= config.MEMBRANE_ACCESSIBILITY_REDUCED_THRESHOLD,
             predicted_accessibility=("unknown" if not membrane_distances else "reduced" if assay_format == "cell_surface" and accessibility < config.MEMBRANE_ACCESSIBILITY_REDUCED_THRESHOLD else "normal"),
             membrane_accessibility_score=round(accessibility, 4), required_probe_coverage=1,
-            partition_mode="compact_surface_face", envelope_residues=members,
+            partition_mode="compact_surface_face", partition_basis=partition_basis,
+            envelope_residues=members,
             mutable_residues=mutable, protected_surface_residues=protected,
             footprint_residues=footprint, footprint_center=center,
-            surface_connectivity="connected", normal_coherence=round(normal_coherence, 4), quality_flags=flags,
+            candidate_footprints=[positions for _, positions in footprints],
+            surface_connectivity=(
+                "beta_sheet_scaffold_connected"
+                if partition_basis == "beta_sheet_backbone_topology" else "connected"
+            ),
+            normal_coherence=normal_coherence, quality_flags=flags,
         )
         regions.append(region)
         for position in members:
@@ -776,6 +899,9 @@ def _partition_compact_surface_face(
         "membrane_accessibility_scale_A": config.MEMBRANE_ACCESSIBILITY_SCALE_A,
         "excluded_flexible_terminal_residues": sum(item.flexible_terminal for item in records),
         "coverage_plan": coverage_plan, "partition_mode": "compact_surface_face",
+        "surface_geometry_version": "solvent_atomic_points_v2",
+        "partition_basis": partition_basis,
+        "selected_face_count": selected_face_count,
         "trigger_reasons": trigger_reasons,
         "method": "Compact single-domain continuous surface-face partitioning with local Fab footprints",
         "warnings": ["Protected surface residues remain in geometry but are excluded from automatic mutation menus."],

@@ -16,7 +16,7 @@ from ecd_epitope_scanner.design import (
     saturation_scan,
     select_key_sites,
 )
-from ecd_epitope_scanner.models import ProteinContext, ResidueRecord
+from ecd_epitope_scanner.models import FeatureRange, ProteinContext, RegionRecord, ResidueRecord
 from ecd_epitope_scanner.partitioning import partition_surface
 from ecd_epitope_scanner.stability import evaluate_substitution, is_anchor
 from ecd_epitope_scanner.util import PipelineError
@@ -267,6 +267,7 @@ def test_compact_single_domain_rescue_uses_continuous_envelope_not_sparse_mutant
         record = make_record(position, "K", (20.0 * math.cos(theta), 20.0 * math.sin(theta), 0.0))
         record.domain = "Ig-like V-type"
         record.plddt = 90.0
+        record.surface_normal = (math.cos(theta), math.sin(theta), 0.0)
         # Every fifth residue is protected but remains part of the surface
         # envelope.  Removing it before partitioning would create islands.
         if position % 5 == 0:
@@ -282,6 +283,83 @@ def test_compact_single_domain_rescue_uses_continuous_envelope_not_sparse_mutant
         set(region.footprint_residues).issubset(set(region.mutable_residues))
         for region in regions
     )
+
+
+def test_parallel_beta_strands_with_one_surface_normal_stay_one_face():
+    protein = make_protein("K" * 36)
+    records = []
+    position = 1
+    for strand_y in (-4.0, 0.0, 4.0):
+        for x in range(12):
+            record = make_record(position, "K", (float(x * 3), strand_y, 0.0))
+            record.domain = "Ig-like V-type"
+            record.plddt = 90.0
+            record.surface_normal = (0.0, 0.0, 1.0)
+            records.append(record)
+            position += 1
+    # Call the V2 implementation directly: this geometry represents one side
+    # of a beta sheet and must not be split into middle-versus-edge strands.
+    from ecd_epitope_scanner.partitioning import _partition_compact_surface_face
+
+    output = _partition_compact_surface_face(
+        records, protein, None, False, "cell_surface", None, None, records,
+        ["synthetic beta-sheet regression"],
+    )
+    assert output is not None
+    regions, summary = output
+    assert summary["selected_face_count"] == 1
+    assert len(regions) == 1
+    assert set(regions[0].envelope_residues) == set(range(1, 37))
+
+
+def test_beta_sheet_backbone_topology_keeps_parallel_strands_together():
+    from ecd_epitope_scanner.partitioning import _beta_sheet_assignments
+
+    protein = make_protein("K" * 64)
+    segment_starts = [1, 11, 21, 31, 41, 51]
+    protein.features = [
+        FeatureRange("Beta strand", start, start + 3) for start in segment_starts
+    ]
+    records = []
+    for sheet_index, starts in enumerate((segment_starts[:3], segment_starts[3:])):
+        for strand_index, start in enumerate(starts):
+            for offset in range(4):
+                record = make_record(
+                    start + offset,
+                    "K",
+                    (float(offset * 3.5), float(strand_index * 4.5), float(sheet_index * 12.0)),
+                )
+                record.surface_normal = (0.0, 0.0, 1.0 if sheet_index == 0 else -1.0)
+                records.append(record)
+    assignments = _beta_sheet_assignments(records, protein, records)
+    assert assignments is not None
+    groups = [set(members) for members in assignments.values()]
+    assert len(groups) == 2
+    assert {1, 2, 3, 4, 11, 12, 13, 14, 21, 22, 23, 24} in groups
+    assert {31, 32, 33, 34, 41, 42, 43, 44, 51, 52, 53, 54} in groups
+
+
+def test_compact_face_emits_safe_single_site_stage1_fallback(tmp_path):
+    from ecd_epitope_scanner.design import design_regions
+    from ecd_epitope_scanner.stability import EngineInventory
+
+    protein = make_protein("K")
+    record = make_record(1, "K", (0.0, 0.0, 0.0))
+    region = RegionRecord(
+        id=1, name="surface zone", domain="Ig", membrane_position="distal",
+        structural_character="beta-sheet", residues=[1], surface_area=40.0,
+        geodesic_diameter=0.0, interface_fraction=0.0, pae_median=None,
+        auto_design_allowed=True, rationale="test", color="#000",
+        partition_mode="compact_surface_face", mutable_residues=[1],
+        footprint_residues=[1], candidate_footprints=[[1]],
+    )
+    designs, summary = design_regions(
+        [region], [record], protein, EngineInventory(True, None, None), None, tmp_path
+    )
+    primary = next(item for item in designs if item.region_id == 1)
+    assert primary.status == "RECOMMENDED_SINGLE_SITE_PROBE"
+    assert len(primary.mutations) == 1
+    assert summary["epitope_mapping_plan"]["design_downgrades"]
 
 
 def test_compact_probe_has_a_stricter_spread_gate():

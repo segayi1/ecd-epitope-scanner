@@ -95,6 +95,10 @@ class ResidueRecord:
     # It is a local outward-facing proxy used to prevent graph edges joining
     # opposing faces of beta-sandwich domains.
     sidechain_direction: tuple[float, float, float] | None = None
+    # Unit normal estimated from solvent-accessible atomic sphere points.  In
+    # contrast to a protein-centroid radial vector, this follows local surface
+    # geometry on flat beta sheets, concave faces and irregular domains.
+    surface_normal: tuple[float, float, float] | None = None
     sasa: float = 0.0
     sidechain_sasa: float = 0.0
     rsasa: float = 0.0
@@ -159,10 +163,12 @@ class RegionRecord:
     # from the subset that is safe to mutate.  `residues` remains the active
     # design footprint for backwards-compatible callers.
     partition_mode: str = "footprint"       # footprint | compact_surface_face
+    partition_basis: str = "residue_surface_graph"
     envelope_residues: list[int] = field(default_factory=list)
     mutable_residues: list[int] = field(default_factory=list)
     protected_surface_residues: list[int] = field(default_factory=list)
     footprint_residues: list[int] = field(default_factory=list)
+    candidate_footprints: list[list[int]] = field(default_factory=list)
     footprint_center: int | None = None
     surface_connectivity: str = "not_assessed"
     normal_coherence: float | None = None
