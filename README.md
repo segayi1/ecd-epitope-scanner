@@ -1,6 +1,6 @@
 # ECD Epitope Workbench
 
-本机单用户的单次跨膜蛋白胞外区（ECD）结构分区与组合突变设计工具。它生成可审计的抗原突变构建，不依据抗体序列预测表位，也不把计算筛选误写成实验表位结论。
+本机单用户的单次跨膜蛋白胞外区（ECD）结构分区与组合突变设计工具。它生成可审计的抗原突变构建，不依据抗体序列预测表位，也不把计算筛选误写成实验表位结论。服务仅允许本机回环地址；公开部署需要未来的专用运行配置、认证与作业隔离，不能通过修改 `--host` 直接开启。
 
 ## 已实现的科学边界
 
@@ -8,7 +8,7 @@
 - UniProt 输入自动下载 canonical 序列、拓扑、结构域、二硫键、糖基化和功能注释，并通过 3D-Beacons/PDBe 搜索实验结构。
 - PDB 候选需要满足：ECD 观察覆盖率 >=95%、最大内部缺口 <=8 aa、与 canonical 序列一致性 >=95%、主要结构域覆盖 >=90%。逐残基编号使用 UniProt、PDB author 和 mmCIF label 映射保存。
 - 没有合格实验结构时，只接受带明确 AF3 来源的公开模型；否则状态为 `WAITING_FOR_AF3_UPLOAD`，网页要求上传官方 AF3 mmCIF 与 confidences JSON。AFDB 不会被伪装为 AF3。
-- 用 FreeSASA（若可用）或同参数的 Bio.PDB Shrake-Rupley 回退计算 rSASA/侧链 SASA；默认候选标准为 `rSASA >=0.25` 且 `side-chain SASA >=20 A2`。
+- 统一用 Bio.PDB Shrake-Rupley 与固定 Tien/DSSP 原子半径计算 rSASA/侧链 SASA；默认候选标准为 `rSASA >=0.25` 且 `side-chain SASA >=20 A2`，不因可选依赖而改变生产结果。
 - 自动排除二硫键 Cys、注释糖基化/PTM、低置信度 AF3 位点、坐标缺失和埋藏位点；功能界面保留在候选中但显示风险标签。
 - 以 Fab 足迹尺度（测地半径 13 Å，约 15-25 残基，Kringelum 2012）在表面测地图上枚举补丁并允许跨结构域；每个补丁带表位先验（暴露度/外凸度/环区占比/进化可变性/糖屏蔽/膜近端惩罚）并分级 HIGH/MEDIUM/LOW；面板预算随 ECD 大小自适应（~1 补丁/22 残基，上限 7），结构不支持时如实输出更少补丁与原因。
 - 实验形式 `assay_format=cell_surface|purified` 是一等参数：细胞表面实验时膜近端补丁先验降权并标记 IgG 不可及；`purified` 时全部保留。

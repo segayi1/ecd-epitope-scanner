@@ -21,6 +21,20 @@ def test_health_and_workbench_assets_are_served():
     assert client.get("/assets/vendor/pdbe-molstar-plugin-3.10.1.js").status_code == 200
 
 
+def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path):
+    from ecd_epitope_scanner.jobs import JobStore
+    from ecd_epitope_scanner.pipeline import PipelineRequest
+
+    store = JobStore(tmp_path / "workspace")
+    job = store.create(PipelineRequest(input_type="uniprot", identifier="Q9NZQ7"))
+    assert job["owner_id"] == "local"
+    assert store.list(owner_id="another-user") == []
+    # The HTTP list endpoint must not serialize full per-residue analyses.
+    response = client.get("/api/jobs")
+    assert response.status_code == 200
+    assert all("result" not in item and "request" not in item for item in response.json())
+
+
 def test_af3_resume_backfills_accession_from_identifier(monkeypatch, tmp_path):
     """P0 regression: a UniProt job must survive the AF3-upload resume.
 

@@ -54,12 +54,18 @@ def build_offline_html(
     if not pdb_path.exists():
         raise FileNotFoundError(f"structure_for_energy.pdb not found under {pdb_path.parent}")
     pdb_text = pdb_path.read_text(encoding="utf-8", errors="replace")
+    protein = analysis.get("protein") or {}
+    task_name = protein.get("protein_name") or protein.get("accession") or "ECD Epitope Workbench"
+    accession = protein.get("accession")
+    task_label = f"{task_name} ({accession})" if accession and accession not in task_name else task_name
 
     html = template
     html = html.replace("__DATA__", _json_inline(analysis))
     html = html.replace("__I18N__", _json_inline(i18n))
     html = html.replace("__PDB__", json.dumps(pdb_text))
     html = html.replace("__LANG__", "en" if lang == "en" else "zh")
+    html = html.replace("__TASK_TITLE__", f"{task_label} | ECD Epitope Workbench")
+    html = html.replace("__TASK_BRAND__", f"{task_label} · ECD Epitope Workbench")
     # 3Dmol last: it is the biggest blob and the others' placeholders cannot
     # plausibly occur inside it, but the reverse is not true.
     html = html.replace("/*__3DMOL__*/", _js_safe(js))
@@ -93,6 +99,12 @@ def write_scientific_outputs(
     write_json(output_dir / "analysis.json", analysis)
     write_json(output_dir / "regions.json", [to_dict(item) for item in regions])
     write_json(output_dir / "designs.json", [to_dict(item) for item in designs])
+    # A real offline deliverable must be written and zipped with the scientific
+    # artefacts.  Previously only the template function existed, leaving users
+    # with no file://-openable report in a completed job.
+    (output_dir / "offline_report.html").write_text(
+        build_offline_html(analysis, output_dir), encoding="utf-8"
+    )
 
     residue_rows = [to_dict(item) for item in records]
     _write_csv(
@@ -126,6 +138,7 @@ def write_scientific_outputs(
             "domain_interface",
             "region_id",
             "flexible_terminal",
+            "engineered_neighborhood",
             "hard_exclusions",
             "risk_flags",
             "reasons",
@@ -270,6 +283,12 @@ def write_scientific_outputs(
                         ),
                     )
                 )
+    # Rebuilding a job must not leave stale full-length artefacts when the
+    # source CDS is unavailable in a later custom-design save.
+    for stale_name in ("full_length_protein_sequences.fasta", "full_length_coding_sequences.gb"):
+        stale = output_dir / stale_name
+        if stale.exists():
+            stale.unlink()
     if full_length_protein_lines:
         (output_dir / "full_length_protein_sequences.fasta").write_text(
             "\n".join(full_length_protein_lines) + "\n", encoding="ascii"
@@ -284,7 +303,8 @@ def write_scientific_outputs(
     coverage_plan = partition.get("coverage_plan", [])
     tier_lines = "\n".join(
         f"- Patch {row.get('patch_id')}: tier {row.get('tier')}, epitope prior {row.get('epitope_prior')}, "
-        f"probes required {row.get('required_probes')}, assay-accessible {row.get('assay_accessible')}"
+        f"probes required {row.get('required_probes')}, predicted accessibility "
+        f"{row.get('predicted_accessibility', 'unknown')} ({row.get('membrane_accessibility_score', 'n/a')})"
         for row in coverage_plan
     ) or "- (no patch plan available)"
     probe_lines = "\n".join(
@@ -317,6 +337,7 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 - Chain: {selection.get('selected_chain', '')}
 - Observed ECD coverage: {selection.get('observed_ecd_coverage', 0):.1%}
 - Maximum internal coordinate gap: {selection.get('max_internal_gap', 'n/a')}
+- Engineered mismatch positions: {', '.join(str(value) for value in methods.get('engineered_mismatch_positions', [])) or 'none'}
 
 ## Surface and folding-risk screen
 
@@ -328,8 +349,11 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 ## Patch partition and probe design
 
 - Partition method: {partition.get('method', '')}
-- Patches: {partition.get('actual_regions', len(regions))} at antibody-footprint scale (geodesic radius {partition.get('patch_radius_a', 13)} A)
+- Partition mode: {partition.get('partition_mode', 'footprint')}
+- Regions: {partition.get('actual_regions', len(regions))}; local Fab-footprint geodesic radius {partition.get('patch_radius_a', 13)} A
+- Partition trigger: {'; '.join(partition.get('trigger_reasons', [])) or 'standard footprint workflow'}
 - Assay format: {partition.get('assay_format', 'cell_surface')}
+- Cell-surface accessibility model: {partition.get('membrane_accessibility_model', 'legacy binary model')}
 - Eligible-surface coverage: {partition.get('coverage', 0):.1%}
 - Flexible terminal residues excluded from patches: {partition.get('excluded_flexible_terminal_residues', 0)} (screened separately as linear alanine-scan candidates, see epitope_mapping_plan)
 - In-silico substitutions evaluated: {analysis.get('design_summary', {}).get('in_silico_substitutions_evaluated', 0)}
@@ -378,6 +402,7 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "residues.csv",
         "regions.json",
         "designs.json",
+        "offline_report.html",
         "designs.csv",
         "panel_coverage_matrix.csv",
         "sequences.fasta",

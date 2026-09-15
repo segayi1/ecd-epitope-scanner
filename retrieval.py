@@ -3,12 +3,17 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .models import FeatureRange, ProteinContext, StructureCandidate, to_dict
 from .util import PipelineError, RemoteClient, safe_name, write_json
 
 
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/{accession}.json"
+UNIPROT_SEARCH_URL = (
+    "https://rest.uniprot.org/uniprotkb/search?query={query}"
+    "&fields=accession,gene_primary,protein_name,organism_name,reviewed&format=json&size=6"
+)
 BEACONS_URL = "https://www.ebi.ac.uk/pdbe/pdbe-kb/3dbeacons/api/uniprot/summary/{accession}.json"
 SIFTS_URL = "https://www.ebi.ac.uk/pdbe/api/mappings/uniprot/{pdb_id}"
 PDB_CIF_URL = "https://www.ebi.ac.uk/pdbe/entry-files/download/{pdb_id}.cif"
@@ -116,14 +121,60 @@ def parse_uniprot_entry(
     )
 
 
+def _gene_candidates(identifier: str, client: RemoteClient, organism_id: int = 9606) -> list[dict[str, Any]]:
+    query = quote(f'(gene_exact:"{identifier}") AND (organism_id:{organism_id})')
+    payload = client.json(UNIPROT_SEARCH_URL.format(query=query))
+    return [
+        item for item in (payload.get("results") or [])
+        if item.get("primaryAccession") and item.get("organism", {}).get("taxonId") == organism_id
+    ]
+
+
+def resolve_uniprot_identifier(
+    identifier: str, client: RemoteClient, organism_id: int = 9606
+) -> tuple[str, str]:
+    """Resolve an accession or an unambiguous gene symbol.
+
+    The returned tuple is (canonical_accession, input_kind).  Gene symbols are
+    intentionally restricted to human by default: silently selecting a
+    same-named gene from another species would be worse than a useful error.
+    """
+    raw = identifier.strip()
+    if not raw:
+        raise PipelineError("A UniProt accession or gene symbol is required")
+    accession = raw.upper()
+    try:
+        entry = client.json(UNIPROT_URL.format(accession=accession))
+    except PipelineError:
+        entry = None
+    if isinstance(entry, dict) and entry.get("primaryAccession"):
+        return str(entry["primaryAccession"]).upper(), "accession"
+    candidates = _gene_candidates(raw, client, organism_id)
+    if len(candidates) == 1:
+        return str(candidates[0]["primaryAccession"]).upper(), "gene_symbol"
+    if not candidates:
+        raise PipelineError(
+            f"No human UniProt accession or unambiguous gene symbol match was found for {raw!r}."
+        )
+    choices = ", ".join(
+        f"{item.get('primaryAccession')} ({item.get('proteinDescription', {}).get('recommendedName', {}).get('fullName', {}).get('value', 'candidate')})"
+        for item in candidates
+    )
+    raise PipelineError(
+        f"Gene symbol {raw!r} is ambiguous for Homo sapiens; choose one accession explicitly: {choices}"
+    )
+
+
 def fetch_protein_context(
     accession: str,
     client: RemoteClient,
     output_dir: Path,
     ecd_override: tuple[int, int] | None = None,
 ) -> ProteinContext:
-    accession = accession.strip().upper()
-    entry = client.json(UNIPROT_URL.format(accession=accession))
+    canonical, input_kind = resolve_uniprot_identifier(accession, client)
+    entry = client.json(UNIPROT_URL.format(accession=canonical))
+    if input_kind != "accession":
+        entry["_workbench_input"] = {"original_identifier": accession, "kind": input_kind}
     write_json(output_dir / "uniprot.json", entry)
     return parse_uniprot_entry(entry, ecd_override)
 

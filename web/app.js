@@ -5,7 +5,7 @@
  *   POST /api/jobs/upload     multipart(structure, accession?, chain?, sequence?, ecd_start?, ecd_end?)
  *   GET  /api/jobs/{id}       -> {status, message, progress, result}
  *   GET  /api/jobs/{id}/events        SSE progress
- *   POST /api/jobs/{id}/af3           multipart(structure, confidence)
+ *   POST /api/jobs/{id}/af3           multipart(structure, confidence, official_source_confirmed)
  *   POST /api/jobs/{id}/designs       {name, mutations[{position,mutant}], force_high_risk}
  *   GET  /api/jobs/{id}/files/{name}  result files
  *   GET  /api/jobs/{id}/export/offline?lang=zh|en
@@ -56,12 +56,13 @@ const state = {
   layerFocus: "folding",
   selectedResidue: null,
   selectedDesign: "wt",
+  previewMode: "construct", // construct | custom; custom never shadows a clicked design
   previewPlans: new Map(),
   customMutations: [],
   lastSequences: null,
 };
 
-const STEP_LIST = ["step.surface", "step.tolerance", "step.regions", "step.interface", "step.design", "step.custom"];
+const STEP_LIST = ["step.surface", "step.tolerance", "step.regions", "step.interface", "step.design", "step.custom", "step.overview"];
 const LAYER_META = {
   surface:   { labelKey: "layer.surface", color: "#1565C0" },
   folding:   { labelKey: "layer.folding", color: "#2E7D32" },
@@ -211,12 +212,26 @@ function adoptResult(result, { demo, jobId }) {
   state.jobId = jobId;
   state.selectedResidue = result.residues.find((r) => r.folding_screen_pass) || result.residues[0] || null;
   state.selectedDesign = result.designs.find((d) => d.mutations?.length)?.id || "wt";
+  state.previewMode = "construct";
   if (!result.protein.ecd_coding_sequence) {
     result.protein.ecd_coding_sequence = [...result.protein.ecd_sequence].map((aa) => CODONS[aa]).join("");
   }
   renderAll();
   const url = result.structure_url || "/assets/demo/ecd_structure.cif";
   ensureViewers(url);
+}
+
+function taskName() {
+  const protein = state.result?.protein || {};
+  return protein.protein_name
+    ? `${protein.protein_name}${protein.accession ? ` (${protein.accession})` : ""}`
+    : (protein.accession || "ECD Epitope Workbench");
+}
+
+function applyTaskIdentity() {
+  const title = taskName();
+  $("app-brand-title").textContent = state.result ? `${title} · ECD Epitope Workbench` : "ECD Epitope Workbench";
+  document.title = state.result ? `${title} | ECD Epitope Workbench` : t("app.title", "ECD Epitope Workbench");
 }
 
 function loadDemo() {
@@ -306,17 +321,33 @@ async function submitUpload(event) {
 
 async function submitAf3(event) {
   event.preventDefault();
-  if (!$("af3-confirm").checked) return;
+  const structure = $("af3-structure").files[0];
+  const confidence = $("af3-confidence").files[0];
+  if (!structure || !confidence || !$("af3-confirm").checked) {
+    toast(t("msg.af3FilesRequired", "请选择结构、置信度文件并确认来源。"));
+    return;
+  }
   const form = new FormData();
-  form.append("structure", $("af3-structure").files[0]);
-  form.append("confidence", $("af3-confidence").files[0]);
+  form.append("structure", structure);
+  form.append("confidence", confidence);
+  // FastAPI declares this as a required Form field.  The checkbox alone is
+  // browser state; it must be explicitly included in multipart data.
+  form.append("official_source_confirmed", "true");
+  const submit = $("af3-submit");
+  const originalLabel = submit.textContent;
   try {
+    submit.disabled = true;
+    submit.textContent = t("msg.af3Uploading", "正在上传…");
     const job = await api(`/api/jobs/${state.jobId}/af3`, { method: "POST", body: form });
     $("af3-dialog").close();
     setJob(job.status, job.message, job.progress);
     watchJob(state.jobId);
   } catch (error) {
     setJob("WAITING_FOR_AF3_UPLOAD", t("msg.af3Fail", "AF3 文件验证失败"), 0.34, error.message);
+    toast(`${t("msg.af3Fail", "AF3 文件验证失败")}: ${error.message}`);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = originalLabel;
   }
 }
 
@@ -361,7 +392,7 @@ async function installMolstarTooltips() {
 function beadsColorFor(residue) {
   const design = selectedDesign();
   const designPos = new Set((design?.mutations || []).map((m) => m.position));
-  if (state.customMutations.some((m) => m.position === residue.uniprot_pos)) return "#8a2f1d";
+  if (state.previewMode === "custom" && state.customMutations.some((m) => m.position === residue.uniprot_pos)) return "#8a2f1d";
   if (designPos.has(residue.uniprot_pos)) return LAYER_META.design.color;
   if (state.layers.has("interface") && residue.interface) return LAYER_META.interface.color;
   if (state.layers.has("regions") && residue.region_id != null) {
@@ -375,10 +406,9 @@ function beadsColorFor(residue) {
 
 function paintBeads() {
   if (!state.beadsReady) return;
-  const selected = new Set(
-    state.customMutations.map((m) => m.position)
-      .concat((selectedDesign()?.mutations || []).map((m) => m.position))
-  );
+  const selected = new Set(state.previewMode === "custom"
+    ? state.customMutations.map((m) => m.position)
+    : (selectedDesign()?.mutations || []).map((m) => m.position));
   const sidechain = new Set(
     [...selected].concat(
       state.layers.has("interface")
@@ -403,15 +433,14 @@ async function paintMolstar() {
   }
   if (state.layers.has("regions")) {
     for (const region of state.result.regions) {
-      const positions = new Set(region.residues);
+      const positions = new Set(region.envelope_residues?.length ? region.envelope_residues : region.residues);
       add(state.result.residues.filter((r) => positions.has(r.uniprot_pos)), region.color);
     }
   }
   if (state.layers.has("design")) {
-    const positions = new Set(
-      (selectedDesign()?.mutations || []).map((m) => m.position)
-        .concat(state.customMutations.map((m) => m.position))
-    );
+    const positions = new Set(state.previewMode === "custom"
+      ? state.customMutations.map((m) => m.position)
+      : (selectedDesign()?.mutations || []).map((m) => m.position));
     add(state.result.residues.filter((r) => positions.has(r.uniprot_pos)), LAYER_META.design.color,
       { sideChain: true, representation: "ball-and-stick", representationColor: LAYER_META.design.color });
   }
@@ -624,7 +653,8 @@ function renderPanelScaffold() {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <h3 style="margin:0">${h(t("custom.current", "我的组合"))}</h3>
-        <button class="btn btn-mini" id="clear-custom" type="button">${h(t("custom.clear", "清空"))}</button>
+        <span><button class="btn btn-mini" id="preview-custom" type="button">预览自定义草稿</button>
+        <button class="btn btn-mini" id="clear-custom" type="button">${h(t("custom.clear", "清空"))}</button></span>
       </div>
       <label class="fld" style="margin-bottom:8px"><span>${h(t("custom.name", "构建名称"))}</span>
         <input id="custom-name" value="Custom construct"></label>
@@ -634,6 +664,11 @@ function renderPanelScaffold() {
       <button id="save-custom" class="btn primary" type="button" style="width:100%" disabled>${h(t("custom.save", "确认并保存此组合"))}</button>
       <p id="custom-feedback" class="note" style="margin:8px 0 0"></p>
     </div>
+  </section>
+
+  <section data-step-content="7" hidden>
+    <h2>${h(t("step.overview", "任务详情"))}</h2>
+    <div id="task-overview"></div>
   </section>`;
   bindPanelControls();
   setStep(state.step);
@@ -645,7 +680,14 @@ function bindPanelControls() {
   $("design-select").addEventListener("change", () => selectDesign($("design-select").value));
   $("clear-custom").addEventListener("click", () => {
     state.customMutations = [];
+    state.previewMode = "construct";
     renderCustomBuilder();
+    renderSeqDock();
+    repaintViews();
+  });
+  $("preview-custom").addEventListener("click", () => {
+    if (!state.customMutations.length) return;
+    state.previewMode = "custom";
     renderSeqDock();
     repaintViews();
   });
@@ -663,6 +705,8 @@ function renderAll(repaint = true) {
   renderStep4();
   renderStep5();
   renderStep6();
+  renderStep7();
+  applyTaskIdentity();
   renderLegend();
   renderSeqDock();
   if (repaint) {
@@ -794,7 +838,7 @@ function criteriaText() {
     folding: t("crit.folding", "在表面标准上排除二硫键 Cys、注释糖基化/PTM 与低置信度位点；表示低预测风险，不是实验确认。"),
     interface: t("crit.interface", "任一目标重原子距非目标链或异质残基 ≤5 Å；功能界面保留风险标记。"),
     regions: t("crit.regions", `${state.result.partitioning.method}；实际 ${state.result.regions.length} 补丁，覆盖 ${fmtPct(state.result.partitioning.coverage)}。`),
-    design: t("crit.design", "FoldX 单点门与暴露度联动（+0.46/+0.60/+0.80）；组合门 +2.0 kcal/mol；探针内两两间距 ≥5.5 Å 且最大展开 ≤22 Å。"),
+    design: t("crit.design", `FoldX 单点门与暴露度联动（+0.46/+0.60/+0.80）；组合门 +2.0 kcal/mol；探针内两两间距 ≥5.5 Å 且最大展开 ≤${state.result.partitioning?.partition_mode === "compact_surface_face" ? 15 : 22} Å。`),
   }[state.layerFocus] || t("crit.default", "当前图层可与其他图层叠加显示。");
 }
 
@@ -804,12 +848,15 @@ function renderStep3() {
     const design = designByRegion.get(region.id);
     const mutations = design?.mutations?.map(notation).join(" · ") || t("region.noAuto", "无自动组合");
     const tier = region.tier ? ` · ${region.tier}` : "";
+    const accessibility = region.predicted_accessibility === "reduced"
+      ? ` · ${t("region.reducedAccessibility", "预测细胞表面可及性降低")} (${fmt(region.membrane_accessibility_score)})`
+      : "";
     return `<div class="rowline click" data-focus-region="${region.id}">
       <span class="swatch" style="background:${h(region.color)}"></span>
-      <span><b>${h(t("region.patch", "补丁"))} ${region.id} · ${h(region.name)}</b><br>
-      <span class="muted">${h(region.structural_character)} · ${h(region.membrane_position || "")}${h(tier)} · ${h(mutations)}</span></span>
-      <span class="grow"></span><span class="muted">${region.residues.length} ${h(t("region.sites", "位点"))}</span>
-    </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}</div>`;
+      <span><b>${h(region.partition_mode === "compact_surface_face" ? t("region.surfaceFace", "表面区域") : t("region.patch", "补丁"))} ${region.id} · ${h(region.name)}</b><br>
+      <span class="muted">${h(region.structural_character)} · ${h(region.membrane_position || "")}${h(tier)}${h(accessibility)} · ${h(mutations)}</span></span>
+      <span class="grow"></span><span class="muted">${(region.envelope_residues?.length || region.residues.length)} ${h(t("region.surfaceSites", "表面残基"))}<br>${(region.mutable_residues?.length || region.residues.length)} ${h(t("region.mutableSites", "可突变"))}</span>
+    </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}${region.footprint_residues?.length ? ` · ${h(t("region.footprint", "局部足迹"))} ${region.footprint_residues.length} ${h(t("region.sites", "位点"))}` : ""}</div>`;
   }).join("") || `<div class="empty">${h(t("region.none", "没有可辩护的结构分区。"))}</div>`;
   document.querySelectorAll("[data-focus-region]").forEach((el) => {
     el.addEventListener("click", () => {
@@ -905,6 +952,33 @@ function renderStep6() {
   renderCustomBuilder();
 }
 
+function renderStep7() {
+  const result = state.result;
+  const protein = result.protein || {};
+  const source = result.source || {};
+  const selection = result.structure_selection || {};
+  const summary = result.summary || {};
+  const partition = result.partitioning || {};
+  const request = result.request || {};
+  const files = Object.keys(result.files || {});
+  const row = (label, value) => `<dt>${h(label)}</dt><dd>${h(value ?? "—")}</dd>`;
+  $("task-overview").innerHTML = `<div class="card task-overview-card">
+    <h3>${h(taskName())}</h3><dl class="kv task-kv">
+    ${row(t("overview.accession", "UniProt / 输入标识"), protein.accession || request.identifier)}
+    ${row(t("overview.ecd", "ECD 范围"), protein.ecd_start && protein.ecd_end ? `${protein.ecd_start}–${protein.ecd_end} (${protein.ecd_sequence?.length || summary.mapped_ecd_residues || "—"} aa)` : "—")}
+    ${row(t("overview.topology", "拓扑注释"), protein.topology)}
+    ${row(t("overview.structure", "使用的结构"), selection.selected_identifier || source.identifier)}
+    ${row(t("overview.provider", "结构来源 / 类型"), [source.provider, source.kind].filter(Boolean).join(" / "))}
+    ${row(t("overview.chain", "目标链"), selection.selected_chain || selection.chain || "—")}
+    ${row(t("overview.confidence", "结构置信度"), result.methods?.confidence_method || (request.input_type === "af3_upload" ? "AF3 confidence JSON" : "—"))}
+    ${row(t("overview.run", "运行信息"), result.created_at || "—")}
+    ${row(t("overview.structureFile", "结构文件名"), source.identifier || selection.selected_identifier || "—")}
+    ${row(t("overview.summary", "结果摘要"), `${summary.mapped_ecd_residues ?? "—"} ECD residues · ${partition.actual_regions ?? result.regions.length} patches · ${result.designs.length} constructs`)}
+    ${row(t("overview.coverage", "表面覆盖率"), partition.coverage != null ? fmtPct(partition.coverage) : "—")}
+    ${row(t("overview.files", "导出文件"), files.length ? `${files.length} files: ${files.join(", ")}` : "—")}
+    </dl></div>`;
+}
+
 /* ---------------- residues ---------------- */
 
 function filteredResidues() {
@@ -936,7 +1010,7 @@ function renderResidueList() {
     const active = state.selectedResidue?.uniprot_pos === residue.uniprot_pos ? " active" : "";
     return `<button type="button" class="resrow${active}" data-residue="${residue.uniprot_pos}">
       <span class="id">${h(residue.aa)}${residue.uniprot_pos}</span>
-      <span class="main">${h(residue.domain)} · ${h(t("region.patch", "补丁"))} ${residue.region_id ?? "—"} · ${h(statusWord(residue))}${residue.interface ? ` · ${h(t("rd.interfaceShort", "界面"))}` : ""}</span>
+      <span class="main">${h(residue.domain)} · ${h(t("region.patch", "补丁"))} ${residue.region_id ?? "—"} · ${h(statusWord(residue))}${residue.interface ? ` · ${h(t("rd.interfaceShort", "界面"))}` : ""}${residue.engineered_neighborhood ? ` · ${h(t("rd.engineered", "结构差异邻域"))}` : ""}</span>
       <span class="muted">rSASA ${fmt(residue.rsasa)}</span>
     </button>`;
   }).join("") || `<div class="empty">${h(t("rd.listEmpty", "当前筛选没有残基。"))}</div>`;
@@ -1087,6 +1161,7 @@ function renderDesignSelect() {
 
 function selectDesign(id) {
   state.selectedDesign = id;
+  state.previewMode = "construct";
   renderDesignSelect();
   $("design-select").value = id;
   if (id !== "wt") state.layers.add("design");
@@ -1103,7 +1178,7 @@ function currentDesignSequences() {
   const wtAa = state.result.protein.ecd_sequence;
   const wtDna = state.result.protein.ecd_coding_sequence || [...wtAa].map((aa) => CODONS[aa]).join("");
   const map = {};
-  if (state.customMutations.length) {
+  if (state.previewMode === "custom" && state.customMutations.length) {
     state.customMutations.forEach((m) => { map[m.position] = m.mutant; });
   } else if (design) {
     design.mutations.forEach((m) => { map[m.position] = m.mutant; });
@@ -1122,7 +1197,7 @@ function currentDesignSequences() {
     designAa: out.join(""),
     designDna: dnaOut.join(""),
     map,
-    designLabel: state.customMutations.length
+    designLabel: state.previewMode === "custom" && state.customMutations.length
       ? `${t("seqdock.custom", "自定义")} · ${state.customMutations.length} ${t("region.sites", "位点")}`
       : design ? `${design.id} · ${design.mutations.map(notation).join("; ") || design.status}` : t("seqdock.wtControl", "WT 对照"),
     hasRealCds: Boolean(design?.mutant_coding_sequence || state.result.protein.ecd_coding_sequence),

@@ -13,7 +13,7 @@
 <header class="appbar">
   <div class="brand">
     <span class="brand-mark">E</span>
-    <div><strong>ECD Epitope Workbench</strong><small data-i18n="app.subtitle">胞外区结构分区组合突变设计</small></div>
+    <div><strong id="app-brand-title">ECD Epitope Workbench</strong><small id="app-brand-subtitle" data-i18n="app.subtitle">胞外区结构分区组合突变设计</small></div>
   </div>
   <form id="run-form" class="runbox">
     <span class="seg" role="radiogroup" data-i18n-aria="aria.inputType" aria-label="输入类型">
@@ -91,14 +91,14 @@
       <div class="seq-line">
         <span class="seq-tag">WT</span><span id="wt-meta" class="seq-meta"></span>
         <span class="grow"></span>
-        <button class="btn btn-mini" id="copy-wt-aa" type="button"><span data-i18n="seqdock.copyAA">⧉ 复制蛋白</span></button>
+        <button class="btn btn-mini" id="copy-wt-aa" type="button"><span data-i18n="seqdock.copyAA">⧉ 复制 ECD</span></button>
         <button class="btn btn-mini" id="copy-wt-nt" type="button"><span data-i18n="seqdock.copyCDS">⧉ 复制 CDS</span></button>
       </div>
       <div id="wt-sequence" class="seq-body" tabindex="0"></div>
       <div class="seq-line">
         <span class="seq-tag tag-design" data-i18n="seqdock.designTag">设计</span><span id="design-meta" class="seq-meta" data-i18n="seqdock.pickConstruct">选择构建体</span>
         <span class="grow"></span>
-        <button class="btn btn-mini" id="copy-design-aa" type="button"><span data-i18n="seqdock.copyAA">⧉ 复制蛋白</span></button>
+        <button class="btn btn-mini" id="copy-design-aa" type="button"><span data-i18n="seqdock.copyAA">⧉ 复制 ECD</span></button>
         <button class="btn btn-mini" id="copy-design-nt" type="button"><span data-i18n="seqdock.copyCDS">⧉ 复制 CDS</span></button>
       </div>
       <div id="design-sequence" class="seq-body" tabindex="0"></div>
@@ -145,7 +145,7 @@
       <span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
     <div class="dlg-actions">
       <button type="button" class="btn" id="close-af3" data-i18n="common.cancel">取消</button>
-      <button class="btn primary" type="submit" data-i18n="af3.submit">上传并继续作业</button>
+      <button id="af3-submit" class="btn primary" type="submit" data-i18n="af3.submit">上传并继续作业</button>
     </div>
   </form>
 </dialog>

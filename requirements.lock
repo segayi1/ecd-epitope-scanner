@@ -1,0 +1,12 @@
+biopython==1.87
+dnachisel==3.2.16
+fastapi==0.141.1
+gemmi==0.7.5
+httpx==0.28.1
+networkx==3.2.1
+numpy==1.26.4
+pandas==2.2.2
+pytest==9.1.1
+python-multipart==0.0.32
+requests==2.32.2
+uvicorn==0.49.0

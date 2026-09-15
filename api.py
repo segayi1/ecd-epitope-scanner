@@ -80,6 +80,20 @@ def _public_job(job: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
+def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    """Small list payload; full residue/design records stay on the detail API."""
+    result = job.get("result") or {}
+    protein = result.get("protein") or {}
+    summary = result.get("summary") or {}
+    return {
+        key: job[key] for key in ("id", "status", "stage", "progress", "message", "error", "created_at", "updated_at")
+    } | {
+        "accession": protein.get("accession"),
+        "regions": summary.get("regions"),
+        "recommended_constructs": summary.get("recommended_constructs"),
+    }
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     return {"status": "ok", "service": "ECD Epitope Workbench", "version": "1.0.0"}
@@ -92,7 +106,7 @@ def favicon() -> Response:
 
 @app.get("/api/jobs")
 def list_jobs() -> list[dict[str, Any]]:
-    return [_public_job(item) for item in STORE.list()]
+    return [_job_summary(item) for item in STORE.list()]
 
 
 @app.post("/api/jobs", status_code=202)
@@ -286,7 +300,10 @@ def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]
     if len({choice.position for choice in choices}) != len(choices):
         raise HTTPException(422, "Each residue may appear only once in a construct")
     mutant_sequence = apply_mutations(protein.ecd_sequence, choices, protein.ecd_start)
-    mutant_dna, dna_source = coding_fragment(protein, mutant_sequence, None)
+    # Preserve the original construct context: users may add a custom probe
+    # after an analysis specifically to order a full-length cell-surface clone.
+    original_cds = STORE.request_for(job_id).original_cds
+    mutant_dna, dna_source = coding_fragment(protein, mutant_sequence, original_cds)
     design = DesignRecord(
         id=f"CUSTOM_{len([item for item in designs if item.custom]) + 1:02d}",
         name=payload.name,
@@ -312,7 +329,7 @@ def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]
     from .exporting import write_scientific_outputs
 
     files = write_scientific_outputs(
-        output_dir, analysis, protein, records, regions, designs, original_cds=None
+        output_dir, analysis, protein, records, regions, designs, original_cds=original_cds
     )
     analysis["files"] = files
     write_json(output_dir / "analysis.json", analysis)
@@ -349,6 +366,10 @@ def job_file(job_id: str, filename: str) -> FileResponse:
     if safe != filename:
         raise HTTPException(400, "Invalid filename")
     path = Path(job["workdir"]) / safe
+    try:
+        path.resolve().relative_to(Path(job["workdir"]).resolve())
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid result path") from exc
     if not path.is_file():
         raise HTTPException(404, "Result file not found")
     media = "application/zip" if path.suffix == ".zip" else None

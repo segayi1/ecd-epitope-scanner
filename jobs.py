@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import sqlite3
+import shutil
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +38,7 @@ class JobStore:
                 """
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL DEFAULT 'local',
                     status TEXT NOT NULL,
                     stage TEXT NOT NULL,
                     progress REAL NOT NULL,
@@ -50,6 +52,11 @@ class JobStore:
                 )
                 """
             )
+            # SQLite has no portable ADD COLUMN IF NOT EXISTS.  Migrate
+            # workspaces created before job ownership was introduced.
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
+            if "owner_id" not in columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'local'")
             # Jobs left QUEUED/RUNNING by a previous process can never finish:
             # the single worker thread died with the old interpreter.  Mark them
             # failed so SSE streams terminate and the UI does not spin forever.
@@ -64,7 +71,7 @@ class JobStore:
             )
             connection.commit()
 
-    def create(self, request: PipelineRequest, job_id: str | None = None) -> dict[str, Any]:
+    def create(self, request: PipelineRequest, job_id: str | None = None, owner_id: str = "local") -> dict[str, Any]:
         job_id = job_id or uuid.uuid4().hex[:12]
         workdir = self.root / job_id
         workdir.mkdir(parents=True, exist_ok=True)
@@ -75,11 +82,12 @@ class JobStore:
             connection.execute(
                 """
                 INSERT INTO jobs
-                (id,status,stage,progress,message,request_json,result_json,error,workdir,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                (id,owner_id,status,stage,progress,message,request_json,result_json,error,workdir,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
+                    owner_id,
                     "QUEUED",
                     "QUEUED",
                     0.0,
@@ -125,9 +133,9 @@ class JobStore:
             connection.commit()
         return self.get(job_id)
 
-    def get(self, job_id: str) -> dict[str, Any]:
+    def get(self, job_id: str, owner_id: str = "local") -> dict[str, Any]:
         with self._connect() as connection:
-            row = connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+            row = connection.execute("SELECT * FROM jobs WHERE id=? AND owner_id=?", (job_id, owner_id)).fetchone()
         if row is None:
             raise KeyError(job_id)
         data = dict(row)
@@ -137,15 +145,41 @@ class JobStore:
         data["terminal"] = data["status"] in TERMINAL_STATUSES
         return data
 
-    def list(self, limit: int = 30) -> list[dict[str, Any]]:
+    def list(self, limit: int = 30, owner_id: str = "local") -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT id FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT id FROM jobs WHERE owner_id=? ORDER BY created_at DESC LIMIT ?", (owner_id, limit)
             ).fetchall()
-        return [self.get(row["id"]) for row in rows]
+        return [self.get(row["id"], owner_id) for row in rows]
 
-    def request_for(self, job_id: str) -> PipelineRequest:
-        return PipelineRequest(**self.get(job_id)["request"])
+    def request_for(self, job_id: str, owner_id: str = "local") -> PipelineRequest:
+        return PipelineRequest(**self.get(job_id, owner_id)["request"])
+
+    def cleanup_preview(self, include_test_output: bool = False) -> list[dict[str, Any]]:
+        """Return removable successful-run diagnostics without changing data."""
+        candidates: list[dict[str, Any]] = []
+        for job in self.list(limit=10_000):
+            if job["status"] != "COMPLETE":
+                continue
+            path = Path(job["workdir"]) / "engine_runs"
+            if path.exists():
+                size = sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
+                candidates.append({"job_id": job["id"], "path": str(path), "bytes": size})
+        if include_test_output:
+            test_output = self.root.parent / "test_output"
+            if test_output.exists():
+                size = sum(item.stat().st_size for item in test_output.rglob("*") if item.is_file())
+                candidates.append({"job_id": "test_output", "path": str(test_output), "bytes": size})
+        return candidates
+
+    def cleanup_successful_engine_runs(self) -> int:
+        removed = 0
+        for item in self.cleanup_preview():
+            path = Path(item["path"])
+            # This path comes from a known job workdir, not user input.
+            shutil.rmtree(path)
+            removed += int(item["bytes"])
+        return removed
 
 
 class JobRunner:
@@ -173,6 +207,11 @@ class JobRunner:
                 message="Starting pipeline",
                 error=None,
             )
+            # Final artefacts and source data remain; FoldX diagnostics are
+            # reproducible and are discarded only after a successful export.
+            engine_runs = Path(self.store.get(job_id)["workdir"]) / "engine_runs"
+            if engine_runs.exists():
+                shutil.rmtree(engine_runs)
 
             def progress(stage: str, value: float, message: str) -> None:
                 status = "COMPLETE" if stage == "COMPLETE" else "RUNNING"

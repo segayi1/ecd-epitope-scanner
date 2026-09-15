@@ -16,6 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
 
+    cleanup = sub.add_parser("cleanup", help="Preview or remove successful FoldX diagnostics")
+    cleanup.add_argument("--execute", action="store_true", help="Actually remove the previewed diagnostics")
+    cleanup.add_argument("--include-test-output", action="store_true")
+
     analyze = sub.add_parser("analyze", help="Run a reproducible ECD regional design")
     source = analyze.add_mutually_exclusive_group(required=True)
     source.add_argument("--uniprot")
@@ -38,9 +42,21 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "serve":
+        local_hosts = {"127.0.0.1", "localhost", "::1"}
+        if args.host.lower() not in local_hosts:
+            raise SystemExit("This local workbench only permits a loopback host. Public deployment requires a dedicated public runtime profile.")
         import uvicorn
 
         uvicorn.run("ecd_epitope_scanner.api:app", host=args.host, port=args.port, reload=False)
+        return 0
+    if args.command == "cleanup":
+        from .api import STORE
+
+        preview = STORE.cleanup_preview(args.include_test_output)
+        print(json.dumps({"candidates": preview, "bytes": sum(item["bytes"] for item in preview)}, ensure_ascii=False))
+        if args.execute:
+            removed = STORE.cleanup_successful_engine_runs()
+            print(json.dumps({"removed_engine_run_bytes": removed}, ensure_ascii=False))
         return 0
 
     ecd_start = ecd_end = None

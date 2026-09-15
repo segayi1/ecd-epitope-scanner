@@ -26,8 +26,31 @@ PATCH_GEODESIC_RADIUS_A = 13.0
 # Membership therefore also requires this EUCLIDEAN distance to the seed.
 PATCH_EUCLIDEAN_CAP_A = 18.0
 PATCH_MIN_RESIDUES = 8
+# A patch is an antibody footprint, not an arbitrary connected component.
+# These are pairwise hard limits checked after assignment/any merge.
+PATCH_MAX_EUCLIDEAN_DIAMETER_A = 26.0
+# Non-adjacent residues whose side chains point in strongly opposing
+# directions are generally opposite faces of a beta-sandwich, not one surface.
+PATCH_OPPOSING_FACE_COSINE_MAX = -0.80
 PATCH_MIN_SITE_SPACING_A = 5.0          # key sites inside one patch
 STAGE2_PERTURBATION_RADIUS_A = 10.0     # coverage-matrix neighbourhood
+
+# --- Compact single-domain surface-face rescue --------------------------------
+# These thresholds are deliberately separate from PATCH_*: they only apply
+# after the normal footprint workflow has failed its own quality checks for a
+# compact, single-domain ECD.  They must never retune legacy jobs.
+COMPACT_ECD_MAX_LENGTH_AA = 180
+COMPACT_DOMINANT_DOMAIN_MIN_FRACTION = 0.70
+COMPACT_MIN_ENVELOPE_RESIDUES = 30
+COMPACT_MIN_CORE_CONFIDENCE = 70.0
+COMPACT_MUTABLE_ENVELOPE_RATIO_TRIGGER = 0.65
+COMPACT_MAX_SURFACE_REGIONS = 3
+COMPACT_GRAPH_CONTACT_A = 10.5
+COMPACT_MIN_NORMAL_COSINE = -0.20
+COMPACT_FACE_SPLIT_DIAMETER_A = 28.0
+COMPACT_FOOTPRINT_GEODESIC_RADIUS_A = 13.0
+COMPACT_FOOTPRINT_EUCLIDEAN_CAP_A = 18.0
+COMPACT_COMBO_MAX_SPREAD_A = 15.0
 
 # Stage-1 panel budget scales with ECD size but never exceeds 7 patches:
 # each patch costs FoldX time linearly and a 7-construct panel already
@@ -35,6 +58,9 @@ STAGE2_PERTURBATION_RADIUS_A = 10.0     # coverage-matrix neighbourhood
 ADAPTIVE_REGIONS_DIVISOR = 22           # ~one patch per 22 ECD residues
 ADAPTIVE_REGIONS_CAP = 7
 ADAPTIVE_REGIONS_FLOOR = 3
+SMALL_ECD_LENGTH_AA = 100
+SMALL_ECD_SURFACE_RESIDUES = 40
+SMALL_ECD_FINE_MAP_WINDOW_RESIDUES = 3
 
 
 def adaptive_maximum_regions(ecd_length: int) -> int:
@@ -53,8 +79,14 @@ PRIOR_W_LOOP = 0.15                     # loop/turn secondary-structure fraction
 PRIOR_W_VARIABILITY = 0.15              # 1 - conservation (when available)
 PRIOR_W_INTERFACE = 0.05                # native-interface fraction (small bonus)
 PRIOR_PENALTY_GLYCAN = 0.10             # glycan-shielded fraction
-PRIOR_PENALTY_MEMRANE_PROXIMAL_CELL = 0.25  # cell_surface assay only
-MEMBRANE_PROXIMAL_PRIOR_SCALE = 0.5     # multiplicative fallback for cell assay
+# Cell-surface accessibility is now continuous.  The legacy value remains
+# only for reading old manifests; new runs calculate a geometry-informed
+# multiplicative penalty from MEMBRANE_ACCESSIBILITY_* below.
+PRIOR_PENALTY_MEMBRANE_PROXIMAL_CELL = 0.50
+MEMBRANE_ACCESSIBILITY_SCALE_A = 25.0
+MEMBRANE_ACCESSIBILITY_MIN_FACTOR = 0.35
+MEMBRANE_ACCESSIBILITY_REDUCED_THRESHOLD = 0.55
+MEMBRANE_ACCESSIBILITY_GLYCAN_PENALTY = 0.20
 
 # Tier assignment by prior rank among patches of one run.
 TIER_HIGH_FRACTION = 0.4
@@ -98,7 +130,9 @@ FLEXIBLE_TERMINAL_MIN_RESIDUES = 6
 FLEXIBLE_TERMINAL_MIN_SSE_FRACTION = 0.2
 
 # Combination enumeration.
-MAX_CANDIDATES_PER_SITE = 3
+MAX_CANDIDATES_PER_SITE = 2
+MAX_COMBINATIONS_PER_REGION = 512
+ENGINEERED_NEIGHBORHOOD_RADIUS_A = 6.0
 KEY_SITES_PER_PATCH = 5
 MIN_COMBO_SITES = 3
 MAX_COMBO_SITES = 6

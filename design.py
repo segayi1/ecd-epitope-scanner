@@ -46,11 +46,16 @@ def _distance(left: ResidueRecord, right: ResidueRecord) -> float:
 def _site_priority(record: ResidueRecord) -> float:
     score = record.rsasa * 2.0 + min(1.2, record.sidechain_sasa / 100.0)
     score += 0.6 / (1 + record.contacts / 6.0)
-    score += 0.25 if record.interface else 0.0
+    # Interface exposure can look attractive geometrically, but a binding loss
+    # caused by disrupted native assembly is hard to interpret in a
+    # cell-surface assay.  Keep these sites available, but prefer a non-
+    # interface alternative whenever one exists.
+    score -= 0.30 if record.interface else 0.0
     score -= 0.35 if record.salt_bridge else 0.0
     score -= 0.25 if record.domain_interface else 0.0
     score -= 0.35 if record.glycan_shielded else 0.0
     score -= 0.45 if record.aa in "GP" else 0.0
+    score -= 0.60 if record.engineered_neighborhood else 0.0
     if record.conservation_score is not None:
         # Variable (low-conservation) sites are likelier antigenic and cheaper
         # to mutate functionally; fully conserved sites are downweighted.
@@ -251,7 +256,9 @@ def _combo_is_valid(
     by_position: dict[int, ResidueRecord],
     measured: bool,
     require_anchor: bool,
+    max_combo_spread: float | None = None,
 ) -> tuple[bool, str]:
+    max_combo_spread = max_combo_spread or config.MAX_COMBO_SPREAD_A
     records = [by_position[item.position] for item in mutations]
     for index, left in enumerate(records):
         for right in records[index + 1 :]:
@@ -260,7 +267,7 @@ def _combo_is_valid(
                 return False, "spacing"
             # Probe must fit inside one antibody footprint: mutations spread
             # across opposite faces cannot perturb one paratope together.
-            if distance > config.MAX_COMBO_SPREAD_A:
+            if distance > max_combo_spread:
                 return False, "spread"
     if require_anchor and not any(is_anchor(record, choice.mutant) for record, choice in zip(records, mutations)):
         return False, "anchor"
@@ -315,6 +322,7 @@ def _enumerate_combinations(
     scans: dict[int, list[MutationChoice]],
     by_position: dict[int, ResidueRecord],
     measured: bool,
+    max_combo_spread: float | None = None,
 ) -> tuple[list[tuple[float, float, list[MutationChoice]]], list[str]]:
     """Exhaustive search over the cleared per-site menus.
 
@@ -330,13 +338,19 @@ def _enumerate_combinations(
 
     def search(require_anchor: bool, min_sites: int) -> list[tuple[float, float, list[MutationChoice]]]:
         scored: list[tuple[float, float, list[MutationChoice]]] = []
+        considered = 0
         maximum = min(config.MAX_COMBO_SITES, len(active_sites))
         for size in range(maximum, min_sites - 1, -1):
             for site_subset in itertools.combinations(active_sites, size):
                 pools = [menu[record.uniprot_pos] for record in site_subset]
                 for picks in itertools.product(*pools):
+                    considered += 1
+                    if considered > config.MAX_COMBINATIONS_PER_REGION:
+                        return _pareto_front(scored)
                     mutations = list(picks)
-                    valid, _ = _combo_is_valid(mutations, by_position, measured, require_anchor)
+                    valid, _ = _combo_is_valid(
+                        mutations, by_position, measured, require_anchor, max_combo_spread
+                    )
                     if not valid:
                         continue
                     scored.append(
@@ -461,7 +475,7 @@ def _coverage_matrix(
         for region in regions:
             reach = 0
             considered = 0
-            for position in region.residues:
+            for position in (region.envelope_residues or region.residues):
                 record = by_position.get(position)
                 if record is None or record.ca is None:
                     continue
@@ -503,6 +517,24 @@ def _apply_plm_evidence(
                 choice.reasons.append("consensus veto: PLM strongly deleterious")
 
 
+def _annotate_design_risks(
+    designs: list[DesignRecord], by_position: dict[int, ResidueRecord]
+) -> None:
+    """Preserve interpretation risks next to every exported construct."""
+    for design in designs:
+        items = [by_position[item.position] for item in design.mutations if item.position in by_position]
+        if any(item.interface for item in items):
+            design.warnings.append(
+                "Native interface mutation present: interpret binding loss only with surface-expression and assembly/function controls."
+            )
+        if any(item.engineered_neighborhood for item in items):
+            design.warnings.append(
+                "Mutation lies in an engineered-structure mismatch neighbourhood; target-sequence structural review is required."
+            )
+            if design.design_role == "STAGE1_PROBE" and design.status == "RECOMMENDED_LOW_PREDICTED_RISK":
+                design.status = "REVIEW_REQUIRED"
+
+
 def design_regions(
     regions: list[RegionRecord],
     records: list[ResidueRecord],
@@ -542,7 +574,16 @@ def design_regions(
     pareto_fronts: dict[str, list[dict[str, Any]]] = {}
 
     for region in regions:
-        items = [by_position[position] for position in region.residues if position in by_position]
+        # `residues` remains the legacy-compatible active footprint.  Compact
+        # surface-face regions additionally expose all mutable face positions,
+        # but Stage-1 must stay inside their local footprint.
+        active_positions = region.footprint_residues or region.residues
+        items = [by_position[position] for position in active_positions if position in by_position]
+        max_combo_spread = (
+            config.COMPACT_COMBO_MAX_SPREAD_A
+            if region.partition_mode == "compact_surface_face"
+            else config.MAX_COMBO_SPREAD_A
+        )
         if not region.auto_design_allowed:
             designs.append(
                 _make_design(
@@ -573,7 +614,9 @@ def design_regions(
                 key_sites, scans, by_position, inventory.foldx_path, foldx_repaired, workdir
             )
         measured = bool(inventory.foldx_path and foldx_repaired)
-        front, downgrade_notes = _enumerate_combinations(key_sites, scans, by_position, measured)
+        front, downgrade_notes = _enumerate_combinations(
+            key_sites, scans, by_position, measured, max_combo_spread
+        )
         for note in downgrade_notes:
             downgrades.append(f"Patch {region.id}: {note}")
 
@@ -631,7 +674,7 @@ def design_regions(
                 (
                     f"Stage-1 probe: knee of the exhaustive Pareto front ({len(front)} non-dominated combinations; "
                     f"{len(best)} substitutions, spacing >= {config.MIN_COMBO_SPACING_A:g} A, "
-                    f"spread <= {config.MAX_COMBO_SPREAD_A:g} A). Alternates cover the aggressive end."
+                    f"spread <= {max_combo_spread:g} A). Alternates cover the aggressive end."
                 ),
                 ["Computational low-risk classification is not experimental proof of preserved folding."],
                 role="STAGE1_PROBE",
@@ -703,6 +746,7 @@ def design_regions(
                 )
             )
 
+    _annotate_design_risks(designs, by_position)
     foldx_diagnostics: dict[str, Any] = {}
     scored_designs = [design for design in designs if design.mutations]
     if inventory.foldx_path and structure_pdb and foldx_repaired and scored_designs:
@@ -718,6 +762,17 @@ def design_regions(
             design for design in scored_designs
             if design.design_role in {"STAGE2_SINGLE", "STAGE2_PAIRWISE"}
         ]
+        # Stage-2 singles are identical to substitutions already measured in
+        # the FoldX one-run screen.  Reuse that audited measurement instead
+        # of launching the same BuildModel job again.
+        reused_single_designs = [
+            design
+            for design in stage2_designs
+            if design.design_role == "STAGE2_SINGLE"
+            and len(design.mutations) == 1
+            and design.mutations[0].foldx_ddg is not None
+        ]
+        stage2_to_score = [design for design in stage2_designs if design not in reused_single_designs]
 
         def _groups(selected: list[DesignRecord]) -> list[list[tuple[str, int, str, str]]]:
             return [
@@ -744,12 +799,14 @@ def design_regions(
         stage2_scores = score_many_with_foldx(
             inventory.foldx_path,
             foldx_repaired,
-            _groups(stage2_designs),
+            _groups(stage2_to_score),
             workdir,
             runs=config.FOLDX_STAGE2_RUNS,
             already_repaired=True,
         )
-        n_failed = sum(1 for item in list(panel_scores) + list(stage2_scores) if item is None)
+        reused_scores = [design.mutations[0].foldx_ddg for design in reused_single_designs]
+        all_scores = list(panel_scores) + list(reused_scores) + list(stage2_scores)
+        n_failed = sum(1 for item in all_scores if item is None)
         total = len(panel_designs) + len(stage2_designs)
         foldx_diagnostics = {
             "batch_constructs": total,
@@ -759,6 +816,7 @@ def design_regions(
             "stage2_runs": config.FOLDX_STAGE2_RUNS,
             "batch_scores_returned": total - n_failed,
             "batch_scores_failed": n_failed,
+            "stage2_single_scores_reused": len(reused_single_designs),
             "single_gate_kcal_mol": {
                 "exposed": config.FOLDX_GATE_EXPOSED,
                 "edge": config.FOLDX_GATE_EDGE,
@@ -768,9 +826,12 @@ def design_regions(
             "all_failed": bool(total) and n_failed == total,
         }
         panel_ids = {id(design) for design in panel_designs}
-        for design, foldx_score in list(zip(panel_designs, panel_scores)) + list(
-            zip(stage2_designs, stage2_scores)
-        ):
+        scored_pairs = (
+            list(zip(panel_designs, panel_scores))
+            + list(zip(reused_single_designs, reused_scores))
+            + list(zip(stage2_to_score, stage2_scores))
+        )
+        for design, foldx_score in scored_pairs:
             if foldx_score is None:
                 # score_origin stays "proxy": the number on the record is the
                 # proxy, never kcal/mol.

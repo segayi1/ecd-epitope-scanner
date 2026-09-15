@@ -419,7 +419,7 @@ def score_with_foldx(
                 f"--numberOfRuns={runs}",
             ],
             temp,
-            _buildmodel_timeout(len(mutation_groups), runs) if mutation_groups else 1800,
+            _buildmodel_timeout(1, runs) if mutations else 1800,
         )
         if build is None or build.returncode:
             return None

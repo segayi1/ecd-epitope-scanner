@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import math
 import re
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean
@@ -16,6 +14,7 @@ from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.SASA import ShrakeRupley
 
+from . import config
 from .models import ProteinContext, ResidueRecord
 from .util import PipelineError
 
@@ -104,6 +103,7 @@ class ChainMapping:
     observed_ecd_coverage: float
     max_internal_gap: int
     engineered_mismatches: int
+    mismatch_positions: list[int] = field(default_factory=list)
 
 
 def _parse_mmcif_metadata(path: Path) -> tuple[
@@ -210,7 +210,7 @@ def standard_residues(chain: Any) -> list[Any]:
     ]
 
 
-def _alignment_map(target: str, query: str) -> tuple[dict[int, int], float, int]:
+def _alignment_map(target: str, query: str) -> tuple[dict[int, int], float, int, list[int]]:
     aligner = PairwiseAligner()
     aligner.mode = "global"
     aligner.match_score = 2.0
@@ -224,6 +224,7 @@ def _alignment_map(target: str, query: str) -> tuple[dict[int, int], float, int]
     mapping: dict[int, int] = {}
     matches = 0
     mismatches = 0
+    mismatch_positions: list[int] = []
     for column in range(coordinates.shape[1] - 1):
         t0, t1 = int(coordinates[0, column]), int(coordinates[0, column + 1])
         q0, q1 = int(coordinates[1, column]), int(coordinates[1, column + 1])
@@ -236,8 +237,9 @@ def _alignment_map(target: str, query: str) -> tuple[dict[int, int], float, int]
                 matches += 1
             else:
                 mismatches += 1
+                mismatch_positions.append(t0 + offset + 1)
     identity = matches / max(1, matches + mismatches)
-    return mapping, identity, mismatches
+    return mapping, identity, mismatches, mismatch_positions
 
 
 def map_chain_to_uniprot(
@@ -249,7 +251,7 @@ def map_chain_to_uniprot(
     query = "".join(_one_letter(residue.resname) for residue in residues)
     if len(query) < 8:
         raise PipelineError(f"Chain {chain_id} contains too few mapped amino-acid residues")
-    query_map, identity, mismatches = _alignment_map(protein.sequence, query)
+    query_map, identity, mismatches, mismatch_positions = _alignment_map(protein.sequence, query)
     uniprot_to_residue = {query_map[i]: residue for i, residue in enumerate(residues) if i in query_map}
     observed = sorted(
         pos for pos in uniprot_to_residue if protein.ecd_start <= pos <= protein.ecd_end
@@ -275,6 +277,7 @@ def map_chain_to_uniprot(
         observed_ecd_coverage=coverage,
         max_internal_gap=longest,
         engineered_mismatches=mismatches,
+        mismatch_positions=mismatch_positions,
     )
 
 
@@ -389,45 +392,8 @@ def write_mapped_ecd_pdb(
     return path
 
 
-def _sasa_with_freesasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tuple[str, int, str], tuple[float, float]], str] | None:
-    if shutil.which("freesasa") is None:
-        try:
-            import freesasa  # type: ignore
-        except ImportError:
-            return None
-    try:
-        import freesasa  # type: ignore
-
-        pdb_path = write_pdb(parsed, workdir / "sasa_input.pdb")
-        fs_structure = freesasa.Structure(str(pdb_path))
-        result = freesasa.calc(
-            fs_structure,
-            freesasa.Parameters({"algorithm": freesasa.ShrakeRupley, "n-points": 960, "probe-radius": 1.4}),
-        )
-        areas = result.residueAreas()
-        output: dict[tuple[str, int, str], tuple[float, float]] = {}
-        for chain_id, residues in areas.items():
-            for residue_id, area in residues.items():
-                match = re.match(r"(-?\d+)([A-Za-z]?)", str(residue_id))
-                if not match:
-                    continue
-                output[(chain_id.strip(), int(match.group(1)), match.group(2))] = (
-                    float(area.total),
-                    float(area.sideChain),
-                )
-        return output, (
-            "FreeSASA Shrake-Rupley 1.4A/960 points"
-            " (FreeSASA default classifier radii -- not pinned to the"
-            " Tien-2013/DSSP set; cross-check against the Bio.PDB fallback)"
-        )
-    except Exception:
-        return None
-
-
 def calculate_sasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tuple[str, int, str], tuple[float, float]], str]:
-    free = _sasa_with_freesasa(parsed, workdir)
-    if free is not None:
-        return free
+    """Production SASA: one deterministic, pinned-radius implementation."""
     calculator = ShrakeRupley(
         probe_radius=1.4,
         n_points=960,
@@ -515,6 +481,24 @@ def _distance(a: tuple[float, float, float] | np.ndarray, b: tuple[float, float,
     return float(np.linalg.norm(np.asarray(a, dtype=float) - np.asarray(b, dtype=float)))
 
 
+def _sidechain_direction(residue: Any) -> tuple[float, float, float] | None:
+    """Return a local outward proxy without requiring a molecular surface mesh."""
+    if not residue.has_id("CA"):
+        return None
+    sidechain_atoms = [
+        np.asarray(atom.coord, dtype=float)
+        for atom in residue
+        if atom.name not in BACKBONE_ATOMS and atom.element != "H"
+    ]
+    if not sidechain_atoms:
+        return None
+    vector = np.mean(sidechain_atoms, axis=0) - np.asarray(residue["CA"].coord, dtype=float)
+    length = float(np.linalg.norm(vector))
+    if length < 1e-6:
+        return None
+    return tuple(float(value) for value in vector / length)
+
+
 def analyze_residues(
     parsed: ParsedStructure,
     mapping: ChainMapping,
@@ -522,8 +506,8 @@ def analyze_residues(
     workdir: Path,
     predicted: bool = False,
     confidence: dict[str, Any] | None = None,
-    rsasa_threshold: float = 0.25,
-    sidechain_sasa_threshold: float = 20.0,
+    rsasa_threshold: float = config.RSASA_THRESHOLD,
+    sidechain_sasa_threshold: float = config.SIDECHAIN_SASA_THRESHOLD_A2,
     plddt_threshold: float = 70.0,
 ) -> tuple[list[ResidueRecord], dict[str, Any]]:
     sasa, sasa_method = calculate_sasa(parsed, workdir)
@@ -632,7 +616,10 @@ def analyze_residues(
             hard.append("low-pLDDT")
         if aa in "GP":
             risks.append("backbone-conformation-sensitive")
-        secondary = parsed.secondary_lookup.get((mapping.chain_id, auth_seq, icode), parsed.secondary_lookup.get((mapping.chain_id, auth_seq, ""), "C"))
+        secondary = parsed.secondary_lookup.get(
+            (mapping.chain_id, auth_seq, icode),
+            parsed.secondary_lookup.get((mapping.chain_id, auth_seq, ""), "U"),
+        )
         if secondary == "E":
             risks.append("beta-strand")
         if salt_bridge:
@@ -654,6 +641,7 @@ def analyze_residues(
             label_seq_id=label_seq,
             residue_name=residue.resname,
             ca=ca,
+            sidechain_direction=_sidechain_direction(residue),
             sasa=round(total_sasa, 3),
             sidechain_sasa=round(side_sasa, 3),
             rsasa=round(rsasa, 4),

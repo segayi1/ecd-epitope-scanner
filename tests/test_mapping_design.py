@@ -19,6 +19,7 @@ from ecd_epitope_scanner.design import (
 from ecd_epitope_scanner.models import ProteinContext, ResidueRecord
 from ecd_epitope_scanner.partitioning import partition_surface
 from ecd_epitope_scanner.stability import evaluate_substitution, is_anchor
+from ecd_epitope_scanner.util import PipelineError
 
 
 def make_record(
@@ -170,7 +171,7 @@ def test_combo_rejects_footprint_overflow():
     assert valid, "3 sites within one footprint (spread 20 A) must stay valid"
 
 
-def test_assignment_falls_back_when_geodesic_nearest_is_euclidean_far():
+def test_assignment_never_stretches_a_patch_when_no_local_seed_exists():
     """Surface-geodesic distance wraps around thin sheets: a residue 13 A
     along the graph but 50 A through space must not join the far seed."""
     import networkx as nx
@@ -193,10 +194,8 @@ def test_assignment_falls_back_when_geodesic_nearest_is_euclidean_far():
     graph.add_edge(4, 5, weight=8.0, euclidean=8.0)
     assignments = _assign_to_patches(graph, records, [1, 4])
     assert sorted(assignments[1]) == [1, 2]
-    assert sorted(assignments[4]) == [3, 4, 5], (
-        "residue 3 is beyond the euclidean cap of both seeds; it must fall back "
-        "to the spatially nearest seed, not the geodesically nearest one"
-    )
+    assert sorted(assignments[4]) == [4, 5]
+    assert assignments[3] == [3], "a stray residue must seed its own patch rather than stretch another patch"
 
 
 def test_key_sites_respect_minimum_spacing():
@@ -222,7 +221,7 @@ def _cluster(offset: float, start: int, count: int, aa: str = "K") -> list[Resid
         make_record(
             start + index,
             aa,
-            (offset + 6.0 * index, 0.0, 0.0),
+            (offset + 2.0 * index, 0.0, 0.0),
         )
         for index in range(count)
     ]
@@ -251,16 +250,91 @@ def test_distant_surfaces_form_separate_patches():
     }
 
 
+def test_compact_single_domain_rescue_uses_continuous_envelope_not_sparse_mutants():
+    """Protected surface nodes must preserve compact-domain geometry.
+
+    The legacy footprint route intentionally sees many local patches on this
+    circular surface.  The rescue router is allowed to activate only because
+    the ECD is a compact, dominant single domain and the old result is
+    pathological; it returns at most three continuous surface faces.
+    """
+    import math
+
+    protein = make_protein("K" * 60)
+    records = []
+    for position in range(1, 61):
+        theta = 2.0 * math.pi * (position - 1) / 60.0
+        record = make_record(position, "K", (20.0 * math.cos(theta), 20.0 * math.sin(theta), 0.0))
+        record.domain = "Ig-like V-type"
+        record.plddt = 90.0
+        # Every fifth residue is protected but remains part of the surface
+        # envelope.  Removing it before partitioning would create islands.
+        if position % 5 == 0:
+            record.folding_screen_pass = False
+        records.append(record)
+    regions, summary = partition_surface(records, protein, maximum_regions=7)
+    assert summary["partition_mode"] == "compact_surface_face"
+    assert 1 <= len(regions) <= config.COMPACT_MAX_SURFACE_REGIONS
+    assert all(region.surface_connectivity == "connected" for region in regions)
+    assert sum(len(region.envelope_residues) for region in regions) == len(records)
+    assert any(region.protected_surface_residues for region in regions)
+    assert all(
+        set(region.footprint_residues).issubset(set(region.mutable_residues))
+        for region in regions
+    )
+
+
+def test_compact_probe_has_a_stricter_spread_gate():
+    records, _ = _site_setup()
+    mutations = [
+        evaluate_substitution(records[1], "E", make_protein("K" * 4)),
+        evaluate_substitution(records[3], "E", make_protein("K" * 4)),
+    ]
+    # The synthetic endpoints are 20 A apart: legal in the legacy 22 A
+    # footprint but not in the 15 A compact-domain probe footprint.
+    assert _combo_is_valid(mutations, records, measured=False, require_anchor=False)[0]
+    assert not _combo_is_valid(
+        mutations, records, measured=False, require_anchor=False,
+        max_combo_spread=config.COMPACT_COMBO_MAX_SPREAD_A,
+    )[0]
+
+
+def test_opposing_beta_sandwich_faces_are_not_connected_by_ca_proximity():
+    from ecd_epitope_scanner.partitioning import _build_graph
+
+    left = make_record(1, "K", (0.0, 0.0, 0.0))
+    right = make_record(5, "K", (5.0, 0.0, 0.0))
+    left.sidechain_direction = (1.0, 0.0, 0.0)
+    right.sidechain_direction = (-1.0, 0.0, 0.0)
+    graph = _build_graph([left, right])
+    assert not graph.has_edge(1, 5), "opposing faces must not become one surface patch"
+
+
+def test_patch_hard_diameter_limits_are_never_exceeded():
+    protein = make_protein("K" * 12)
+    records = [make_record(index, "K", (float(index * 6), 0.0, 0.0)) for index in range(1, 13)]
+    regions, _ = partition_surface(records, protein, maximum_regions=3)
+    by_position = {record.uniprot_pos: record for record in records}
+    for region in regions:
+        assert all(
+            ((by_position[left].ca[0] - by_position[right].ca[0]) ** 2) ** 0.5
+            <= config.PATCH_MAX_EUCLIDEAN_DIAMETER_A
+            for left in region.residues for right in region.residues
+        )
+
+
 def test_cell_surface_assay_downweights_membrane_proximal_patches():
     protein = make_protein("K" * 18)
     records = _cluster(0.0, 1, 9) + _cluster(120.0, 10, 9)
     # One patch sits at the membrane anchor (last residue of the sequence).
     protein.membrane_anchor_position = 18
     regions_purified, purified_summary = partition_surface(
-        records, protein, maximum_regions=8, assay_format="purified"
+        records, protein, maximum_regions=8, assay_format="purified",
+        membrane_anchor=(130.0, 0.0, 0.0), membrane_normal=(-1.0, 0.0, 0.0),
     )
     regions_cell, cell_summary = partition_surface(
-        records, protein, maximum_regions=8, assay_format="cell_surface"
+        records, protein, maximum_regions=8, assay_format="cell_surface",
+        membrane_anchor=(130.0, 0.0, 0.0), membrane_normal=(-1.0, 0.0, 0.0),
     )
     purified_priors = {row["patch_id"]: row["epitope_prior"] for row in purified_summary["coverage_plan"]}
     cell_priors = {row["patch_id"]: row["epitope_prior"] for row in cell_summary["coverage_plan"]}
@@ -304,11 +378,45 @@ def test_conservation_requires_three_orthologs(tmp_path: Path):
     protein.raw = {"genes": [{"geneName": {"value": "TEST1"}}]}
     payload = {"results": [{"primaryAccession": "P1", "sequence": {"value": "AAAA"}}]}
     assert fetch_conservation(protein, _StubClient(payload), tmp_path) is None
+    assert "insufficient" in (tmp_path / "conservation.json").read_text(encoding="utf-8")
 
 
 def test_conservation_without_gene_returns_none(tmp_path: Path):
     protein = make_protein("AAAA")
     assert fetch_conservation(protein, _StubClient({"results": []}), tmp_path) is None
+
+
+def test_conservation_ignores_malformed_records_without_keyerror(tmp_path: Path):
+    protein = make_protein("AAAA")
+    protein.raw = {"genes": [{"geneName": {"value": "TEST1"}}]}
+    payload = {
+        "results": [{"primaryAccession": "BAD", "sequence": {}}]
+        + [
+            {"primaryAccession": f"P{i}", "sequence": {"value": "AAAA"}}
+            for i in range(1, 4)
+        ]
+    }
+    assert fetch_conservation(protein, _StubClient(payload), tmp_path) is not None
+    assert '"status": "computed"' in (tmp_path / "conservation.json").read_text(encoding="utf-8")
+
+
+def test_gene_symbol_resolution_is_human_and_unambiguous():
+    from ecd_epitope_scanner.retrieval import resolve_uniprot_identifier
+
+    class Resolver:
+        def json(self, url: str):
+            if "PECAM1.json" in url:
+                raise PipelineError("not an accession")
+            return {
+                "results": [
+                    {
+                        "primaryAccession": "P16284",
+                        "organism": {"taxonId": 9606},
+                    }
+                ]
+            }
+
+    assert resolve_uniprot_identifier("PECAM1", Resolver()) == ("P16284", "gene_symbol")
 
 
 # --------------------------------------------------------------------------
@@ -399,6 +507,30 @@ def test_flexible_terminal_residues_are_excluded_from_patches():
     assert in_patches == set(range(8, 13)), "flagged tail residues must not enter any patch"
     assert summary["excluded_flexible_terminal_residues"] == 7
     assert any("flexible terminal" in warning for warning in summary["warnings"])
+
+
+def test_membrane_accessibility_is_continuous_not_binary_exclusion():
+    protein = make_protein("K" * 12)
+    protein.membrane_anchor_position = 12
+    records = [
+        make_record(index, "K", (float(index * 5), 0.0, 0.0))
+        for index in range(1, 13)
+    ]
+    regions, summary = partition_surface(
+        records, protein, maximum_regions=3, assay_format="cell_surface",
+        membrane_anchor=(60.0, 0.0, 0.0), membrane_normal=(-1.0, 0.0, 0.0),
+    )
+    assert summary["membrane_accessibility_model"] != "unknown"
+    assert all(region.membrane_accessibility_score is not None for region in regions)
+    assert all(region.predicted_accessibility in {"normal", "reduced"} for region in regions)
+
+
+def test_engineered_neighborhood_is_deprioritised_for_key_site_selection():
+    regular = make_record(1, "K", (0.0, 0.0, 0.0))
+    mismatch = make_record(2, "K", (20.0, 0.0, 0.0))
+    mismatch.engineered_neighborhood = True
+    selected = select_key_sites([mismatch, regular], limit=1)
+    assert selected == [regular]
 
 
 def test_split_groups_makes_near_equal_chunks():

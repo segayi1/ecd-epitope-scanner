@@ -187,7 +187,7 @@ body {
 .seqdock {
   border-top: 1px solid var(--line);
   background: var(--surface);
-  max-height: 42dvh;
+  max-height: min(42dvh, 360px);
   display: flex; flex-direction: column;
 }
 .seqdock-head {
@@ -209,7 +209,7 @@ body {
 .seq-tag.tag-design { background: var(--red); }
 .seq-meta { color: var(--muted); font-size: 11px; }
 .seq-body {
-  overflow: auto; max-height: 110px;
+  overflow: auto; max-height: 110px; min-height: 42px;
   padding: 6px 12px 8px;
   font: 12px/1.6 ui-monospace, Consolas, monospace;
   word-break: break-all;

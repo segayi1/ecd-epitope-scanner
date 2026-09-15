@@ -91,12 +91,17 @@ class ResidueRecord:
     label_seq_id: int | None = None
     residue_name: str = ""
     ca: tuple[float, float, float] | None = None
+    # Unit vector from C-alpha towards the side-chain heavy-atom centroid.
+    # It is a local outward-facing proxy used to prevent graph edges joining
+    # opposing faces of beta-sandwich domains.
+    sidechain_direction: tuple[float, float, float] | None = None
     sasa: float = 0.0
     sidechain_sasa: float = 0.0
     rsasa: float = 0.0
     contacts: int = 0
     plddt: float | None = None
-    secondary_structure: str = "C"
+    # H/E/C when supplied or calculated; U means unavailable, never coil.
+    secondary_structure: str = "U"
     domain: str = "ECD"
     interface: bool = False
     interface_partners: list[str] = field(default_factory=list)
@@ -120,6 +125,10 @@ class ResidueRecord:
     # Terminal run with no observed secondary structure (docs: linear-epitope
     # candidate, excluded from patch design by default).
     flexible_terminal: bool = False
+    # Position lies close to a residue where the selected structure differs
+    # from the canonical UniProt sequence.  These positions remain auditable
+    # but are deprioritised for automatic probes.
+    engineered_neighborhood: bool = False
 
 
 @dataclass(slots=True)
@@ -142,8 +151,22 @@ class RegionRecord:
     epitope_prior: float | None = None      # dimensionless 0..~1
     prior_components: dict[str, float] = field(default_factory=dict)
     tier: str = "MEDIUM"                    # HIGH | MEDIUM | LOW
-    assay_accessible: bool = True           # IgG reachability for the assay format
+    assay_accessible: bool = True           # backwards-compatible binary view
+    predicted_accessibility: str = "normal" # normal | reduced | unknown
+    membrane_accessibility_score: float | None = None  # continuous 0..1
     required_probe_coverage: int = 1        # primary + alternates demanded by plan
+    # Compact single-domain mode separates the continuous surface geometry
+    # from the subset that is safe to mutate.  `residues` remains the active
+    # design footprint for backwards-compatible callers.
+    partition_mode: str = "footprint"       # footprint | compact_surface_face
+    envelope_residues: list[int] = field(default_factory=list)
+    mutable_residues: list[int] = field(default_factory=list)
+    protected_surface_residues: list[int] = field(default_factory=list)
+    footprint_residues: list[int] = field(default_factory=list)
+    footprint_center: int | None = None
+    surface_connectivity: str = "not_assessed"
+    normal_coherence: float | None = None
+    quality_flags: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

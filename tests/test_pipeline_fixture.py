@@ -67,6 +67,12 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     assert (output / "ecd_epitope_design.zip").is_file()
     assert (output / "run_manifest.json").is_file()
     assert (output / "methods_report.md").is_file()
+    offline = output / "offline_report.html"
+    assert offline.is_file()
+    offline_text = offline.read_text(encoding="utf-8")
+    assert "__DATA__" not in offline_text
+    assert "__PDB__" not in offline_text
+    assert "file://" not in offline_text
     assert (output / "panel_coverage_matrix.csv").is_file()
     assert (output / "full_length_protein_sequences.fasta").is_file()
 

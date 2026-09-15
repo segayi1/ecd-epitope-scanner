@@ -101,6 +101,40 @@ def _synthetic_context(request: PipelineRequest) -> ProteinContext:
     )
 
 
+def _transmembrane_geometry(
+    mapping: ChainMapping, protein: ProteinContext
+) -> tuple[tuple[float, float, float] | None, tuple[float, float, float] | None]:
+    """Derive membrane orientation only from an observed TM segment.
+
+    A low-confidence ECD stalk is not a membrane landmark.  Missing TM
+    coordinates therefore produce an explicit unknown orientation.
+    """
+    tm_residues = [
+        residue for position, residue in mapping.uniprot_to_residue.items()
+        if protein.membrane_anchor_position < position <= protein.membrane_anchor_position + 35
+        and residue.has_id("CA")
+    ]
+    ecd_residues = [
+        residue for position, residue in mapping.uniprot_to_residue.items()
+        if protein.ecd_start <= position <= protein.ecd_end and residue.has_id("CA")
+    ]
+    if len(tm_residues) < 8 or len(ecd_residues) < 3:
+        return None, None
+    tm_coordinates = np.asarray([residue["CA"].coord for residue in tm_residues], dtype=float)
+    tm_center = np.mean(tm_coordinates, axis=0)
+    ecd_center = np.mean([residue["CA"].coord for residue in ecd_residues], axis=0)
+    # The principal axis of a sufficiently long TM helix is the membrane
+    # normal.  Orient its sign towards the ECD; do not use the ECD centroid as
+    # the axis itself, because a tilted/asymmetric ectodomain would bias it.
+    _, _, axes = np.linalg.svd(tm_coordinates - tm_center, full_matrices=False)
+    normal = axes[0]
+    if float(np.dot(normal, ecd_center - tm_center)) < 0:
+        normal = -normal
+    if float(np.linalg.norm(normal)) < 1e-6:
+        return None, None
+    return tuple(float(value) for value in tm_center), tuple(float(value) for value in normal)
+
+
 def _domain_coverage(protein: ProteinContext, mapping: ChainMapping) -> tuple[bool, dict[str, float]]:
     observed = set(mapping.uniprot_to_residue)
     results: dict[str, float] = {}
@@ -116,7 +150,7 @@ def _domain_coverage(protein: ProteinContext, mapping: ChainMapping) -> tuple[bo
         end = min(feature.end, protein.ecd_end)
         coverage = sum(position in observed for position in range(start, end + 1)) / (end - start + 1)
         results[feature.description or f"{feature.type} {start}-{end}"] = round(coverage, 4)
-    return all(value >= 0.9 for value in results.values()), results
+    return all(value >= config.MIN_MAJOR_DOMAIN_COVERAGE for value in results.values()), results
 
 
 def _extract_citation(path: Path) -> dict[str, Any]:
@@ -170,11 +204,11 @@ def _evaluate_candidate(
     candidate.metadata["domain_coverages"] = domain_coverages
     candidate.metadata["citation"] = _extract_citation(local)
     candidate.rejection_reasons = []
-    if mapping.observed_ecd_coverage < 0.95:
+    if mapping.observed_ecd_coverage < config.MIN_ECD_COVERAGE:
         candidate.rejection_reasons.append("observed ECD coverage < 95%")
-    if mapping.max_internal_gap > 8:
+    if mapping.max_internal_gap > config.MAX_INTERNAL_GAP_AA:
         candidate.rejection_reasons.append("internal coordinate gap > 8 aa")
-    if mapping.identity < 0.95:
+    if mapping.identity < config.MIN_SEQUENCE_IDENTITY:
         candidate.rejection_reasons.append("aligned sequence identity < 95%")
     if not domain_complete:
         candidate.rejection_reasons.append("one or more major ECD domains have < 90% observed coverage")
@@ -243,7 +277,11 @@ def _select_from_uniprot(
         except Exception as exc:
             candidate.rejection_reasons.append(f"AF3 model could not be audited: {exc}")
             continue
-        if mapping.observed_ecd_coverage >= 0.95 and mapping.max_internal_gap <= 8 and mapping.identity >= 0.95:
+        if (
+            mapping.observed_ecd_coverage >= config.MIN_ECD_COVERAGE
+            and mapping.max_internal_gap <= config.MAX_INTERNAL_GAP_AA
+            and mapping.identity >= config.MIN_SEQUENCE_IDENTITY
+        ):
             candidate.eligible = True
             candidate.rank = 1
             write_json(output_dir / "structure_candidates.json", candidate_manifest(candidates))
@@ -334,6 +372,8 @@ def run_pipeline(
         )
         source = {
             "kind": "public database",
+            "input_identifier": accession,
+            "normalized_accession": protein.accession,
             "provider": selected.provider,
             "identifier": selected.identifier,
             "structure_url": selected.model_url,
@@ -390,9 +430,9 @@ def run_pipeline(
             engineered_mismatches=mapping.engineered_mismatches,
             explicit_af3=input_type == "af3_upload",
             eligible=(
-                mapping.observed_ecd_coverage >= 0.95
-                and mapping.max_internal_gap <= 8
-                and mapping.identity >= 0.95
+                mapping.observed_ecd_coverage >= config.MIN_ECD_COVERAGE
+                and mapping.max_internal_gap <= config.MAX_INTERNAL_GAP_AA
+                and mapping.identity >= config.MIN_SEQUENCE_IDENTITY
             ),
         )
         if not selected.eligible and not request.allow_partial:
@@ -425,6 +465,28 @@ def run_pipeline(
         predicted=predicted,
         confidence=confidence,
     )
+    mismatch_positions = list(getattr(mapping, "mismatch_positions", []) or [])
+    mismatch_records = [
+        record for record in records if record.uniprot_pos in set(mismatch_positions)
+    ]
+    for record in records:
+        if any(
+            abs(record.uniprot_pos - mismatch.uniprot_pos) <= 3
+            or (
+                record.ca is not None
+                and mismatch.ca is not None
+                and float(np.linalg.norm(np.asarray(record.ca) - np.asarray(mismatch.ca)))
+                <= config.ENGINEERED_NEIGHBORHOOD_RADIUS_A
+            )
+            for mismatch in mismatch_records
+        ):
+            record.engineered_neighborhood = True
+            if "engineered-neighborhood" not in record.risk_flags:
+                record.risk_flags.append("engineered-neighborhood")
+    methods["engineered_mismatch_positions"] = mismatch_positions
+    methods["engineered_neighborhood_residues"] = sum(
+        item.engineered_neighborhood for item in records
+    )
 
     conservation_warnings: list[str] = []
     if input_type != "uniprot" and not request.accession:
@@ -438,8 +500,10 @@ def run_pipeline(
             progress("ANALYZING", 0.48, "Fetching reviewed orthologs for conservation scoring")
             scores = fetch_conservation(protein, client, output_dir)
             if scores is None:
+                conservation_status = read_json(output_dir / "conservation.json") if (output_dir / "conservation.json").exists() else {}
+                state = conservation_status.get("status", "unavailable")
                 conservation_warnings.append(
-                    "Fewer than three reviewed same-gene orthologs (or gene unknown); conservation was not computed."
+                    f"Conservation was not computed ({state}); epitope priors use a neutral variability term."
                 )
             else:
                 matched = 0
@@ -463,6 +527,7 @@ def run_pipeline(
     adaptive_cap = config.adaptive_maximum_regions(protein.ecd_length)
     effective_max = min(request.maximum_regions, adaptive_cap)
     effective_min = min(request.minimum_regions, effective_max)
+    membrane_anchor, membrane_normal = _transmembrane_geometry(mapping, protein)
     regions, partition_summary = partition_surface(
         records,
         protein,
@@ -471,6 +536,8 @@ def run_pipeline(
         maximum_regions=effective_max,
         predicted=predicted,
         assay_format=request.assay_format,
+        membrane_anchor=membrane_anchor,
+        membrane_normal=membrane_normal,
     )
     inventory = find_engine_inventory()
     if request.metadata.get("disable_external_engines"):
@@ -487,6 +554,31 @@ def run_pipeline(
         output_dir,
         request.original_cds,
     )
+    surface_count = sum(item.surface_accessible for item in records)
+    if (
+        protein.ecd_length <= config.SMALL_ECD_LENGTH_AA
+        or surface_count <= config.SMALL_ECD_SURFACE_RESIDUES
+    ):
+        fine_windows: list[dict[str, Any]] = []
+        for region in regions:
+            positions = sorted(region.residues)
+            for index in range(0, len(positions), config.SMALL_ECD_FINE_MAP_WINDOW_RESIDUES):
+                window = positions[index : index + config.SMALL_ECD_FINE_MAP_WINDOW_RESIDUES]
+                if window:
+                    fine_windows.append(
+                        {
+                            "patch_id": region.id,
+                            "positions": window,
+                            "purpose": "Stage-2 overlapping fine-mapping window after a Stage-1 binding hit",
+                        }
+                    )
+        design_summary.setdefault("epitope_mapping_plan", {})["resolution_mode"] = (
+            "small-ECD fine mapping: Stage-2 single mutants and overlapping residue windows are prioritised"
+        )
+        design_summary["epitope_mapping_plan"]["fine_mapping_windows"] = fine_windows
+        partition_summary["resolution_level"] = "enhanced_stage2"
+    else:
+        partition_summary["resolution_level"] = "standard"
     foldx_diag = design_summary.get("foldx_diagnostics") or {}
     if foldx_diag.get("all_failed"):
         # P1-3: a completely silent FoldX batch is an engine failure, not a
@@ -508,20 +600,18 @@ def run_pipeline(
         "max_internal_gap": mapping.max_internal_gap,
         "aligned_sequence_identity": mapping.identity,
         "engineered_mismatches": mapping.engineered_mismatches,
+        "engineered_mismatch_positions": mismatch_positions,
         "eligibility_gate": {
-            "minimum_observed_ecd_coverage": 0.95,
-            "maximum_internal_gap_aa": 8,
-            "minimum_aligned_identity": 0.95,
-            "minimum_major_domain_coverage": 0.90,
+            "minimum_observed_ecd_coverage": config.MIN_ECD_COVERAGE,
+            "maximum_internal_gap_aa": config.MAX_INTERNAL_GAP_AA,
+            "minimum_aligned_identity": config.MIN_SEQUENCE_IDENTITY,
+            "minimum_major_domain_coverage": config.MIN_MAJOR_DOMAIN_COVERAGE,
         },
         "candidate_count": len(candidates),
         "candidates_file": "structure_candidates.json",
     }
     warnings = list(partition_summary.get("warnings", [])) + list(conservation_warnings)
-    if methods["sasa_method"].startswith("Bio.PDB"):
-        warnings.append(
-            "FreeSASA was unavailable; the auditable Bio.PDB Shrake-Rupley fallback was used with the same probe/point settings."
-        )
+    warnings.append("Production SASA uses Bio.PDB Shrake-Rupley with pinned Tien/DSSP radii.")
     if not inventory.evoef2_path and not inventory.foldx_path:
         warnings.append(
             "Neither FoldX nor EvoEF2 is configured; combinations are ranked with the built-in dimensionless structural-risk proxy."
@@ -542,7 +632,7 @@ def run_pipeline(
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "software": _software_versions(),
         "request": request.as_dict(),
-        "source": source,
+            "source": source,
         "protein": {
             "accession": protein.accession,
             "protein_name": protein.protein_name,
@@ -561,6 +651,17 @@ def run_pipeline(
         },
         "structure_selection": selection,
         "parameters": {
+            "scientific_thresholds": {
+                "minimum_ecd_coverage": config.MIN_ECD_COVERAGE,
+                "maximum_internal_gap_aa": config.MAX_INTERNAL_GAP_AA,
+                "minimum_sequence_identity": config.MIN_SEQUENCE_IDENTITY,
+                "minimum_major_domain_coverage": config.MIN_MAJOR_DOMAIN_COVERAGE,
+                "rsasa_threshold": config.RSASA_THRESHOLD,
+                "sidechain_sasa_threshold_A2": config.SIDECHAIN_SASA_THRESHOLD_A2,
+                "minimum_orthologs": config.CONSERVATION_MIN_ORTHOLOGS,
+                "engineered_neighborhood_radius_A": config.ENGINEERED_NEIGHBORHOOD_RADIUS_A,
+                "membrane_accessibility_scale_A": config.MEMBRANE_ACCESSIBILITY_SCALE_A,
+            },
             "strict_af3_fallback": request.strict_af3,
             "assay_format": request.assay_format,
             "minimum_regions": effective_min,
@@ -571,6 +672,15 @@ def run_pipeline(
                 "policy": "~1 patch per 22 ECD residues, capped at 7 (config.ADAPTIVE_REGIONS_*)",
             },
             "patch_scale": "Fab footprint: geodesic radius 13 A, 15-25 residues (docs/改进方案.md)",
+            "compact_single_domain_surface_face": {
+                "enabled_only_after_legacy_quality_failure": True,
+                "ecd_max_length_aa": config.COMPACT_ECD_MAX_LENGTH_AA,
+                "dominant_domain_min_fraction": config.COMPACT_DOMINANT_DOMAIN_MIN_FRACTION,
+                "max_surface_regions": config.COMPACT_MAX_SURFACE_REGIONS,
+                "footprint_geodesic_radius_A": config.COMPACT_FOOTPRINT_GEODESIC_RADIUS_A,
+                "footprint_euclidean_cap_A": config.COMPACT_FOOTPRINT_EUCLIDEAN_CAP_A,
+                "combo_max_spread_A": config.COMPACT_COMBO_MAX_SPREAD_A,
+            },
             "regional_mutations": "directed alphabet + anchor mutation; exhaustive enumeration of cleared menus",
             "functional_interfaces": "included with persistent risk flag",
             "output_sequence": "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region",
@@ -585,7 +695,12 @@ def run_pipeline(
             "mapped_ecd_residues": len(records),
             "surface_accessible": sum(item.surface_accessible for item in records),
             "folding_screen_pass": sum(item.folding_screen_pass for item in records),
-            "flexible_terminal_excluded": sum(item.flexible_terminal for item in records),
+            "flexible_terminal_excluded": partition_summary.get(
+                "excluded_flexible_terminal_residues", 0
+            ),
+            "engineered_neighborhood_residues": sum(
+                item.engineered_neighborhood for item in records
+            ),
             "functional_interface": sum(item.interface for item in records),
             "regions": len(regions),
             "recommended_constructs": sum(

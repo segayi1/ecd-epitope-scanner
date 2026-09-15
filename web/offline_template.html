@@ -2,14 +2,14 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>ECD Epitope Workbench · Offline Report</title>
+<title>__TASK_TITLE__</title>
 <style>
 :root{
   --bg:#faf7f1; --panel:#ffffff; --line:#e4dcc9; --ink:#2b2f33; --muted:#8a8577;
   --red:#C0564A; --sel:#8a2f1d; --off:#cfc8bb; --ok:#3B6D11; --warn:#854F0B;
 }
 *{box-sizing:border-box; margin:0}
-body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink)}
+  html,body{min-height:100%;height:100%} body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink);display:grid;grid-template-rows:auto minmax(260px,1fr) auto;overflow:hidden}
 #bar{display:flex; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap}
 #bar b{font-size:14px}
 #bar .sp{flex:1}
@@ -22,7 +22,7 @@ body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg)
 .step.active{border-color:#2b2f33; box-shadow:0 0 0 1px #2b2f33 inset}
 .step.active .n{background:#2b2f33}
 .step.done .n{background:var(--ok)}
-#main{display:flex; height:calc(100vh - 108px)}
+  #main{display:flex; min-height:0}
 #viewportWrap{flex:1.35; position:relative; min-width:420px}
 #viewport{position:absolute; inset:0}
 #legend{position:absolute; left:10px; bottom:10px; background:rgba(255,255,255,.92); border:1px solid var(--line); border-radius:10px; padding:8px 10px; font-size:12px; max-width:280px}
@@ -50,14 +50,15 @@ th{color:var(--muted); font-weight:500}
 .tag.ok{background:#eaf3de; color:var(--ok)}
 .tag.warn{background:#faeeda; color:var(--warn)}
 .tag.bad{background:#fcebeb; color:#A32D2D}
-#seqbar{border-top:1px solid var(--line); background:var(--panel); padding:8px 14px}
+  #seqbar{border-top:1px solid var(--line); background:var(--panel); padding:8px 14px;max-height:34dvh;overflow:auto}
 .seqrow{display:flex; gap:8px; align-items:flex-start; margin:3px 0}
 .seqlabel{width:70px; flex:none; font-size:11px; color:var(--muted); padding-top:3px}
-.seq{font:12px/1.5 ui-monospace,Consolas,monospace; word-break:break-all; flex:1}
+  .seq{font:12px/1.5 ui-monospace,Consolas,monospace; word-break:break-all; flex:1;min-width:0}
 .seq span{cursor:pointer; border-radius:3px; padding:0 1px}
 .seq span.mut{background:#f7c8bd; color:var(--sel); font-weight:bold}
 .seq span.dim{color:#b9b3a2}
-#inspector{position:absolute; right:10px; top:10px; width:250px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:12px; padding:10px; font-size:12px; display:none; max-height:70%; overflow:auto}
+  #inspector{position:absolute; right:10px; top:10px; width:250px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:12px; padding:10px; font-size:12px; display:none; max-height:70%; overflow:auto}
+  @media (max-height:700px){body{height:auto;min-height:100%;overflow:auto}#main{height:420px;min-height:420px}#seqbar{max-height:none}}
 .grid2{display:grid; grid-template-columns:auto 1fr; gap:2px 10px}
 .grid2 .k{color:var(--muted)}
 select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding:4px 8px; font-size:12px; background:#fff}
@@ -65,7 +66,7 @@ select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding
 </head>
 <body>
 <div id="bar">
-  <b>ECD Epitope Workbench</b>
+  <b>__TASK_BRAND__</b>
   <span class="sp"></span>
   <div id="steps"></div>
   <span class="sp"></span>
@@ -111,7 +112,7 @@ var OFF = "#cfc8bb", RED = "#C0564A", SEL = "#8a2f1d", DIM = "#b9b3a2";
 
 var state = {
   step: 1, renderer: "beads", showIface: true, showGlycan: false,
-  focusRegion: null, designId: (designs[0] ? designs[0].id : null),
+  focusRegion: null, designId: (designs[0] ? designs[0].id : null), previewMode: "construct",
   custom: {},          // uniprot_pos -> mutant aa
   lastPick: null
 };
@@ -134,7 +135,7 @@ function regionColor(pos){
   return null;
 }
 function isInterface(r){ return state.showIface && r.interface; }
-function isSelected(pos){ return state.custom[pos] != null; }
+function isSelected(pos){ return state.previewMode === "custom" && state.custom[pos] != null; }
 function isDesignSite(pos){
   var d = designById(state.designId);
   if (!d) return false;
@@ -195,11 +196,14 @@ function renderLegend(){
   else if (designById(state.designId)) li(SEL, t("legend.designSites")+" ("+designById(state.designId).mutations.length+")");
   if (state.showIface && interfaceResidues().length) li(RED, t("legend.interface"));
   if (state.showGlycan) li("#C9A87F", t("legend.glycan"));
-  regions.forEach(function(g){ li(g.color, esc(g.name)+" ("+g.residues.length+")"); });
+  regions.forEach(function(g){
+    var n = (g.envelope_residues && g.envelope_residues.length) ? g.envelope_residues.length : g.residues.length;
+    li(g.color, esc(g.name)+" ("+n+")");
+  });
   li(OFF, t("legend.off"));
   el("legend").innerHTML = items.join("");
 }
-function isSelectedCount(){ return Object.keys(state.custom).length; }
+function isSelectedCount(){ return state.previewMode === "custom" ? Object.keys(state.custom).length : 0; }
 function interfaceResidues(){ return residues.filter(function(r){ return r.interface; }); }
 function interfacePartners(){
   var set = {};
@@ -253,7 +257,7 @@ function designedSeq(){
   var d = designById(state.designId);
   var base = wtSeq.split("");
   var map = {};
-  if (isSelectedCount()) map = state.custom;
+  if (state.previewMode === "custom" && isSelectedCount()) map = state.custom;
   else if (d) d.mutations.forEach(function(m){ map[m.position] = m.mutant; });
   var out = wtSeq.split("");
   Object.keys(map).forEach(function(p){
@@ -277,11 +281,11 @@ function renderSeq(){
   el("seqbar").innerHTML =
     '<div class="seqrow"><span class="seqlabel">'+esc(t("seq.wt"))+' ['+ecdStart+'–'+(ecdStart+wtSeq.length-1)+']</span>'
     +'<div class="seq">'+html(wtSeq, null)+'</div>'
-    +'<button class="btn" id="cp-wt-aa">⧉ '+esc(t("seq.copyAA"))+'</button>'
+    +'<button class="btn" id="cp-wt-aa">⧉ 复制 ECD</button>'
     +'<button class="btn" id="cp-wt-nt">⧉ '+esc(t("seq.copyCDS"))+'</button></div>'
     +'<div class="seqrow"><span class="seqlabel">'+esc(t("seq.designed"))+'</span>'
     +'<div class="seq">'+html(des.seq, des.map)+'</div>'
-    +'<button class="btn" id="cp-mu-aa">⧉ '+esc(t("seq.copyAA"))+'</button>'
+    +'<button class="btn" id="cp-mu-aa">⧉ 复制 ECD</button>'
     +'<button class="btn" id="cp-mu-nt"'+(d?"":" disabled")+'>⧉ '+esc(t("seq.copyCDS"))+(d?"":" — "+esc(t("seq.customNoCDS")))+'</button></div>';
   function copy(txt, msg){
     function done(){ el("toast") ; alertFallback(msg); }
@@ -313,7 +317,7 @@ function renderSeq(){
 }
 
 /* ---------- panel / steps ---------- */
-var STEPS = ["step.surface","step.tolerance","step.regions","step.interface","step.design","step.custom"];
+var STEPS = ["step.surface","step.tolerance","step.regions","step.interface","step.design","step.custom","step.overview"];
 function renderSteps(){
   el("steps").innerHTML = STEPS.map(function(k,i){
     var cls = "step"+(state.step===i+1?" active":"")+(i+1<state.step?" done":"");
@@ -330,12 +334,30 @@ function renderPanel(){
   else if (state.step===3) h += stepRegions();
   else if (state.step===4) h += stepInterface();
   else if (state.step===5) h += stepDesign();
-  else h += stepCustom();
+  else if (state.step===6) h += stepCustom();
+  else h += stepOverview();
   h += '<div class="note">'+esc(t("note.disclaimer"))+'</div>';
   el("panel").innerHTML = h;
   wirePanel();
 }
 function chip(label, val){ return '<span class="chip">'+esc(label)+' <b>'+val+'</b></span>'; }
+function stepOverview(){
+  var source=D.source||{}, selection=D.structure_selection||{}, summary=D.summary||{}, partition=D.partitioning||{}, request=D.request||{};
+  var range=(protein.ecd_start&&protein.ecd_end) ? protein.ecd_start+'–'+protein.ecd_end+' ('+(protein.ecd_sequence||'').length+' aa)' : '—';
+  var rows=[
+    [t('overview.accession'), protein.accession||request.identifier||'—'],
+    [t('overview.ecd'), range], [t('overview.topology'),protein.topology||'—'],
+    [t('overview.structure'),selection.selected_identifier||source.identifier||'—'],
+    [t('overview.provider'),[source.provider,source.kind].filter(Boolean).join(' / ')||'—'],
+    [t('overview.chain'),selection.selected_chain||selection.chain||'—'],
+    [t('overview.confidence'),(D.methods||{}).confidence_method||(request.input_type==='af3_upload'?'AF3 confidence JSON':'—')],
+    [t('overview.run'),D.created_at||'—'], [t('overview.structureFile'),source.identifier||selection.selected_identifier||'—'],
+    [t('overview.summary'),(summary.mapped_ecd_residues||'—')+' ECD residues · '+(partition.actual_regions||regions.length)+' '+(partition.partition_mode==='compact_surface_face'?t('region.surfaceFace'):'patches')+' · '+designs.length+' constructs'],
+    [t('overview.coverage'),partition.coverage!=null?Math.round(partition.coverage*100)+'%':'—'],
+    [t('overview.files'),Object.keys(D.files||{}).join(', ')||'—']
+  ];
+  return '<div class="box"><h3>'+esc((protein.protein_name||protein.accession||'ECD Epitope Workbench'))+'</h3><div class="grid2">'+rows.map(function(r){return '<span class="k">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+'</div></div>';
+}
 function stepSurface(){
   var surf = residues.filter(function(r){ return r.surface_accessible; });
   var h = '<div class="note">'+esc(t("surface.note"))+'</div><div class="box"><h3>'+esc(t("surface.counts"))+'</h3><div class="chips">'
@@ -366,8 +388,13 @@ function stepRegions(){
   var h = '<div class="note">'+esc(t("region.note"))+'</div><div class="box">';
   regions.forEach(function(g){
     var on = state.focusRegion===g.id ? " on":"";
+    var accessibility = g.predicted_accessibility==="reduced"
+      ? " · "+t("region.reducedAccessibility")+" ("+Number(g.membrane_accessibility_score||0).toFixed(2)+")" : "";
+    var envelope = (g.envelope_residues && g.envelope_residues.length) ? g.envelope_residues.length : g.residues.length;
+    var mutable = (g.mutable_residues && g.mutable_residues.length) ? g.mutable_residues.length : g.residues.length;
+    var prefix = g.partition_mode==='compact_surface_face' ? t('region.surfaceFace')+' '+g.id+' · ' : '';
     h += '<div class="li click'+on+'" data-region="'+g.id+'"><span class="sw" style="background:'+g.color+'"></span>'
-      + esc(g.name) + '<span class="cnt">'+g.residues.length+' · '+esc(g.membrane_position||"")+'</span></div>';
+      + esc(prefix+g.name) + '<span class="cnt">'+envelope+' '+t('region.surfaceSites')+' · '+mutable+' '+t('region.mutableSites')+' · '+esc(g.membrane_position||"")+esc(accessibility)+'</span></div>';
   });
   return h + '</div>';
 }
@@ -403,7 +430,8 @@ function stepDesign(){
 }
 function stepCustom(){
   var keys = Object.keys(state.custom).sort(function(a,b){ return a-b; });
-  var h = '<div class="note">'+esc(t("custom.note"))+'</div><div class="box"><h3>'+esc(t("custom.current"))+' ('+keys.length+')</h3>';
+  var h = '<div class="note">'+esc(t("custom.note"))+'</div><div class="box"><h3>'+esc(t("custom.current"))+' ('+keys.length+')</h3>'
+    +(keys.length?'<button class="btn" data-preview-custom="1">预览自定义草稿</button>':'');
   if (!keys.length) h += '<div class="note">'+esc(t("custom.empty"))+'</div>';
   keys.forEach(function(p){
     h += '<div class="li"><span><b>'+esc(byPos[p].aa+p)+'</b> → '+esc(state.custom[p])+'</span>'
@@ -422,12 +450,15 @@ function wirePanel(){
   Array.prototype.forEach.call(document.querySelectorAll("[data-design]"), function(s){
     s.onclick = function(){
       state.designId = s.getAttribute("data-design");
-      state.custom = {};
+      state.previewMode = "construct";
       renderPanel(); applyStyles(); renderSeq();
     };
   });
   Array.prototype.forEach.call(document.querySelectorAll("[data-rm]"), function(s){
     s.onclick = function(){ delete state.custom[s.getAttribute("data-rm")]; renderPanel(); applyStyles(); renderSeq(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-preview-custom]"), function(s){
+    s.onclick = function(){ state.previewMode="custom"; renderPanel(); applyStyles(); renderSeq(); };
   });
   var ti = el("tg-iface"); if (ti) ti.onclick = function(){ state.showIface=!state.showIface; renderPanel(); applyStyles(); renderLegend(); };
   var tg = el("tg-glycan"); if (tg) tg.onclick = function(){ state.showGlycan=!state.showGlycan; renderPanel(); applyStyles(); renderLegend(); };
