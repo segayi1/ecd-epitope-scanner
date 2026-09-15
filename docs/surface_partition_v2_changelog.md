@@ -45,3 +45,9 @@
 
 - `6a53412`：Surface partition V2 开始前的完整工作台。
 - `aecfc34`：溶剂表面法向、β-sheet 分区、多 footprint 与初版单点回退。
+- `fac2fac`：强制多点组合属于单一 footprint，补齐网页/离线报告与 Q15116 验证日志。
+
+## 文档同步
+
+- `docs/method.md` 已加入紧凑单域模式的触发条件、原子表面法向、β-sheet 接触拓扑、多 footprint 和单点回退方法。
+- 同时修正表面阈值文字为 rSASA 与侧链 SASA 同时通过，将每位点候选数更新为当前配置的 2，并修正 ΔΔG 门槛方向。
