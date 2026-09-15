@@ -157,6 +157,8 @@
   "region.surfaceSites": "表面残基",
   "region.mutableSites": "可突变",
   "region.footprint": "局部足迹",
+  "region.candidateFootprints": "个候选足迹",
+  "region.basis": "分区依据",
   "region.none": "没有可辩护的结构分区。",
   "s4.measured": "本结构实测",
   "s4.layers": "结构叠加图层",

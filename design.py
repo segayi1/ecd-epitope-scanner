@@ -683,6 +683,8 @@ def design_regions(
                     ),
                     [best_single.position],
                 )
+                if matching not in region.candidate_footprints:
+                    region.candidate_footprints.append(matching)
                 region.footprint_residues = matching
                 region.residues = matching
                 region.footprint_center = best_single.position
@@ -1038,7 +1040,14 @@ def design_regions(
 
     return designs, {
         "regions_considered": len(regions),
-        "recommended_designs": sum(item.status == "RECOMMENDED_LOW_PREDICTED_RISK" for item in designs),
+        "recommended_designs": sum(
+            item.status in {
+                "RECOMMENDED_LOW_PREDICTED_RISK",
+                "RECOMMENDED_MULTI_SITE_PROBE",
+                "RECOMMENDED_SINGLE_SITE_PROBE",
+            }
+            for item in designs
+        ),
         "in_silico_substitutions_evaluated": all_scans,
         "final_library_size": len(designs),
         "foldx_diagnostics": foldx_diagnostics,

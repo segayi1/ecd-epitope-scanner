@@ -21,3 +21,27 @@
 - 紧凑模式将候选搜索从单个 footprint 的 5 个位置扩大到整个 zone 的最多 12 个优先位置，仍统一批量执行 FoldX。
 - 多点组合失败但存在 FoldX 通过的强扰动单点时，输出 `RECOMMENDED_SINGLE_SITE_PROBE`，不再直接将整个区域声明为盲区。
 - 多点组合必须完整落在同一个候选 footprint 内；仅仅满足欧氏距离上限不足以跨 footprint 组合。
+- 实时工作台、离线 HTML 和 methods report 显示分区依据与候选 footprint 数量。
+- 单点回退若来自扩展的全区候选搜索，会将其局部单点 footprint 写回区域数据，保证“推荐突变属于某个候选 footprint”的审计约束成立。
+
+## Q15116 验证记录
+
+### 中间验证（仅保留作缺陷审计）
+
+- 目录：`results/q15116_surface_v2_validation`
+- 得到 2 个 β-sheet zone，两个区域均产生构建。
+- 发现区域 1 多点组合仅满足欧氏距离约束、未完整落入同一个候选 footprint；该结果不作为验收版本。
+
+### 修正后验证
+
+- 目录：`results/q15116_surface_v2_validation_r2`
+- 结构输入：原任务 `54ce64e6227e` 保存的官方 AF3 CIF 与 confidence JSON。
+- 分区：2 个区域，依据为 `beta_sheet_backbone_topology`；表面包络共 82 个可信近表面残基。
+- 区域 1：FoldX 通过的三点构建 `L138D/T36K/S38K`，完整属于候选 footprint `[36,38,39,138]`，5 次 BuildModel 中位数 -1.64 kcal/mol。
+- 区域 2：多点 footprint 无合格组合，输出 FoldX 通过的单点回退 `A40R`，5 次 BuildModel 中位数 -0.57 kcal/mol。
+- 两个区域均有可实验构建；FoldX 批处理 8 个最终构建，全部返回可解析结果。
+
+## 当前回退点
+
+- `6a53412`：Surface partition V2 开始前的完整工作台。
+- `aecfc34`：溶剂表面法向、β-sheet 分区、多 footprint 与初版单点回退。

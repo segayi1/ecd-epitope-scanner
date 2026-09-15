@@ -394,7 +394,7 @@ function stepRegions(){
     var mutable = (g.mutable_residues && g.mutable_residues.length) ? g.mutable_residues.length : g.residues.length;
     var prefix = g.partition_mode==='compact_surface_face' ? t('region.surfaceFace')+' '+g.id+' · ' : '';
     h += '<div class="li click'+on+'" data-region="'+g.id+'"><span class="sw" style="background:'+g.color+'"></span>'
-      + esc(prefix+g.name) + '<span class="cnt">'+envelope+' '+t('region.surfaceSites')+' · '+mutable+' '+t('region.mutableSites')+' · '+esc(g.membrane_position||"")+esc(accessibility)+'</span></div>';
+      + esc(prefix+g.name) + '<span class="cnt">'+envelope+' '+t('region.surfaceSites')+' · '+mutable+' '+t('region.mutableSites')+' · '+((g.candidate_footprints||[]).length)+' '+t('region.candidateFootprints')+' · '+esc(g.membrane_position||"")+esc(accessibility)+'</span></div>';
   });
   return h + '</div>';
 }

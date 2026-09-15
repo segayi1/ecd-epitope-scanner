@@ -888,7 +888,8 @@ def _partition_compact_surface_face(
         coverage_plan.append({"patch_id": index, "tier": tiers[seed], "epitope_prior": round(prior, 4),
                               "required_probes": 1, "envelope_residues": len(members),
                               "mutable_residues": len(mutable), "footprint_residues": len(footprint),
-                              "surface_connectivity": "connected"})
+                              "candidate_footprints": len(footprints),
+                              "surface_connectivity": region.surface_connectivity})
     assigned = sum(len(region.envelope_residues) for region in regions)
     return regions, {
         "eligible_residues": sum(item.folding_screen_pass for item in envelope),

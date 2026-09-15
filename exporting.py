@@ -350,6 +350,7 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 
 - Partition method: {partition.get('method', '')}
 - Partition mode: {partition.get('partition_mode', 'footprint')}
+- Partition basis: {partition.get('partition_basis', 'residue surface graph')}
 - Regions: {partition.get('actual_regions', len(regions))}; local Fab-footprint geodesic radius {partition.get('patch_radius_a', 13)} A
 - Partition trigger: {'; '.join(partition.get('trigger_reasons', [])) or 'standard footprint workflow'}
 - Assay format: {partition.get('assay_format', 'cell_surface')}

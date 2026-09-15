@@ -359,6 +359,7 @@ def test_compact_face_emits_safe_single_site_stage1_fallback(tmp_path):
     primary = next(item for item in designs if item.region_id == 1)
     assert primary.status == "RECOMMENDED_SINGLE_SITE_PROBE"
     assert len(primary.mutations) == 1
+    assert primary.mutations[0].position in region.candidate_footprints[-1]
     assert summary["epitope_mapping_plan"]["design_downgrades"]
 
 

@@ -157,6 +157,8 @@
   "region.surfaceSites": "surface residues",
   "region.mutableSites": "mutable",
   "region.footprint": "local footprint",
+  "region.candidateFootprints": "candidate footprints",
+  "region.basis": "partition basis",
   "region.none": "No structurally defensible patches.",
   "s4.measured": "measured on this structure",
   "s4.layers": "Structure overlay layers",

@@ -856,7 +856,7 @@ function renderStep3() {
       <span><b>${h(region.partition_mode === "compact_surface_face" ? t("region.surfaceFace", "表面区域") : t("region.patch", "补丁"))} ${region.id} · ${h(region.name)}</b><br>
       <span class="muted">${h(region.structural_character)} · ${h(region.membrane_position || "")}${h(tier)}${h(accessibility)} · ${h(mutations)}</span></span>
       <span class="grow"></span><span class="muted">${(region.envelope_residues?.length || region.residues.length)} ${h(t("region.surfaceSites", "表面残基"))}<br>${(region.mutable_residues?.length || region.residues.length)} ${h(t("region.mutableSites", "可突变"))}</span>
-    </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}${region.footprint_residues?.length ? ` · ${h(t("region.footprint", "局部足迹"))} ${region.footprint_residues.length} ${h(t("region.sites", "位点"))}` : ""}</div>`;
+    </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}${region.footprint_residues?.length ? ` · ${h(t("region.footprint", "局部足迹"))} ${region.footprint_residues.length} ${h(t("region.sites", "位点"))}` : ""}${region.candidate_footprints?.length ? ` · ${region.candidate_footprints.length} ${h(t("region.candidateFootprints", "个候选足迹"))}` : ""}${region.partition_basis ? ` · ${h(t("region.basis", "依据"))}: ${h(region.partition_basis)}` : ""}</div>`;
   }).join("") || `<div class="empty">${h(t("region.none", "没有可辩护的结构分区。"))}</div>`;
   document.querySelectorAll("[data-focus-region]").forEach((el) => {
     el.addEventListener("click", () => {
