@@ -61,8 +61,8 @@ def open_scorer() -> tuple[PlmScorer, None] | tuple[None, str]:
     if not model_name:
         return None, f"{_ACTIVATION_ENV} is not set; PLM scoring stays disabled"
     try:
-        import torch  # noqa: F401
         import esm
+        import torch  # noqa: F401
     except Exception as exc:
         return None, f"torch/fair-esm unavailable ({exc.__class__.__name__}); PLM scoring disabled"
     try:

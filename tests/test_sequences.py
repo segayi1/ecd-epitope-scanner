@@ -1,5 +1,4 @@
 import pytest
-
 from ecd_epitope_scanner.models import MutationChoice, ProteinContext
 from ecd_epitope_scanner.sequences import apply_mutations, coding_fragment, translate_cds
 from ecd_epitope_scanner.util import PipelineError

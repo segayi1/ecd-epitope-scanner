@@ -8,7 +8,6 @@ from urllib.parse import quote
 from .models import FeatureRange, ProteinContext, StructureCandidate, to_dict
 from .util import PipelineError, RemoteClient, safe_name, write_json
 
-
 UNIPROT_URL = "https://rest.uniprot.org/uniprotkb/{accession}.json"
 UNIPROT_SEARCH_URL = (
     "https://rest.uniprot.org/uniprotkb/search?query={query}"

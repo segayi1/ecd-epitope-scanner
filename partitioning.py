@@ -33,7 +33,6 @@ def _build_graph(records: list[ResidueRecord]) -> nx.Graph:
     graph = nx.Graph()
     for record in records:
         graph.add_node(record.uniprot_pos)
-    by_pos = {record.uniprot_pos: record for record in records}
     for index, left in enumerate(records):
         if left.ca is None:
             continue

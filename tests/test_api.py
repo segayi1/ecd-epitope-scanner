@@ -4,10 +4,8 @@ import io
 import json
 import time
 
-from fastapi.testclient import TestClient
-
 from ecd_epitope_scanner.api import app
-
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -33,6 +31,26 @@ def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path):
     response = client.get("/api/jobs")
     assert response.status_code == 200
     assert all("result" not in item and "request" not in item for item in response.json())
+
+
+def test_upload_defaults_to_fixed_jurkat_fab_k562_antigen_profile(monkeypatch, tmp_path):
+    import ecd_epitope_scanner.api as api_module
+    from ecd_epitope_scanner.assay_profiles import DEFAULT_ASSAY_PROFILE_ID
+    from ecd_epitope_scanner.jobs import JobStore
+
+    monkeypatch.setattr(api_module, "STORE", JobStore(tmp_path / "upload-workspace"))
+    monkeypatch.setattr(api_module.RUNNER, "submit", lambda job_id: None)
+    response = client.post(
+        "/api/jobs/upload",
+        files={"structure": ("antigen.pdb", io.BytesIO(b"HEADER antigen\nEND\n"), "chemical/x-pdb")},
+    )
+    assert response.status_code == 202, response.text
+    request = response.json()["request"]
+    assert request["assay_profile"] == DEFAULT_ASSAY_PROFILE_ID
+    assert request["minimum_regions"] == 1
+    assert request["maximum_regions"] == 6
+    assert request["sequence"] is None
+    assert request["accession"] is None
 
 
 def test_af3_resume_backfills_accession_from_identifier(monkeypatch, tmp_path):

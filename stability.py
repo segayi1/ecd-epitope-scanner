@@ -9,7 +9,6 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
-from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import uuid4
 

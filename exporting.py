@@ -14,7 +14,13 @@ from Bio.SeqFeature import FeatureLocation, SeqFeature
 from Bio.SeqRecord import SeqRecord
 
 from .models import DesignRecord, ProteinContext, RegionRecord, ResidueRecord, to_dict
-from .sequences import HUMAN_PREFERRED_CODONS, apply_mutations, coding_fragment, normalize_cds, translate_cds
+from .sequences import (
+    HUMAN_PREFERRED_CODONS,
+    apply_mutations,
+    coding_fragment,
+    normalize_cds,
+    translate_cds,
+)
 from .util import sha256_file, write_json
 
 ROOT = Path(__file__).resolve().parent
@@ -99,6 +105,14 @@ def write_scientific_outputs(
     write_json(output_dir / "analysis.json", analysis)
     write_json(output_dir / "regions.json", [to_dict(item) for item in regions])
     write_json(output_dir / "designs.json", [to_dict(item) for item in designs])
+    if analysis.get("assay_profile"):
+        write_json(
+            output_dir / "fixed_assay_profile.json",
+            {
+                "assay_profile": analysis["assay_profile"],
+                "assay_geometry": analysis.get("assay_geometry"),
+            },
+        )
     # A real offline deliverable must be written and zipped with the scientific
     # artefacts.  Previously only the template function existed, leaving users
     # with no file://-openable report in a completed job.
@@ -235,7 +249,7 @@ def write_scientific_outputs(
         record.annotations["molecule_type"] = "DNA"
         record.annotations["topology"] = "linear"
         record.annotations["data_file_division"] = "SYN"
-        record.annotations["date"] = dt.datetime.now(dt.timezone.utc).strftime("%d-%b-%Y").upper()
+        record.annotations["date"] = dt.datetime.now(dt.UTC).strftime("%d-%b-%Y").upper()
         for mutation in mutations:
             relative = mutation.position - protein.ecd_start
             record.features.append(
@@ -261,8 +275,8 @@ def write_scientific_outputs(
         except Exception:
             continue  # a mutation outside the canonical sequence must never abort export
         full_length_protein_lines.append(
-            (f">{design.id} full-length {protein.accession} mutations="
-             + ";".join(item.notation for item in design.mutations))
+            f">{design.id} full-length {protein.accession} mutations="
+             + ";".join(item.notation for item in design.mutations)
         )
         full_length_protein_lines.extend(textwrap.wrap(full_protein, 80))
         if original_cds:
@@ -395,6 +409,22 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
 4. Measure native ligand/function when functional-interface mutations are interpreted.
 5. Treat loss of all antibodies or controls as a folding/expression failure, not an epitope.
 """
+    if analysis.get('structure_reliability'):
+        report += "\n## Structural reliability routing\n\nMulti-evidence heuristic states are recorded in residue_reliability.csv and structural_segments.csv; they are not calibrated disorder probabilities. See reliability_qc.json for thresholds, PAE mapping validity and imported sequence evidence provenance. Original SASA and stability methods are unchanged. In strict surface mode excluded ECD atoms do not occlude the partition surface; boundary residues retain occlusion but contribute no sampled vertices. IDR sequence windows are review-only, with SASA unavailable and no automatic FoldX evaluation. Missing coordinates are UNRESOLVED, not evidence of disorder.\n"
+    if analysis.get("assay_profile"):
+        geometry = analysis.get("assay_geometry") or {}
+        report += (
+            "\n## Fixed dual-cell assay topology\n\n"
+            "Antibody H/K are displayed on Jurkat; WT or mutant antigen is displayed on K562. "
+            "The antigen ECD is N-terminal/extracellular and C-terminally anchored through "
+            "PDGFRB. The Fab is extracellular and its heavy chain is C-terminally anchored "
+            "through the CD8A/Notch1 receptor. Reporter signal is read on Jurkat.\n\n"
+            f"PDB orientation status: {geometry.get('status', 'unavailable')}. "
+            "The C-terminal-anchor axis is a relative label only, not a physical membrane "
+            "plane or a quantitative Fab-reach estimate. Membrane-proximal regions are not "
+            "down-weighted. N-terminal Myc controls antigen display but does not prove native "
+            "folding; require an independent conformation-sensitive control.\n"
+        )
     (output_dir / "methods_report.md").write_text(report, encoding="utf-8")
 
     export_names = [
@@ -403,6 +433,7 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "residues.csv",
         "regions.json",
         "designs.json",
+        "fixed_assay_profile.json",
         "offline_report.html",
         "designs.csv",
         "panel_coverage_matrix.csv",
@@ -414,13 +445,30 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "methods_report.md",
         "structure.cif",
         "ecd_structure.cif",
+        "surface_vertices.csv",
+        "surface_edges.npz",
+        "raw_footprints.json",
+        "footprints.json",
+        "footprints.csv",
+        "footprint_membership.csv",
+        "footprint_adjacency.csv",
+        "surface_regions.json",
+        "surface_region_membership.csv",
+        "surface_v2_qc.json",
+        "residue_reliability.csv",
+        "structural_segments.csv",
+        "surface_mask.csv",
+        "idr_candidates.csv",
+        "reliability_qc.json",
     ]
     manifest = {
         "schema_version": "1.0",
-        "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "created_at": dt.datetime.now(dt.UTC).isoformat(),
         "software": analysis.get("software", {}),
         "request": analysis.get("request", {}),
         "source": analysis.get("source", {}),
+        "assay_profile": analysis.get("assay_profile"),
+        "assay_geometry": analysis.get("assay_geometry"),
         "parameters": analysis.get("parameters", {}),
         # Auditable solver/engine provenance (P1-3/P1-4): which SASA path and
         # radius set produced the numbers, and whether the FoldX engine was

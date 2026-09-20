@@ -1,5 +1,32 @@
 # Surface partition V2 修改日志
 
+## 2026-09-16：有限 SurfaceRegion 聚合与唯一显示颜色
+
+- 分区输入改为每中心一个 primary footprint，优先合格 R12、回退 adaptive；敏感性窗口与现有去重结果完整保留。
+- 使用固定 seed=0 的 NetworkX Louvain，加入真实共享 surface vertices、测地邻近和 domain 软惩罚；拆分不连通/跨度过大的社区，仅沿共享边合并小社区。
+- 默认测地跨度上限 60 Å，定义为 primary centers 在原 surface graph 上的最大距离，不是全区域 vertex diameter；该初始阈值尚待跨目标 benchmark 校准。
+- Region 面积按 vertex union 精确去重。显示归属按最近 primary center 的表面面积投票确定；footprint 科学 membership 仍允许重叠。
+- 所有自然区域均保留，有限实验预算只用于旧设计器输入选择；不再用暴露度排序截取显示区域。
+- 代表 footprint 选择优先可突变性、残基数和社区 medoid；adapter 向设计器传递可突变子集，完整成员保留在 Footprint 导出。
+- 最终区域顺序使用唯一调色板；点击区域淡化其他区域，再次点击恢复；Mol* 基础色与 beads/离线报告共用 residue.region_id。
+- 使用 e81db31a230d 已保存数据重放：216 → 6 个区域；保留 567 个去重 footprints；183 个表面残基具有唯一显示归属；三个重复运行结果完全一致。
+- 重放入口：`python -m ecd_epitope_scanner.surface_patch.replay_regions RUN_DIR OUTPUT_DIR`。重放只生成分区报告，不能将旧设计结果冒充为新区域设计。
+- 本轮未修改 structure_analysis.py、design.py、stability.py、序列处理或生产 SASA/footprint 生成计算；未引入 mesh backend 或新膜评分。
+
+## Surface-geodesic V2（当前实现）
+
+- 新增独立 `surface_patch` 包；底层对象为 `SurfaceGeometry`、`Footprint` 与 `SurfaceRegion`。
+- 默认 `surface_v2` 使用 Shrake–Rupley 原子球未遮挡点构造显式表面点云；该几何采样不改写生产 SASA 数值。
+- surface graph 边由局部点距离、法向一致性与排除体积线段检查共同确定，不再用 Cα 距离建立主要表面连通性。
+- 使用 SciPy CSR 图和 Dijkstra 计算真实表面路径，并按连通组件执行完全确定性的 geodesic farthest-point sampling。
+- 每个中心生成 9/12/15 Å 固定半径及 600 Å² 自适应面积 footprint；所有 footprint 允许重叠。
+- residue membership 使用 footprint 内面积（≥8 Å²）或面积比例（≥20%）；保护残基保留在几何和 footprint 中，但不进入可突变列表。
+- 已实现几何 QC、area-weighted Jaccard 去重、footprint adjacency、抗链式合并的 SurfaceRegion grouping，以及旧 `RegionRecord` adapter。
+- `3–7` 仅用于 Stage-1 兼容面板选择；完整 footprints/SurfaceRegions 均保留并导出。
+- 新增 surface vertices/edges、raw/deduplicated footprints、membership、adjacency、regions 和 QC 输出；在线页面可选择并聚焦任一 footprint。
+- 可通过 `ECD_PATCH_ENGINE=legacy_v1` 或请求 metadata 的 `patch_engine` 回退旧引擎。
+- MolecularMesh backend 已保留接口；当前默认实现为无需外部表面二进制的 `sr_pointcloud`。
+
 ## 回退基线
 
 - 分支：`codex/surface-partition-v2`

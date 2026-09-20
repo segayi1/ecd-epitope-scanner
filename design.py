@@ -19,7 +19,14 @@ from typing import Any
 import numpy as np
 
 from . import config
-from .models import DesignRecord, MutationChoice, ProteinContext, RegionRecord, ResidueRecord, to_dict
+from .models import (
+    DesignRecord,
+    MutationChoice,
+    ProteinContext,
+    RegionRecord,
+    ResidueRecord,
+    to_dict,
+)
 from .sequences import apply_mutations, coding_fragment
 from .stability import (
     AMINO_ACIDS,
@@ -323,6 +330,8 @@ def _enumerate_combinations(
     by_position: dict[int, ResidueRecord],
     measured: bool,
     max_combo_spread: float | None = None,
+    minimum_sites: int | None = None,
+    maximum_sites: int | None = None,
 ) -> tuple[list[tuple[float, float, list[MutationChoice]]], list[str]]:
     """Exhaustive search over the cleared per-site menus.
 
@@ -336,10 +345,14 @@ def _enumerate_combinations(
     if len(active_sites) < 2:
         return [], downgrades
 
+    policy_minimum = config.MIN_COMBO_SITES if minimum_sites is None else max(2, minimum_sites)
+    policy_maximum = config.MAX_COMBO_SITES if maximum_sites is None else max(2, maximum_sites)
+    policy_minimum = min(policy_minimum, policy_maximum)
+
     def search(require_anchor: bool, min_sites: int) -> list[tuple[float, float, list[MutationChoice]]]:
         scored: list[tuple[float, float, list[MutationChoice]]] = []
         considered = 0
-        maximum = min(config.MAX_COMBO_SITES, len(active_sites))
+        maximum = min(policy_maximum, len(active_sites))
         for size in range(maximum, min_sites - 1, -1):
             for site_subset in itertools.combinations(active_sites, size):
                 pools = [menu[record.uniprot_pos] for record in site_subset]
@@ -362,10 +375,10 @@ def _enumerate_combinations(
                     )
         return _pareto_front(scored)
 
-    front = search(require_anchor=True, min_sites=config.MIN_COMBO_SITES)
+    front = search(require_anchor=True, min_sites=policy_minimum)
     if front:
         return front, downgrades
-    front = search(require_anchor=False, min_sites=config.MIN_COMBO_SITES)
+    front = search(require_anchor=False, min_sites=policy_minimum)
     if front:
         downgrades.append(
             "No combination with an anchor mutation passed the stability gates; the anchor requirement was relaxed."
@@ -543,6 +556,8 @@ def design_regions(
     structure_pdb: Any | None,
     workdir: Any,
     original_cds: str | None = None,
+    minimum_combo_sites: int | None = None,
+    maximum_combo_sites: int | None = None,
 ) -> tuple[list[DesignRecord], dict[str, Any]]:
     by_position = {record.uniprot_pos: record for record in records}
     designs: list[DesignRecord] = []
@@ -637,14 +652,16 @@ def design_regions(
                     if position in footprint_set
                 }
                 candidate_front, candidate_notes = _enumerate_combinations(
-                    local_sites, local_scans, by_position, measured, max_combo_spread
+                    local_sites, local_scans, by_position, measured, max_combo_spread,
+                    minimum_combo_sites, maximum_combo_sites,
                 )
                 local_fronts.extend(candidate_front)
                 downgrade_notes.extend(candidate_notes)
             front = _pareto_front(local_fronts)
         else:
             front, downgrade_notes = _enumerate_combinations(
-                key_sites, scans, by_position, measured, max_combo_spread
+                key_sites, scans, by_position, measured, max_combo_spread,
+                minimum_combo_sites, maximum_combo_sites,
             )
         for note in downgrade_notes:
             downgrades.append(f"Patch {region.id}: {note}")

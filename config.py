@@ -6,6 +6,8 @@ Changing a value changes what the output means; keep it in one place.
 """
 from __future__ import annotations
 
+import os
+
 # --- Structure eligibility gate (UniProt/PDB candidate audit) ---------------
 MIN_ECD_COVERAGE = 0.95
 MAX_INTERNAL_GAP_AA = 8
@@ -17,6 +19,41 @@ RSASA_THRESHOLD = 0.25
 SIDECHAIN_SASA_THRESHOLD_A2 = 20.0
 
 # --- Patch partitioning (Fab-footprint scale) --------------------------------
+PATCH_ENGINE_VERSION = os.environ.get("ECD_PATCH_ENGINE", "surface_v2").strip().lower()
+if PATCH_ENGINE_VERSION not in {"legacy_v1", "surface_v2"}:
+    PATCH_ENGINE_VERSION = "surface_v2"
+
+# Surface V2 parameters. These affect geometry/footprint enumeration, not the
+# production Shrake-Rupley residue SASA thresholds above.
+SURFACE_V2_PARAMETERS = {
+    "surface_geometry": {
+        "backend": "sr_pointcloud",
+        "probe_radius": 1.4,
+        "sampling_points": 48,
+        "point_graph_max_distance": 2.5,
+        "normal_cosine_min": 0.3,
+    },
+    "footprint_centers": {
+        "center_spacing": 7.0,
+        "coverage_radius": 7.0,
+        "minimum_component_area": 25.0,
+    },
+    "footprints": {
+        "radii": [9.0, 12.0, 15.0],
+        "target_area": 600.0,
+        "min_area": 350.0,
+        "max_area": 1000.0,
+        "min_radius": 8.0,
+        "max_radius": 16.0,
+    },
+    "residue_inclusion": {"min_surface_area": 8.0, "min_surface_fraction": 0.20},
+    "deduplication": {"threshold": 0.75},
+    "regions": {"resolution": 0.65, "maximum_center_geodesic": 24.0,
+                "maximum_geodesic_diameter": 60.0, "domain_boundary_penalty": 0.15,
+                "minimum_surface_area": 700.0, "minimum_shared_surface_area": 40.0,
+                "minimum_weighted_jaccard": 0.12},
+}
+
 # An antibody footprint buries ~600-900 A2 over 15-25 residues
 # (Kringelum 2012).  13 A geodesic radius on the C-alpha surface graph
 # approximates that scale on the targets this tool is used for.

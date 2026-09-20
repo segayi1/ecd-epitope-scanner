@@ -10,7 +10,6 @@ from typing import Any
 
 import requests
 
-
 USER_AGENT = "ecd-epitope-workbench/1.0 (+local scientific workflow)"
 
 

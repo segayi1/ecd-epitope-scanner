@@ -50,12 +50,18 @@ const state = {
   step: 1,
   engine: "molstar",
   beadsReady: false,
-  representation: "cartoon",
+  // Surface-first display: the primary scientific object is the solvent-
+  // exposed ECD surface, while cartoon/stick remain explicit alternatives.
+  representation: "molecular-surface",
   spinning: false,
-  layers: new Set(["folding", "regions", "design"]),
+  layers: new Set(["surface", "regions", "design"]),
+  selectedFootprint: null,
+  selectedRegion: null,
   layerFocus: "folding",
   selectedResidue: null,
   selectedDesign: "wt",
+  designSurfaceMode: false,
+  designFocusRequest: 0,
   previewMode: "construct", // construct | custom; custom never shadows a clicked design
   previewPlans: new Map(),
   customMutations: [],
@@ -207,11 +213,20 @@ function setJob(status, message, progress = 0, error = null) {
 
 function adoptResult(result, { demo, jobId }) {
   state.result = result;
+  state.selectedRegion = null;
+  state.selectedFootprint = null;
+  state.reliabilityView = false;
+  state.designSurfaceMode = false;
+  state.designFocusRequest += 1;
   state.previewPlans.clear();
   state.demo = demo;
   state.jobId = jobId;
   state.selectedResidue = result.residues.find((r) => r.folding_screen_pass) || result.residues[0] || null;
-  state.selectedDesign = result.designs.find((d) => d.mutations?.length)?.id || "wt";
+  const initialDesign = result.designs.find(
+    (d) => d.design_role === "STAGE1_PROBE" && d.mutations?.length
+  ) || result.designs.find((d) => d.mutations?.length);
+  state.selectedDesign = initialDesign?.id || "wt";
+  state.designSurfaceMode = Boolean(initialDesign?.mutations?.length && regionForDesign(initialDesign));
   state.previewMode = "construct";
   if (!result.protein.ecd_coding_sequence) {
     result.protein.ecd_coding_sequence = [...result.protein.ecd_sequence].map((aa) => CODONS[aa]).join("");
@@ -241,6 +256,23 @@ function loadDemo() {
     adoptResult(result, { demo: true, jobId: null });
     setJob("DEMO", t("msg.demoReady", "PD-L1 冻结示例；提交真实作业后可保存自定义组合与导出"), 1);
   }).catch((e) => setJob("FAILED", t("msg.demoFail", "示例载入失败"), 0, e.message));
+}
+
+async function loadSavedJob(jobId) {
+  try {
+    const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+    setJob(job.status, job.message || "", job.progress || 0, job.error || "");
+    if (job.status === "COMPLETE" && job.result) {
+      adoptResult(job.result, { demo: false, jobId });
+    } else if (job.status === "RUNNING" || job.status === "QUEUED") {
+      state.jobId = jobId;
+      watchJob(jobId);
+    }
+  } catch (error) {
+    console.error(error);
+    showToast(t("msg.savedJobFail", "无法载入指定任务：") + error.message);
+    loadDemo();
+  }
 }
 
 function watchJob(jobId) {
@@ -370,7 +402,11 @@ async function ensureViewers(structureUrl) {
     await MolstarView.init($("viewer-molstar"), structureUrl, state.representation);
     molstarReady = true;
     await paintMolstar();
-    await MolstarView.focus(state.result.residues.map(residueQuery));
+    const design = state.designSurfaceMode ? selectedDesign() : null;
+    const focusRecords = designSurfaceRecords(design).envelope;
+    await MolstarView.focus(
+      (focusRecords.length ? focusRecords : state.result.residues).map(residueQuery)
+    );
     await installMolstarTooltips();
   } catch (error) {
     console.error(error);
@@ -389,7 +425,17 @@ async function installMolstarTooltips() {
   await MolstarView.tooltips(records);
 }
 
+const RELIABILITY_COLORS = {STRUCTURED: "#0072B2", FLEXIBLE_STRUCTURED: "#56B4E9", UNCERTAIN: "#E69F00", CONDITIONALLY_FOLDED: "#CC79A7", DISORDERED: "#D55E00", UNRESOLVED: "#999999"};
+function reliabilityColor(residue) {
+  const row = state.result?.structure_reliability?.residues?.find((r) => r.residue_id === residue.uniprot_pos);
+  return RELIABILITY_COLORS[row?.state] || "#999999";
+}
 function beadsColorFor(residue) {
+  if (state.reliabilityView) return reliabilityColor(residue);
+  const selectedFootprint = state.result?.surface_v2?.footprints?.find(
+    (item) => item.footprint_id === state.selectedFootprint
+  );
+  if (selectedFootprint?.residues?.includes(residue.uniprot_pos)) return "#D81B60";
   const design = selectedDesign();
   const designPos = new Set((design?.mutations || []).map((m) => m.position));
   if (state.previewMode === "custom" && state.customMutations.some((m) => m.position === residue.uniprot_pos)) return "#8a2f1d";
@@ -397,11 +443,40 @@ function beadsColorFor(residue) {
   if (state.layers.has("interface") && residue.interface) return LAYER_META.interface.color;
   if (state.layers.has("regions") && residue.region_id != null) {
     const region = state.result.regions.find((r) => r.id === residue.region_id);
-    if (region) return region.color;
+    if (region) return state.selectedRegion && state.selectedRegion !== region.id ? "#C8CDD1" : region.color;
   }
   if (state.layers.has("folding") && residue.folding_screen_pass) return LAYER_META.folding.color;
   if (state.layers.has("surface") && residue.surface_accessible) return LAYER_META.surface.color;
   return "#7c909d";
+}
+
+const DESIGN_SURFACE_COLORS = {
+  background: "#EEECE6", region: "#D69E2E", footprint: "#F0E76A", mutation: "#D55E00",
+};
+
+function regionForDesign(design) {
+  if (!design || !state.result) return null;
+  let owner = design;
+  const visited = new Set();
+  while (owner && owner.region_id == null && owner.parent_design_id && !visited.has(owner.id)) {
+    visited.add(owner.id);
+    owner = state.result.designs.find((item) => item.id === owner.parent_design_id);
+  }
+  return state.result.regions.find((region) => region.id === owner?.region_id) || null;
+}
+
+function designSurfaceRecords(design = selectedDesign()) {
+  const region = regionForDesign(design);
+  if (!design || !region) return { region: null, envelope: [], footprint: [], mutations: [] };
+  const envelopePositions = new Set(region.envelope_residues?.length ? region.envelope_residues : region.residues);
+  const footprintPositions = new Set(region.footprint_residues?.length ? region.footprint_residues : region.residues);
+  const mutationPositions = new Set((design.mutations || []).map((item) => item.position));
+  return {
+    region,
+    envelope: state.result.residues.filter((item) => envelopePositions.has(item.uniprot_pos)),
+    footprint: state.result.residues.filter((item) => footprintPositions.has(item.uniprot_pos)),
+    mutations: state.result.residues.filter((item) => mutationPositions.has(item.uniprot_pos)),
+  };
 }
 
 function paintBeads() {
@@ -425,6 +500,17 @@ async function paintMolstar() {
   const add = (records, color, extra = {}) => records.forEach((residue) => {
     data.push({ ...residueQuery(residue), color, ...extra });
   });
+  const showcase = state.designSurfaceMode && state.previewMode === "construct" ? selectedDesign() : null;
+  if (showcase?.mutations?.length) {
+    const records = designSurfaceRecords(showcase);
+    add(records.envelope, DESIGN_SURFACE_COLORS.region);
+    add(records.footprint, DESIGN_SURFACE_COLORS.footprint);
+    add(records.mutations, DESIGN_SURFACE_COLORS.mutation);
+    await MolstarView.color(data, DESIGN_SURFACE_COLORS.background);
+    renderLegend();
+    renderDesignSurfaceCallout();
+    return;
+  }
   if (state.layers.has("surface")) add(state.result.residues.filter((r) => r.surface_accessible), LAYER_META.surface.color);
   if (state.layers.has("folding")) add(state.result.residues.filter((r) => r.folding_screen_pass), LAYER_META.folding.color);
   if (state.layers.has("interface")) {
@@ -434,8 +520,17 @@ async function paintMolstar() {
   if (state.layers.has("regions")) {
     for (const region of state.result.regions) {
       const positions = new Set(region.envelope_residues?.length ? region.envelope_residues : region.residues);
-      add(state.result.residues.filter((r) => positions.has(r.uniprot_pos)), region.color);
+      const members = state.result.residues.filter((r) => region.partition_mode === "surface_v2"
+        ? r.region_id === region.id : positions.has(r.uniprot_pos));
+      add(members, state.selectedRegion && state.selectedRegion !== region.id ? "#C8CDD1" : region.color);
     }
+  }
+  const selectedFootprint = state.result.surface_v2?.footprints?.find(
+    (item) => item.footprint_id === state.selectedFootprint
+  );
+  if (selectedFootprint) {
+    const positions = new Set(selectedFootprint.residues || []);
+    add(state.result.residues.filter((r) => positions.has(r.uniprot_pos)), "#D81B60");
   }
   if (state.layers.has("design")) {
     const positions = new Set(state.previewMode === "custom"
@@ -444,10 +539,54 @@ async function paintMolstar() {
     add(state.result.residues.filter((r) => positions.has(r.uniprot_pos)), LAYER_META.design.color,
       { sideChain: true, representation: "ball-and-stick", representationColor: LAYER_META.design.color });
   }
+  if (state.reliabilityView) {
+    data.length = 0;
+    state.result.residues.forEach((r) => add([r], reliabilityColor(r)));
+  }
   await MolstarView.color(data, "#7c909d");
   if (state.selectedResidue) await MolstarView.highlight(residueQuery(state.selectedResidue));
   renderLegend();
   if (state.engine === "beads") paintBeads();
+}
+
+function renderDesignSurfaceCallout() {
+  const container = $("design-surface-callout");
+  if (!container) return;
+  const design = state.designSurfaceMode && state.previewMode === "construct" ? selectedDesign() : null;
+  const region = regionForDesign(design);
+  if (!design?.mutations?.length || !region) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+  container.hidden = false;
+  container.innerHTML = `<div class="design-surface-head">
+    <div><strong>${h(design.id)} · ${h(t("design.surfaceTitle", "突变组合表面视图"))}</strong>
+      <span>${h(t("region.patch", "补丁"))} R${region.id} · ${h(region.name)}</span></div>
+    <span class="grow"></span><button type="button" class="btn btn-mini" id="exit-design-surface">${h(t("design.surfaceExit", "退出聚焦"))}</button>
+  </div>
+  <div class="design-surface-labels">${design.mutations.map((mutation) =>
+    `<button type="button" class="design-surface-label" data-surface-mutation="${mutation.position}">${h(notation(mutation))}</button>`
+  ).join("")}</div>
+  <div class="note" style="margin:0">${h(t("design.surfaceCoordinateNote", "表面来自输入结构；红色表面标记 WT 位点，标签表示设计替换，并非突变后原子构象。"))}</div>
+  <div class="design-surface-key">
+    <span><i style="background:${DESIGN_SURFACE_COLORS.background}"></i>${h(t("design.surfaceProtein", "其余表面"))}</span>
+    <span><i style="background:${DESIGN_SURFACE_COLORS.region}"></i>${h(t("design.surfaceRegion", "区域"))}</span>
+    <span><i style="background:${DESIGN_SURFACE_COLORS.footprint}"></i>footprint</span>
+    <span><i style="background:${DESIGN_SURFACE_COLORS.mutation}"></i>${h(t("design.surfaceSites", "突变位点"))}</span>
+  </div>`;
+  $("exit-design-surface").addEventListener("click", exitDesignSurfaceMode);
+  container.querySelectorAll("[data-surface-mutation]").forEach((button) => {
+    button.addEventListener("click", () => selectResidue(Number(button.dataset.surfaceMutation), true));
+  });
+}
+
+async function exitDesignSurfaceMode() {
+  state.designSurfaceMode = false;
+  state.designFocusRequest += 1;
+  renderDesignSurfaceCallout();
+  await paintMolstar();
+  if (molstarReady) await MolstarView.focus(state.result.residues.map(residueQuery));
 }
 
 async function setRepresentation(representation) {
@@ -522,6 +661,12 @@ function hideBeadsTip() { $("residue-tip").hidden = true; }
 function renderLegend() {
   if (!state.result) { $("legend").innerHTML = ""; return; }
   const items = [];
+  if (state.designSurfaceMode && selectedDesign()?.mutations?.length) {
+    items.push(legendItem(DESIGN_SURFACE_COLORS.background, t("design.surfaceProtein", "其余表面")));
+    items.push(legendItem(DESIGN_SURFACE_COLORS.region, t("design.surfaceRegion", "所选区域")));
+    items.push(legendItem(DESIGN_SURFACE_COLORS.footprint, "Footprint"));
+    items.push(legendItem(DESIGN_SURFACE_COLORS.mutation, t("design.surfaceSites", "突变位点")));
+  } else {
   const design = selectedDesign();
   const designCount = (design?.mutations || []).length + state.customMutations.length;
   if (designCount) items.push(legendItem(LAYER_META.design.color, `${t("legend.selected", "已选突变")} (${designCount})`));
@@ -530,6 +675,11 @@ function renderLegend() {
     state.result.regions.forEach((region) => items.push(legendItem(region.color, region.name)));
   }
   items.push(legendItem("#7c909d", t("hud.backbone", "主链")));
+  }
+  if (state.reliabilityView) {
+    items.length = 0;
+    Object.entries(RELIABILITY_COLORS).forEach(([name, color]) => items.push(legendItem(color, name)));
+  }
   const collapsed = localStorage.getItem("ecd.legend") === "collapsed";
   $("legend").innerHTML =
     `<button type="button" class="legend-toggle">${collapsed ? t("hud.legendCollapsed", "图例 ▸") : t("hud.legendOpen", "图例 ▾")}</button>`
@@ -688,6 +838,9 @@ function bindPanelControls() {
   $("preview-custom").addEventListener("click", () => {
     if (!state.customMutations.length) return;
     state.previewMode = "custom";
+    state.designSurfaceMode = false;
+    state.designFocusRequest += 1;
+    renderDesignSurfaceCallout();
     renderSeqDock();
     repaintViews();
   });
@@ -843,8 +996,14 @@ function criteriaText() {
 }
 
 function renderStep3() {
+  if (state.result.partitioning?.partition_mode === "surface_v2") {
+    const note = $("region-list").previousElementSibling;
+    if (note?.classList.contains("note")) note.textContent = state.lang === "zh"
+      ? "表面区域由主尺度足迹聚合而成，基础颜色按残基唯一归属显示。点击区域可突出显示，再次点击恢复全部区域；下方可查看重叠足迹。"
+      : "Regions group primary footprints. Each residue has one base region color. Click a region to highlight it; click again to restore all regions. Overlapping footprints remain available below.";
+  }
   const designByRegion = new Map(state.result.designs.map((d) => [d.region_id, d]));
-  $("region-list").innerHTML = state.result.regions.map((region) => {
+  const legacyHtml = state.result.regions.map((region) => {
     const design = designByRegion.get(region.id);
     const mutations = design?.mutations?.map(notation).join(" · ") || t("region.noAuto", "无自动组合");
     const tier = region.tier ? ` · ${region.tier}` : "";
@@ -858,13 +1017,48 @@ function renderStep3() {
       <span class="grow"></span><span class="muted">${(region.envelope_residues?.length || region.residues.length)} ${h(t("region.surfaceSites", "表面残基"))}<br>${(region.mutable_residues?.length || region.residues.length)} ${h(t("region.mutableSites", "可突变"))}</span>
     </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}${region.footprint_residues?.length ? ` · ${h(t("region.footprint", "局部足迹"))} ${region.footprint_residues.length} ${h(t("region.sites", "位点"))}` : ""}${region.candidate_footprints?.length ? ` · ${region.candidate_footprints.length} ${h(t("region.candidateFootprints", "个候选足迹"))}` : ""}${region.partition_basis ? ` · ${h(t("region.basis", "依据"))}: ${h(region.partition_basis)}` : ""}</div>`;
   }).join("") || `<div class="empty">${h(t("region.none", "没有可辩护的结构分区。"))}</div>`;
+  const v2 = state.result.surface_v2;
+  const footprintHtml = v2?.footprints?.length ? `<div class="box" style="margin-top:12px">
+    <h3>Surface V2 footprints</h3>
+    <div class="note">${v2.qc?.deduplicated_footprint_count ?? v2.footprints.length} overlapping footprints · ${v2.qc?.surface_region_count ?? 0} surface regions · coverage ${fmtPct(v2.qc?.coverage ?? 0)}</div>
+    <label class="field"><span>Footprint</span><select id="footprint-select">
+      <option value="">—</option>${v2.footprints.map((item) => `<option value="${h(item.footprint_id)}">${h(item.footprint_id)} · ${h(item.generation_mode)} · ${item.residues?.length || 0} residues · ${fmt(item.total_surface_area)} Å²</option>`).join("")}
+    </select></label>
+  </div>` : "";
+  const reliability = state.result.structure_reliability;
+  const reliabilityHtml = reliability ? `<details class="box"><summary>结构可靠性 / Reliability · ${reliability.idr_candidates.length} sequence candidates</summary>
+    <label><input id="reliability-view" type="checkbox" ${state.reliabilityView ? "checked" : ""}> 可靠性着色（覆盖分区颜色）</label>
+    <div class="note">多证据规则分流，不是无序概率；IDR 窗口仅供审核，不自动运行 FoldX。${reliability.qc.enabled ? "" : "分流已禁用。"}</div>
+    <div class="note">PAE: ${h(reliability.qc.pae_status)} · IUPred: ${h(reliability.qc.sequence_predictor?.status || "unavailable")} · boundary guard: ${reliability.qc.boundary_positions.length} residues</div>
+    ${Object.entries(RELIABILITY_COLORS).map(([name, color]) => `<span style="color:${color}">■</span> ${name} (${reliability.qc.state_counts[name] || 0})`).join(" · ")}
+    ${reliability.segments.map((s) => `<div>${s.start}–${s.end}: ${h(s.state)} · ${s.use_for_surface_mesh ? "保留几何" : "不进入三维分区"}</div>`).join("")}
+    <details><summary>IDR / conditional sequence windows</summary>${reliability.idr_candidates.map((c) => `<div>${c.start}–${c.end} ${h(c.sequence)} · ${h(c.candidate_type)} · REVIEW_REQUIRED</div>`).join("") || "无候选"}</details>
+  </details>` : "";
+  $("region-list").innerHTML = legacyHtml + footprintHtml + reliabilityHtml;
+  $("reliability-view")?.addEventListener("change", (event) => { state.reliabilityView = event.target.checked; repaintViews(); });
   document.querySelectorAll("[data-focus-region]").forEach((el) => {
     el.addEventListener("click", () => {
-      state.selectedRegion = Number(el.dataset.focusRegion);
+      const id = Number(el.dataset.focusRegion);
+      state.selectedRegion = state.selectedRegion === id ? null : id;
+      state.selectedFootprint = null;
       state.layers.add("regions");
       repaintViews();
     });
   });
+  const footprintSelect = $("footprint-select");
+  if (footprintSelect) {
+    footprintSelect.value = state.selectedFootprint || "";
+    footprintSelect.addEventListener("change", async () => {
+      state.selectedFootprint = footprintSelect.value || null;
+      state.selectedRegion = null;
+      repaintViews();
+      const footprint = v2.footprints.find((item) => item.footprint_id === state.selectedFootprint);
+      if (footprint && molstarReady) {
+        const positions = new Set(footprint.residues || []);
+        await MolstarView.focus(state.result.residues.filter((r) => positions.has(r.uniprot_pos)).map(residueQuery));
+      }
+    });
+  }
 }
 
 function renderStep4() {
@@ -923,26 +1117,34 @@ function renderStep5() {
     const role = design.design_role
       ? `<span class="tag">${h(t("role." + design.design_role, design.design_role))}</span>`
       : "";
-    return `<div class="design-card">
+    const actionable = Boolean(design.mutations?.length);
+    const cardAction = actionable ? ` data-view-design="${h(design.id)}" tabindex="0" role="button"` : "";
+    return `<div class="design-card ${actionable ? "clickable" : ""} ${state.selectedDesign === design.id ? "is-selected" : ""}"${cardAction}>
       <div class="design-head">
         <div><strong>${h(design.id)} · ${h(design.name)}</strong><br><span class="st">${scoreLine}</span></div>
         <span class="st">${role} ${h(design.status)}</span>
       </div>
       <div>${chips}</div>
       <div class="actions-row">
-        ${design.mutations?.length ? `<button type="button" class="btn btn-mini" data-view-design="${h(design.id)}">${h(t("design.review", "审查此构建体"))}</button>
+        ${design.mutations?.length ? `<button type="button" class="btn btn-mini" data-review-design="${h(design.id)}">${h(t("design.review", "审查此构建体"))}</button>
         <button type="button" class="btn btn-mini" data-copy-design="${h(design.id)}">${h(t("design.copyCustom", "复制到自定义"))}</button>` : ""}
       </div>
     </div>`;
   }).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`;
   document.querySelectorAll("[data-design-residue]").forEach((el) => {
-    el.addEventListener("click", () => selectResidue(Number(el.dataset.designResidue), true));
+    el.addEventListener("click", (event) => { event.stopPropagation(); selectResidue(Number(el.dataset.designResidue), true); });
   });
   document.querySelectorAll("[data-view-design]").forEach((el) => {
     el.addEventListener("click", () => selectDesign(el.dataset.viewDesign));
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectDesign(el.dataset.viewDesign); }
+    });
+  });
+  document.querySelectorAll("[data-review-design]").forEach((el) => {
+    el.addEventListener("click", (event) => { event.stopPropagation(); selectDesign(el.dataset.reviewDesign); });
   });
   document.querySelectorAll("[data-copy-design]").forEach((el) => {
-    el.addEventListener("click", () => copyDesignToCustom(el.dataset.copyDesign));
+    el.addEventListener("click", (event) => { event.stopPropagation(); copyDesignToCustom(el.dataset.copyDesign); });
   });
   renderExports();
   renderDesignSelect();
@@ -967,6 +1169,8 @@ function renderStep7() {
     ${row(t("overview.accession", "UniProt / 输入标识"), protein.accession || request.identifier)}
     ${row(t("overview.ecd", "ECD 范围"), protein.ecd_start && protein.ecd_end ? `${protein.ecd_start}–${protein.ecd_end} (${protein.ecd_sequence?.length || summary.mapped_ecd_residues || "—"} aa)` : "—")}
     ${row(t("overview.topology", "拓扑注释"), protein.topology)}
+    ${row(t("overview.assayProfile", "固定实验方位"), result.assay_profile?.display_name || "—")}
+    ${row(t("overview.orientation", "PDB 方位证据"), result.assay_geometry?.status === "relative_axis_only" ? t("overview.relativeAxis", "C 端锚点相对轴（不是物理膜平面）") : "—")}
     ${row(t("overview.structure", "使用的结构"), selection.selected_identifier || source.identifier)}
     ${row(t("overview.provider", "结构来源 / 类型"), [source.provider, source.kind].filter(Boolean).join(" / "))}
     ${row(t("overview.chain", "目标链"), selection.selected_chain || selection.chain || "—")}
@@ -1107,14 +1311,16 @@ async function selectResidue(position, focus = false) {
   renderResidueDetail();
   renderSeqDock();
   if (state.engine === "molstar" && molstarReady) {
-    /* sideChain ball-and-stick so the picked residue stays visible even when
-       no design layer covers it; yellow halo marks the exact site */
-    await MolstarView.highlight({
-      ...residueQuery(residue),
-      sideChain: true,
-      representation: "ball-and-stick",
-      representationColor: "#FFD166",
-    });
+    /* A surface showcase must remain surface-only. Outside that mode, retain
+       the side-chain marker used by the residue inspector. */
+    await MolstarView.highlight(state.designSurfaceMode
+      ? residueQuery(residue)
+      : {
+        ...residueQuery(residue),
+        sideChain: true,
+        representation: "ball-and-stick",
+        representationColor: "#FFD166",
+      });
     if (focus) await MolstarView.focus([residueQuery(residue)]);
   }
 }
@@ -1159,9 +1365,13 @@ function renderDesignSelect() {
   select.value = [...select.options].some((o) => o.value === state.selectedDesign) ? state.selectedDesign : "wt";
 }
 
-function selectDesign(id) {
+async function selectDesign(id) {
+  const requestId = ++state.designFocusRequest;
   state.selectedDesign = id;
   state.previewMode = "construct";
+  state.reliabilityView = false;
+  const design = selectedDesign();
+  state.designSurfaceMode = Boolean(design?.mutations?.length && regionForDesign(design));
   renderDesignSelect();
   $("design-select").value = id;
   if (id !== "wt") state.layers.add("design");
@@ -1169,6 +1379,13 @@ function selectDesign(id) {
   renderStep5();
   repaintViews();
   renderSeqDock();
+  renderDesignSurfaceCallout();
+  if (!state.designSurfaceMode) return;
+  if (state.engine !== "molstar") setEngine("molstar");
+  await setRepresentation("molecular-surface");
+  if (requestId !== state.designFocusRequest || !molstarReady) return;
+  const records = designSurfaceRecords(design);
+  await MolstarView.focus(records.envelope.length ? records.envelope.map(residueQuery) : records.mutations.map(residueQuery));
 }
 
 /* ---------------- persistent sequence dock ---------------- */
@@ -1460,7 +1677,9 @@ function handleMolstarPick(event) {
   renderPanelScaffold();
   bindEvents();
   renderLegend();
-  loadDemo();
+  const savedJobId = new URLSearchParams(window.location.search).get("job");
+  if (savedJobId) loadSavedJob(savedJobId);
+  else loadDemo();
 
   /* keep the 3D canvas in sync when the viewport box changes without a
      window resize (sequence dock expanding, panel resize) — otherwise the

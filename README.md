@@ -25,10 +25,10 @@
 在项目根目录执行：
 
 ```powershell
-python -m venv ecd_epitope_scanner\.venv --system-site-packages
-$env:PIP_CACHE_DIR = "$PWD\ecd_epitope_scanner\.pip-cache"
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m pip install -r .\ecd_epitope_scanner\requirements-dev.txt
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m ecd_epitope_scanner serve --host 127.0.0.1 --port 8765
+python -m venv .venv --system-site-packages
+$env:PIP_CACHE_DIR = "$PWD\.pip-cache"
+.\.venv\Scripts\python.exe -m pip install -e . -r .\requirements-dev.txt
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner serve --host 127.0.0.1 --port 8765
 ```
 
 浏览器打开 `http://127.0.0.1:8765`。首页会先显示冻结的 PD-L1 示例；提交真实作业后可下载完整结果和保存自定义组合。
@@ -46,22 +46,23 @@ $env:PIP_CACHE_DIR = "$PWD\ecd_epitope_scanner\.pip-cache"
 用完后双击 **`stop_ecd_epitope_workbench.bat`** 结束服务（释放 8765 端口）。
 
 文件夹可整体移动或复制到本机其他位置后继续使用（`.venv` 依赖本机的 Anaconda 基础解释器）；
-换电脑则需要重建虚拟环境：`python -m venv .venv --system-site-packages` 后安装 requirements-dev.txt。
+换电脑则需要重建虚拟环境：`python -m venv .venv --system-site-packages` 后执行
+`.\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt`。
 
 ## CLI 调用
 
 ```powershell
 # 只输入 UniProt accession；严格 AF3 回退策略
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --uniprot Q9NZQ7 --output .\results\Q9NZQ7
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --uniprot Q9NZQ7 --output .\results\Q9NZQ7
 
 # 使用指定 PDB，自动从 SIFTS 推断 UniProt 映射
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --pdb-id 8AOM --chain A --output .\results\8AOM
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --pdb-id 8AOM --chain A --output .\results\8AOM
 
 # 使用已下载结构。建议提供 accession；否则必须提供完整序列和 ECD 边界。
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\model.cif --accession Q9NZQ7 --chain A --output .\results\uploaded
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\model.cif --accession Q9NZQ7 --chain A --output .\results\uploaded
 
 # 上传的官方 AF3 结果可用 confidence JSON 启用 AF3 confidence/PAE 门槛
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\af3_model.cif --accession Q9NZQ7 --chain A --confidence-json .\input\af3_confidences.json --output .\results\af3
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\af3_model.cif --accession Q9NZQ7 --chain A --confidence-json .\input\af3_confidences.json --output .\results\af3
 ```
 
 如果严格 AF3 策略找不到合格模型，CLI 返回退出码 `2` 和 `WAITING_FOR_AF3_UPLOAD`；网页可直接上传 AF3 文件后恢复该作业。
@@ -80,6 +81,9 @@ $env:PIP_CACHE_DIR = "$PWD\ecd_epitope_scanner\.pip-cache"
 - `full_length_protein_sequences.fasta` / `full_length_coding_sequences.gb`：全长膜蛋白突变序列（细胞表面结合实验用）。
 - `methods_report.md`：阈值、方法、补丁 tier、Stage-1/Stage-2 实验计划、盲区与实验确认门槛。
 - `run_manifest.json`：来源 URL、参数、软件版本和 SHA-256。
+- `structure_reliability.json`、`residue_reliability.csv`、`structural_segments.csv`、`surface_mask.csv`、`idr_candidates.csv`：结构可靠性、表面掩膜和无序区审计输出。
+- `surface_v2_qc.json`、`surface_v2_footprints.json`：表面足迹枚举、去重、区域归属与 QC 输出。
+- `fixed_assay_profile.json`：固定双细胞实验方位和解释边界的 assay profile 快照。
 - `ecd_epitope_design.zip`：完整导出包。
 
 ## 外部稳定性引擎
@@ -123,7 +127,7 @@ $env:FOLDX_PATH = 'C:\tools\foldx\foldx.exe'
 ## 验证
 
 ```powershell
-.\ecd_epitope_scanner\.venv\Scripts\python.exe -m pytest .\ecd_epitope_scanner\tests -q --basetemp .\ecd_epitope_scanner\test_output\pytest_tmp -p no:cacheprovider
+.\.venv\Scripts\python.exe -m pytest .\tests -q --basetemp .\test_output\pytest_tmp -p no:cacheprovider
 ```
 
 测试包含 SIFTS/拓扑解析、AF3 严格识别、AF3 恢复回归（UniProt 作业回填 accession）、序列反向翻译、冻结 PD-L1 全流水线（补丁分区/探针锚点/Stage-2 预设/实验计划）、补丁分区与定向菜单单测、区域构建约束与 FastAPI 静态资源检查。

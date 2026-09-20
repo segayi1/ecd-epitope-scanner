@@ -16,6 +16,7 @@
 const MolstarView = (() => {
   let plugin = null;
   let ready = false;
+  let initOptions = null;
 
   /* plugin.render() can resolve BEFORE the internal molstar Plugin has built
      its managers (canvas controls make this window obvious).  Painting before
@@ -48,7 +49,7 @@ const MolstarView = (() => {
     ready = false;
     host.innerHTML = "";
     plugin = new window.PDBeMolstarPlugin();
-    await plugin.render(host, {
+    initOptions = {
       customData: { url: structureUrl, format: "cif", binary: false },
       defaultPreset: "default",
       visualStyle: { polymer: representation || "cartoon", het: "ball-and-stick", carbs: "carbohydrate" },
@@ -66,7 +67,8 @@ const MolstarView = (() => {
       loadingOverlay: true,
       reactive: true,
       subscribeEvents: false,
-    });
+    };
+    await plugin.render(host, initOptions);
     await waitReady();
     applyViewProps();
     ready = true;
@@ -86,10 +88,18 @@ const MolstarView = (() => {
   async function setRepresentation(representation) {
     if (!plugin) return;
     if (!alive()) return;
-    await plugin.visual.update(
-      { visualStyle: { polymer: representation }, hideStructure: ["water"] },
-      false
-    );
+    const visualStyle = { polymer: representation, het: "ball-and-stick", carbs: "carbohydrate" };
+    /* PDBe Mol* 3.10.1 `visual.update({ visualStyle }, false)` only updates
+       init params; it does not rebuild existing representations. The pinned
+       build exposes the same applyVisualStyles method used during load. Keep
+       a full-reload fallback for a future build that hides that method. */
+    if (typeof plugin.applyVisualStyles === "function" && plugin.assemblyRef) {
+      await plugin.applyVisualStyles(plugin.assemblyRef, visualStyle);
+    } else {
+      initOptions = { ...initOptions, visualStyle };
+      await plugin.visual.update(initOptions, true);
+      await waitReady();
+    }
     await plugin.canvas.applySettings({
       color: "#f4f0e7",
       lighting: representation === "molecular-surface" ? "matte" : "flat",
@@ -149,6 +159,7 @@ const MolstarView = (() => {
   function destroy() {
     try { if (plugin && plugin.plugin) plugin.plugin.dispose(); } catch (e) { /* noop */ }
     plugin = null;
+    initOptions = null;
     ready = false;
   }
 

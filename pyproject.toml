@@ -10,14 +10,14 @@ requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115,<2", "uvicorn>=0.30,<1", "python-multipart>=0.0.9",
   "requests>=2.31", "biopython>=1.83", "numpy>=1.26", "networkx>=3.2",
-  "pandas>=2.0", "dnachisel>=3.2", "gemmi>=0.6",
+  "pandas>=2.0", "dnachisel>=3.2", "gemmi>=0.6", "scipy>=1.11",
 ]
 
 [project.scripts]
 ecd-epitope-scanner = "ecd_epitope_scanner.cli:main"
 
 [tool.setuptools]
-packages = ["ecd_epitope_scanner"]
+packages = ["ecd_epitope_scanner", "ecd_epitope_scanner.surface_patch", "ecd_epitope_scanner.surface_patch.backend"]
 
 [tool.setuptools.package-dir]
 ecd_epitope_scanner = "."

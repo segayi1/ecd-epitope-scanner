@@ -56,9 +56,9 @@
           <button type="button" data-engine="beads" aria-pressed="false" data-i18n="hud.beadsBtn">珠子</button>
         </span>
         <span class="seg" role="group" data-i18n-aria="aria.representation" aria-label="显示模式">
-          <button type="button" data-representation="cartoon" aria-pressed="true" data-i18n="hud.backbone">主链</button>
+          <button type="button" data-representation="cartoon" aria-pressed="false" data-i18n="hud.backbone">主链</button>
           <button type="button" data-representation="ball-and-stick" aria-pressed="false" data-i18n="hud.stick">球棍</button>
-          <button type="button" data-representation="molecular-surface" aria-pressed="false" data-i18n="hud.surface">表面</button>
+          <button type="button" data-representation="molecular-surface" aria-pressed="true" data-i18n="hud.surface">表面</button>
         </span>
         <button type="button" class="btn" id="btn-reset-view" data-i18n="hud.resetView">复位视角</button>
         <button type="button" class="btn" id="btn-spin" aria-pressed="false" data-i18n="hud.spin">旋转</button>
@@ -66,6 +66,7 @@
 
       <div class="vp-hud vp-hint" data-i18n="hud.hint">左键旋转 · 滚轮缩放 · 右键平移</div>
       <div id="legend" class="vp-legend"></div>
+      <aside id="design-surface-callout" class="design-surface-callout" hidden aria-live="polite"></aside>
       <div id="viewport-empty" class="vp-empty">
         <strong data-i18n="hud.canvasTitle">结构审查画布</strong>
         <span data-i18n="hud.canvasHint">载入示例或提交蛋白后显示结构</span>
@@ -111,7 +112,7 @@
 <dialog id="upload-dialog" class="dlg">
   <form id="upload-form" method="dialog">
     <h3 data-i18n="upload.title">上传已下载结构</h3>
-    <p class="muted" data-i18n="upload.hint">PDB / mmCIF；建议提供 UniProt accession 以建立规范编号。</p>
+    <p class="muted" data-i18n="upload.hint">仅需抗原 ECD 的 PDB / mmCIF；固定使用 Jurkat-Fab × K562-抗原膜方位并输出最多 6 个粗定位探针。</p>
     <label class="fld"><span data-i18n="upload.structureFile">结构文件</span>
       <input id="upload-structure" type="file" accept=".pdb,.ent,.cif,.mmcif" required></label>
     <div class="grid2">
@@ -119,7 +120,7 @@
       <label class="fld"><span data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
     </div>
     <details>
-      <summary data-i18n="upload.manual">没有 UniProt 时手动提供序列与 ECD 边界</summary>
+      <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
       <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>
       <div class="grid2">
         <label class="fld"><span data-i18n="upload.ecdStart">ECD 起点</span><input id="upload-ecd-start" type="number" min="1"></label>

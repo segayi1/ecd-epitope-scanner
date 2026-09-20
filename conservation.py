@@ -19,7 +19,6 @@ from Bio.Align import PairwiseAligner, substitution_matrices
 from .models import ProteinContext
 from .util import RemoteClient, write_json
 
-
 UNIPROT_SEARCH_URL = (
     "https://rest.uniprot.org/uniprotkb/search?query={query}"
     "&fields=accession,gene_primary,sequence,organism_name,reviewed"

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import platform
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import Bio
 import networkx
@@ -14,8 +14,8 @@ import numpy as np
 from Bio.PDB import MMCIFIO
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
-from . import config
-from . import models
+from . import config, models
+from .assay_profiles import get_assay_profile
 from .design import design_regions
 from .exporting import write_scientific_outputs
 from .models import ProteinContext, StructureCandidate, to_dict
@@ -30,20 +30,30 @@ from .retrieval import (
     infer_uniprot_from_sifts,
     prefilter_experimental_candidates,
 )
-from .stability import engine_metadata, find_engine_inventory
 from .sequences import coding_fragment
+from .stability import engine_metadata, find_engine_inventory
 from .structure_analysis import (
     ChainMapping,
     ParsedStructure,
     analyze_residues,
     best_chain_mapping,
+    chain_sequence,
     load_structure,
+    standard_residues,
     write_mapped_ecd_cif,
     write_mapped_ecd_pdb,
-    write_chain_pdb,
 )
-from .util import PipelineError, RemoteClient, WaitingForAF3, read_json, safe_name, sha256_file, write_json
-
+from .structure_reliability import classify_reliability, export_reliability, import_iupred
+from .surface_patch import run_surface_patch_v2
+from .util import (
+    PipelineError,
+    RemoteClient,
+    WaitingForAF3,
+    read_json,
+    safe_name,
+    sha256_file,
+    write_json,
+)
 
 ProgressCallback = Callable[[str, float, str], None]
 
@@ -67,6 +77,7 @@ class PipelineRequest:
     maximum_regions: int = 8
     output_dir: str | None = None
     assay_format: str = "cell_surface"   # cell_surface | purified
+    assay_profile: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -99,6 +110,173 @@ def _synthetic_context(request: PipelineRequest) -> ProteinContext:
         topology="user-defined ECD boundary",
         source_url="user input",
     )
+
+
+def _pdb_only_context(
+    parsed: ParsedStructure,
+    request: PipelineRequest,
+    assay_profile: dict[str, Any],
+) -> tuple[ProteinContext, str]:
+    """Build an ECD-only context from observed coordinates.
+
+    No canonical numbering or unobserved residues are invented.  When no
+    chain is specified, the longest observed protein chain is selected and the
+    choice is recorded in the output.
+    """
+    chains = {
+        str(chain.id): chain_sequence(chain)
+        for chain in parsed.model.get_chains()
+        if len(standard_residues(chain)) >= 8
+    }
+    if not chains:
+        raise PipelineError("Uploaded structure contains no protein chain with at least 8 residues")
+    if request.chain:
+        if request.chain not in chains:
+            raise PipelineError(f"Requested chain {request.chain!r} is not a usable protein chain")
+        chain_id = request.chain
+    else:
+        chain_id = min(chains, key=lambda item: (-len(chains[item]), item))
+    sequence = chains[chain_id]
+    return ProteinContext(
+        accession=f"PDB_ONLY_CHAIN_{chain_id}",
+        protein_name="Coordinate-derived antigen ECD",
+        organism="unspecified",
+        sequence=sequence,
+        ecd_start=1,
+        ecd_end=len(sequence),
+        membrane_anchor_position=len(sequence),
+        topology="K562 display: N-terminal extracellular antigen ECD, C-terminal PDGFRB membrane anchor",
+        source_url="user-provided coordinate file",
+        raw={
+            "sequence_source": "observed coordinate residues",
+            "canonical_numbering_available": False,
+            "auto_selected_chain": request.chain is None,
+            "available_chain_lengths": {key: len(value) for key, value in sorted(chains.items())},
+            "assay_profile": assay_profile["id"],
+        },
+    ), chain_id
+
+
+def _profile_orientation_geometry(
+    mapping: ChainMapping,
+    protein: ProteinContext,
+) -> dict[str, Any]:
+    """Construct a relative C-terminal anchor axis, never a fake membrane plane."""
+    ordered = [
+        (position, residue)
+        for position, residue in sorted(mapping.uniprot_to_residue.items())
+        if protein.ecd_start <= position <= protein.ecd_end and residue.has_id("CA")
+    ]
+    if len(ordered) < 4:
+        return {
+            "status": "unavailable",
+            "axis_source": "C-terminal anchor surrogate",
+            "reason": "fewer than four mapped ECD CA atoms",
+        }
+    tail = ordered[-3:]
+    anchor = np.mean([residue["CA"].coord for _, residue in tail], axis=0)
+    centroid = np.mean([residue["CA"].coord for _, residue in ordered], axis=0)
+    axis = centroid - anchor
+    norm = float(np.linalg.norm(axis))
+    if norm < 1e-6:
+        return {
+            "status": "unavailable",
+            "axis_source": "C-terminal anchor surrogate",
+            "reason": "ECD centroid and C-terminal anchor coincide",
+        }
+    axis /= norm
+    return {
+        "status": "relative_axis_only",
+        "axis_source": "C-terminal anchor surrogate",
+        "anchor_residues": [position for position, _ in tail],
+        "anchor_xyz": [round(float(value), 4) for value in anchor],
+        "extracellular_axis": [round(float(value), 6) for value in axis],
+        "physical_membrane_plane_inferred": False,
+        "caveat": (
+            "The axis supports relative membrane-proximal/distal labels only; it is not a "
+            "membrane normal and does not estimate intercellular Fab reach."
+        ),
+    }
+
+
+def _annotate_profile_orientation(
+    regions: list[Any],
+    records: list[Any],
+    geometry: dict[str, Any],
+) -> None:
+    if geometry.get("status") != "relative_axis_only":
+        for region in regions:
+            region.membrane_position = "relative orientation unavailable"
+            region.predicted_accessibility = "unknown"
+            region.membrane_accessibility_score = None
+            region.assay_accessible = True
+        return
+    anchor = np.asarray(geometry["anchor_xyz"], dtype=float)
+    axis = np.asarray(geometry["extracellular_axis"], dtype=float)
+    by_position = {item.uniprot_pos: item for item in records}
+    heights: dict[int, float] = {}
+    for region in regions:
+        positions = region.envelope_residues or region.residues
+        coords = [by_position[pos].ca for pos in positions if pos in by_position and by_position[pos].ca]
+        if coords:
+            heights[region.id] = float(np.dot(np.mean(np.asarray(coords), axis=0) - anchor, axis))
+    if not heights:
+        return
+    lower, upper = np.quantile(list(heights.values()), [1 / 3, 2 / 3])
+    for region in regions:
+        value = heights.get(region.id)
+        if value is None:
+            label = "relative orientation unavailable"
+        elif value <= lower:
+            label = "C-anchor-proximal"
+        elif value >= upper:
+            label = "C-anchor-distal"
+        else:
+            label = "C-anchor-middle"
+        region.membrane_position = label
+        region.predicted_accessibility = "unknown"
+        region.membrane_accessibility_score = None
+        region.assay_accessible = True
+        region.rationale += (
+            f"; {label} on a C-terminal-anchor relative axis; no membrane-reach penalty applied"
+        )
+
+
+def _select_geometry_spread_panel(
+    regions: list[Any], records: list[Any], maximum: int
+) -> list[Any]:
+    """Greedy maximin coverage without epitope-likelihood ranking."""
+    if len(regions) <= maximum:
+        return list(regions)
+    by_position = {item.uniprot_pos: item for item in records}
+
+    def center(region: Any) -> np.ndarray | None:
+        positions = region.envelope_residues or region.residues
+        coords = [by_position[pos].ca for pos in positions if pos in by_position and by_position[pos].ca]
+        return np.mean(np.asarray(coords), axis=0) if coords else None
+
+    centers = {region.id: center(region) for region in regions}
+    pending = list(regions)
+    selected = [max(pending, key=lambda item: (item.auto_design_allowed, item.surface_area, -item.id))]
+    pending.remove(selected[0])
+    while pending and len(selected) < maximum:
+        def coverage_key(candidate: Any) -> tuple[Any, ...]:
+            point = centers[candidate.id]
+            distances = [
+                float(np.linalg.norm(point - centers[item.id]))
+                for item in selected
+                if point is not None and centers[item.id] is not None
+            ]
+            return (
+                candidate.auto_design_allowed,
+                min(distances) if distances else -1.0,
+                candidate.surface_area,
+                -candidate.id,
+            )
+        chosen = max(pending, key=coverage_key)
+        selected.append(chosen)
+        pending.remove(chosen)
+    return sorted(selected, key=lambda item: item.id)
 
 
 def _transmembrane_geometry(
@@ -350,6 +528,10 @@ def run_pipeline(
     output_dir = Path(request.output_dir or Path.cwd() / "results" / safe_name(request.identifier or "run"))
     output_dir.mkdir(parents=True, exist_ok=True)
     write_json(output_dir / "request.json", request.as_dict())
+    try:
+        assay_profile = get_assay_profile(request.assay_profile)
+    except ValueError as exc:
+        raise PipelineError(str(exc)) from exc
     client = RemoteClient()
     ecd_override = (
         (request.ecd_start, request.ecd_end)
@@ -380,7 +562,7 @@ def run_pipeline(
             "page_url": selected.page_url,
             "category": selected.category,
             "explicit_af3": selected.explicit_af3,
-            "downloaded_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "downloaded_at": dt.datetime.now(dt.UTC).isoformat(),
         }
     elif input_type == "pdb_id":
         pdb_id = request.identifier
@@ -405,17 +587,22 @@ def run_pipeline(
             "identifier": pdb_id.lower(),
             "structure_url": selected.model_url,
             "page_url": selected.page_url,
-            "downloaded_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "downloaded_at": dt.datetime.now(dt.UTC).isoformat(),
         }
     elif input_type in {"structure", "af3_upload"}:
         structure_path = Path(request.structure_path or request.identifier)
+        parsed = load_structure(structure_path)
+        preferred_chain = request.chain
         if request.accession:
             protein = fetch_protein_context(request.accession, client, output_dir, ecd_override)
+        elif request.sequence:
+            protein = _synthetic_context(request)
+        elif assay_profile:
+            protein, preferred_chain = _pdb_only_context(parsed, request, assay_profile)
         else:
             protein = _synthetic_context(request)
-        parsed = load_structure(structure_path)
         mapping = best_chain_mapping(
-            parsed, protein, [request.chain] if request.chain else None
+            parsed, protein, [preferred_chain] if preferred_chain else None
         )
         predicted = input_type == "af3_upload" or bool(request.confidence_path)
         selected = StructureCandidate(
@@ -446,6 +633,12 @@ def run_pipeline(
             "identifier": structure_path.name,
             "original_path": str(structure_path.resolve()),
             "explicit_af3": input_type == "af3_upload",
+            "sequence_source": protein.raw.get("sequence_source", "provided or canonical sequence"),
+            "chain_selection": (
+                "user specified" if request.chain else
+                "longest observed protein chain" if protein.raw.get("auto_selected_chain") else
+                "best sequence mapping"
+            ),
         }
     else:
         raise PipelineError(f"Unsupported input_type: {request.input_type}")
@@ -522,37 +715,152 @@ def run_pipeline(
             )
 
     progress("PARTITIONING", 0.62, "Building Fab-footprint surface patches with epitope priors")
-    # Panel budget adapts to ECD size (config.adaptive_maximum_regions) and is
-    # additionally capped by any explicit user request.
-    adaptive_cap = config.adaptive_maximum_regions(protein.ecd_length)
-    effective_max = min(request.maximum_regions, adaptive_cap)
-    effective_min = min(request.minimum_regions, effective_max)
+    # Region count is a Stage-1 experimental budget, not a geometry limit.
+    # Surface V2 enumerates the complete surface first and the design stage
+    # chooses a bounded panel afterwards.
+    if assay_profile:
+        policy = assay_profile["design_policy"]
+        effective_max = int(policy["stage1_maximum_constructs"])
+        stage1_target = min(int(policy["stage1_target_constructs"]), effective_max)
+        # A construct count is an experimental ceiling/target, not permission
+        # to split one coherent surface into artificial extra regions.
+        effective_min = 1
+    else:
+        effective_max = min(7, max(1, request.maximum_regions))
+        effective_min = min(max(1, request.minimum_regions), effective_max)
+        stage1_target = effective_min
     membrane_anchor, membrane_normal = _transmembrane_geometry(mapping, protein)
-    regions, partition_summary = partition_surface(
-        records,
-        protein,
-        confidence=confidence,
-        minimum_regions=effective_min,
-        maximum_regions=effective_max,
-        predicted=predicted,
-        assay_format=request.assay_format,
-        membrane_anchor=membrane_anchor,
-        membrane_normal=membrane_normal,
-    )
+    assay_geometry = _profile_orientation_geometry(mapping, protein) if assay_profile else None
+    patch_engine = str(request.metadata.get("patch_engine", config.PATCH_ENGINE_VERSION)).lower()
+    surface_v2_payload: dict[str, Any] | None = None
+    reliability = None
+    if patch_engine == "surface_v2":
+        sequence_scores, sequence_provenance = import_iupred(
+            request.metadata.get('iupred_output'), protein.sequence
+        )
+        reliability = classify_reliability(
+            records, protein, predicted=predicted, confidence=confidence,
+            chain_length=len(mapping.residues), single_chain=len(list(parsed.model.get_chains())) == 1,
+            parameters=request.metadata.get('structure_reliability'),
+            sequence_scores=sequence_scores, sequence_provenance=sequence_provenance,
+        )
+        export_reliability(reliability, output_dir)
+        ecd_residues = {
+            position: residue
+            for position, residue in mapping.uniprot_to_residue.items()
+            if protein.ecd_start <= position <= protein.ecd_end
+        }
+        surface_result = run_surface_patch_v2(
+            parsed.model,
+            mapping.chain_id,
+            ecd_residues,
+            records,
+            protein,
+            output_dir=output_dir,
+            confidence=confidence,
+            predicted=predicted,
+            parameters=config.SURFACE_V2_PARAMETERS,
+            reliability=reliability,
+        )
+        # Natural communities remain visible regardless of the panel budget.
+        # The legacy design adapter selects its input later in this function.
+        regions = surface_result.legacy_regions
+        records_by_position = {item.uniprot_pos: item for item in records}
+        for record in records:
+            record.region_id = None
+        for region in regions:
+            for position in region.envelope_residues:
+                if position in records_by_position and records_by_position[position].region_id is None:
+                    records_by_position[position].region_id = region.id
+        partition_summary = surface_result.summary
+        partition_summary["surface_region_count"] = len(surface_result.surface_regions)
+        partition_summary["actual_regions"] = len(regions)
+        footprint_payload = []
+        region_footprint_ids = {fid for region in surface_result.surface_regions for fid in region.footprint_ids}
+        for footprint in surface_result.raw_footprints:
+            if footprint.footprint_id not in region_footprint_ids:
+                continue
+            item = to_dict(footprint)
+            item.pop("vertex_ids", None)
+            footprint_payload.append(item)
+        surface_v2_payload = {
+            "footprints": footprint_payload,
+            "regions": [to_dict(item) for item in surface_result.surface_regions],
+            "adjacency": [to_dict(item) for item in surface_result.footprint_edges],
+            "qc": {
+                key: value
+                for key, value in partition_summary.items()
+                if key in {
+                    "surface_vertices", "surface_edges", "surface_components",
+                    "center_count", "raw_footprint_count", "deduplicated_footprint_count",
+                    "surface_region_count", "coverage",
+                }
+            },
+        }
+    else:
+        regions, partition_summary = partition_surface(
+            records,
+            protein,
+            confidence=confidence,
+            minimum_regions=effective_min,
+            maximum_regions=effective_max,
+            predicted=predicted,
+            assay_format=request.assay_format,
+            membrane_anchor=membrane_anchor,
+            membrane_normal=membrane_normal,
+        )
+    if assay_profile:
+        _annotate_profile_orientation(regions, records, assay_geometry or {})
     inventory = find_engine_inventory()
     if request.metadata.get("disable_external_engines"):
         from .stability import EngineInventory
 
         inventory = EngineInventory(True, None, None)
     progress("DESIGNING", 0.76, "Evaluating in-silico saturation substitutions and regional combinations")
+    stage1_regions = regions
+    if patch_engine == "surface_v2" and len(regions) > effective_max:
+        if assay_profile:
+            stage1_regions = _select_geometry_spread_panel(regions, records, effective_max)
+        else:
+            pending = list(regions)
+            stage1_regions = []
+            covered_domains: set[str] = set()
+            while pending and len(stage1_regions) < effective_max:
+                selected = max(pending, key=lambda r: (
+                    r.auto_design_allowed, r.domain not in covered_domains,
+                    len(r.envelope_residues), -r.id,
+                ))
+                stage1_regions.append(selected)
+                covered_domains.add(selected.domain)
+                pending.remove(selected)
+            stage1_regions.sort(key=lambda r: r.id)
+    if patch_engine == "surface_v2":
+        selected_ids = {r.id for r in stage1_regions}
+        partition_summary["coverage_plan"] = [r for r in partition_summary["coverage_plan"] if r["patch_id"] in selected_ids]
+        partition_summary["unselected_region_ids"] = [r.id for r in regions if r.id not in selected_ids]
+    partition_summary["stage1_selected_region_ids"] = [item.id for item in stage1_regions]
+    partition_summary["stage1_min_constructs"] = min(effective_min, len(stage1_regions))
+    partition_summary["stage1_target_constructs"] = stage1_target
+    partition_summary["stage1_max_constructs"] = effective_max
+    if assay_profile:
+        partition_summary["stage1_selection_basis"] = assay_profile["design_policy"]["selection_basis"]
+        partition_summary["epitope_prior_used_for_panel_selection"] = False
     designs, design_summary = design_regions(
-        regions,
+        stage1_regions,
         records,
         protein,
         inventory,
         structure_pdb,
         output_dir,
         request.original_cds,
+        minimum_combo_sites=(
+            int(assay_profile["design_policy"]["combination_minimum_sites"])
+            if assay_profile else None
+        ),
+        maximum_combo_sites=(
+            int(assay_profile["design_policy"]["combination_maximum_sites"])
+            if assay_profile else None
+        ),
     )
     surface_count = sum(item.surface_accessible for item in records)
     if (
@@ -618,7 +926,17 @@ def run_pipeline(
         )
     if predicted:
         warnings.append("Predicted structure confidence gates do not establish biological correctness.")
-    if request.assay_format == "cell_surface":
+    if assay_profile:
+        warnings.append(
+            "Fixed dual-cell assay profile: membrane-proximal regions were not down-weighted. "
+            "The ECD-only structure supplies a relative C-terminal anchor axis, not a physical "
+            "membrane plane or a quantitative Fab-reach model."
+        )
+        warnings.append(
+            "N-terminal Myc accessibility controls K562 antigen surface display but does not "
+            "prove native antigen folding; use an independent conformation-sensitive control."
+        )
+    elif request.assay_format == "cell_surface":
         warnings.append(
             "cell_surface assay: membrane-proximal patches were down-weighted because IgG cannot reach them on intact cells."
         )
@@ -629,10 +947,12 @@ def run_pipeline(
 
     analysis = {
         "schema_version": "1.0",
-        "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "created_at": dt.datetime.now(dt.UTC).isoformat(),
         "software": _software_versions(),
         "request": request.as_dict(),
-            "source": source,
+        "source": source,
+        "assay_profile": assay_profile,
+        "assay_geometry": assay_geometry,
         "protein": {
             "accession": protein.accession,
             "protein_name": protein.protein_name,
@@ -651,6 +971,7 @@ def run_pipeline(
         },
         "structure_selection": selection,
         "parameters": {
+            "structure_reliability": reliability['qc']['parameters'] if reliability else None,
             "scientific_thresholds": {
                 "minimum_ecd_coverage": config.MIN_ECD_COVERAGE,
                 "maximum_internal_gap_aa": config.MAX_INTERNAL_GAP_AA,
@@ -666,12 +987,22 @@ def run_pipeline(
             "assay_format": request.assay_format,
             "minimum_regions": effective_min,
             "maximum_regions": effective_max,
-            "adaptive_region_budget": {
+            "stage1_construct_budget": {
                 "requested_maximum": request.maximum_regions,
-                "adaptive_cap_from_ecd_length": adaptive_cap,
-                "policy": "~1 patch per 22 ECD residues, capped at 7 (config.ADAPTIVE_REGIONS_*)",
+                "minimum": effective_min,
+                "target": stage1_target,
+                "maximum": effective_max,
+                "fixed_by_assay_profile": bool(assay_profile),
+                "policy": (
+                    "fixed six-construct coarse-mapping ceiling; surface regions are enumerated "
+                    "first and selected by geometric spread"
+                    if assay_profile else
+                    "3-7 is applied only when selecting the Stage-1 experimental panel; surface footprints are not capped"
+                ),
             },
-            "patch_scale": "Fab footprint: geodesic radius 13 A, 15-25 residues (docs/改进方案.md)",
+            "patch_engine": patch_engine,
+            "surface_v2": config.SURFACE_V2_PARAMETERS,
+            "patch_scale": "Overlapping surface-geodesic footprints at fixed 9/12/15 A and adaptive 600 A2 scales",
             "compact_single_domain_surface_face": {
                 "enabled_only_after_legacy_quality_failure": True,
                 "ecd_max_length_aa": config.COMPACT_ECD_MAX_LENGTH_AA,
@@ -681,7 +1012,12 @@ def run_pipeline(
                 "footprint_euclidean_cap_A": config.COMPACT_FOOTPRINT_EUCLIDEAN_CAP_A,
                 "combo_max_spread_A": config.COMPACT_COMBO_MAX_SPREAD_A,
             },
-            "regional_mutations": "directed alphabet + anchor mutation; exhaustive enumeration of cleared menus",
+            "regional_mutations": (
+                "2-4 sites under fixed assay profile; directed alphabet + anchor mutation; "
+                "exhaustive enumeration of cleared menus"
+                if assay_profile else
+                "directed alphabet + anchor mutation; exhaustive enumeration of cleared menus"
+            ),
             "functional_interfaces": "included with persistent risk flag",
             "output_sequence": "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region",
             "random_seed": None,
@@ -714,13 +1050,16 @@ def run_pipeline(
         },
         "residues": [to_dict(item) for item in records],
         "regions": [to_dict(item) for item in regions],
+        "surface_v2": surface_v2_payload,
+        "structure_reliability": reliability,
         "designs": [to_dict(item) for item in designs],
         "warnings": warnings,
         "validation_gates": [
-            "total and surface expression relative to WT",
-            "non-competing conformational antibody or domain folding control",
-            "monodispersity/thermal stability for purified ECD",
-            "native ligand/function when interface mutations are interpreted",
+            "K562 antigen surface-display normalization to WT using N-terminal Myc",
+            "independent non-competing conformation-sensitive antibody or ligand-binding control",
+            "Jurkat Fab surface-expression and H/L assembly control",
+            "WT, no-antigen, irrelevant-antigen and signaling-positive controls in the same batch",
+            "native ligand/function control when functional-interface mutations are interpreted",
         ],
         "files": {},
     }

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from Bio.Seq import Seq
 
 from .models import MutationChoice, ProteinContext
 from .util import PipelineError
-
 
 HUMAN_PREFERRED_CODONS = {
     "A": "GCC",

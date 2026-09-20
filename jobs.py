@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import sqlite3
 import shutil
+import sqlite3
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +16,7 @@ from .util import WaitingForAF3
 
 
 def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat()
+    return dt.datetime.now(dt.UTC).isoformat()
 
 
 class JobStore:

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 from Bio.Align import PairwiseAligner
 from Bio.Data.PDBData import protein_letters_3to1
-from Bio.PDB import MMCIFParser, NeighborSearch, PDBIO, PDBParser, Select
+from Bio.PDB import PDBIO, MMCIFParser, NeighborSearch, PDBParser, Select
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.SASA import ShrakeRupley
@@ -17,7 +18,6 @@ from Bio.PDB.SASA import ShrakeRupley
 from . import config
 from .models import ProteinContext, ResidueRecord
 from .util import PipelineError
-
 
 MAX_ASA = {
     "A": 129.0,
@@ -208,6 +208,15 @@ def standard_residues(chain: Any) -> list[Any]:
         for residue in chain
         if residue.id[0] == " " and is_aa(residue, standard=False) and _one_letter(residue.resname) != "X"
     ]
+
+
+def chain_sequence(chain: Any) -> str:
+    """Observed one-letter sequence for a coordinate chain.
+
+    This is deliberately coordinate-derived.  It is suitable for a PDB-only
+    ECD run, but must not be presented as a canonical full-length sequence.
+    """
+    return "".join(_one_letter(residue.resname) for residue in standard_residues(chain))
 
 
 def _alignment_map(target: str, query: str) -> tuple[dict[int, int], float, int, list[int]]:
@@ -561,7 +570,6 @@ def analyze_residues(
 ) -> tuple[list[ResidueRecord], dict[str, Any]]:
     sasa, sasa_method = calculate_sasa(parsed, workdir)
     af3_plddt = _af3_atom_plddt(parsed, confidence)
-    target_chain = parsed.model[mapping.chain_id]
     target_residue_ids = {id(residue) for residue in mapping.uniprot_to_residue.values()}
 
     partner_atoms: list[Any] = []

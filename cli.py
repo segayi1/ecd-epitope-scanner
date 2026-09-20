@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID
 from .pipeline import PipelineRequest, run_pipeline
 from .util import WaitingForAF3
 
@@ -30,11 +31,19 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--sequence")
     analyze.add_argument("--ecd", help="Override ECD as inclusive UniProt start:end")
     analyze.add_argument("--confidence-json")
+    analyze.add_argument("--iupred-output", help="Full canonical-sequence IUPred output to validate and import")
+    analyze.add_argument("--disable-reliability", action="store_true")
+    analyze.add_argument("--reliability-surface-mode", choices=["strict", "occlusion_sensitivity"], default="strict")
     analyze.add_argument("--original-cds")
     analyze.add_argument("--allow-partial", action="store_true")
     analyze.add_argument("--allow-afdb-fallback", action="store_true")
     analyze.add_argument("--min-regions", type=int, default=5)
     analyze.add_argument("--max-regions", type=int, default=8)
+    analyze.add_argument(
+        "--assay-profile",
+        choices=[DEFAULT_ASSAY_PROFILE_ID],
+        help="Fixed dual-cell topology (automatic for a PDB-only --structure run)",
+    )
     analyze.add_argument("--output", required=True)
     return parser
 
@@ -96,7 +105,18 @@ def main(argv: list[str] | None = None) -> int:
         allow_partial=args.allow_partial,
         minimum_regions=args.min_regions,
         maximum_regions=args.max_regions,
+        assay_profile=(
+            args.assay_profile
+            or (
+                DEFAULT_ASSAY_PROFILE_ID
+                if args.structure and not args.accession and not sequence
+                else None
+            )
+        ),
         output_dir=args.output,
+        metadata={"iupred_output": args.iupred_output, "structure_reliability": {
+            "enabled": not args.disable_reliability, "surface_mode": args.reliability_surface_mode,
+        }},
     )
 
     def progress(stage: str, value: float, message: str) -> None:

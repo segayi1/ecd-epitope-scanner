@@ -2,10 +2,8 @@ import json
 from pathlib import Path
 
 import pytest
-
 from ecd_epitope_scanner.pipeline import PipelineRequest, run_pipeline
 from ecd_epitope_scanner.sequences import translate_cds
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -66,6 +64,11 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
 
     assert (output / "ecd_epitope_design.zip").is_file()
     assert (output / "run_manifest.json").is_file()
+    reliability = result["structure_reliability"]
+    assert reliability["qc"]["state_counts"] == {"STRUCTURED": 220}
+    manifest = json.loads((output / "run_manifest.json").read_text(encoding="utf-8"))
+    for name in ("residue_reliability.csv", "structural_segments.csv", "surface_mask.csv", "idr_candidates.csv", "reliability_qc.json"):
+        assert name in manifest["files"] and name in result["files"]
     assert (output / "methods_report.md").is_file()
     offline = output / "offline_report.html"
     assert offline.is_file()

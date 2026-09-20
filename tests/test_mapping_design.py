@@ -7,7 +7,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ecd_epitope_scanner import config
 from ecd_epitope_scanner.conservation import fetch_conservation
 from ecd_epitope_scanner.design import (
@@ -77,7 +76,6 @@ def test_menu_classes_follow_wt_chemistry():
 
 
 def test_exposed_residues_get_a_relaxed_proxy_gate():
-    protein = make_protein("KKK")
     exposed = make_record(1, "K", (0.0, 0.0, 0.0), rsasa=0.6)
     edge = make_record(2, "K", (6.0, 0.0, 0.0), rsasa=0.32)
     buried = make_record(3, "K", (12.0, 0.0, 0.0), rsasa=0.05)
@@ -175,7 +173,6 @@ def test_assignment_never_stretches_a_patch_when_no_local_seed_exists():
     """Surface-geodesic distance wraps around thin sheets: a residue 13 A
     along the graph but 50 A through space must not join the far seed."""
     import networkx as nx
-
     from ecd_epitope_scanner.partitioning import _assign_to_patches
 
     records = [

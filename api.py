@@ -10,13 +10,21 @@ from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID
 from .jobs import JobRunner, JobStore
-from .models import DesignRecord, FeatureRange, MutationChoice, ProteinContext, RegionRecord, ResidueRecord, to_dict
+from .models import (
+    DesignRecord,
+    FeatureRange,
+    MutationChoice,
+    ProteinContext,
+    RegionRecord,
+    ResidueRecord,
+    to_dict,
+)
 from .pipeline import PipelineRequest
 from .sequences import apply_mutations, coding_fragment
 from .stability import evaluate_substitution
 from .util import read_json, safe_name, write_json
-
 
 ROOT = Path(__file__).resolve().parent
 WEB_ROOT = ROOT / "web"
@@ -154,6 +162,9 @@ async def create_upload_job(
         ecd_end=ecd_end,
         original_cds=original_cds or None,
         allow_partial=allow_partial,
+        assay_profile=DEFAULT_ASSAY_PROFILE_ID,
+        minimum_regions=1,
+        maximum_regions=6,
     )
     job = STORE.create(placeholder)
     target = Path(job["workdir"]) / "uploads" / f"structure{suffix}"
