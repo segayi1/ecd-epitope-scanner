@@ -172,6 +172,12 @@ class RegionRecord:
     surface_connectivity: str = "not_assessed"
     normal_coherence: float | None = None
     quality_flags: list[str] = field(default_factory=list)
+    # True when the region is a compatibility projection from a newer engine
+    # (for example Joint V3 ProbeSector) rather than the engine's native unit.
+    legacy_projection: bool = False
+    source_engine: str = ""
+    source_schema_version: str = ""
+    semantic_projection: bool = False
 
 
 @dataclass(slots=True)
@@ -225,6 +231,9 @@ class DesignRecord:
     parent_design_id: str | None = None  # links stage-2 designs to their probe
     disruption_score: float | None = None    # probe instrument power (sum of D)
     anchor_notation: str | None = None       # the anchor mutation, if any
+    source_engine: str = ""
+    source_schema_version: str = ""
+    semantic_projection: bool = False
 
 
 def to_dict(value: Any) -> Any:

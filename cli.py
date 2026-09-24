@@ -18,7 +18,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8765)
 
     cleanup = sub.add_parser("cleanup", help="Preview or remove successful FoldX diagnostics")
-    cleanup.add_argument("--execute", action="store_true", help="Actually remove the previewed diagnostics")
+    cleanup.add_argument(
+        "--execute", action="store_true", help="Actually remove the previewed diagnostics"
+    )
     cleanup.add_argument("--include-test-output", action="store_true")
 
     analyze = sub.add_parser("analyze", help="Run a reproducible ECD regional design")
@@ -31,14 +33,40 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--sequence")
     analyze.add_argument("--ecd", help="Override ECD as inclusive UniProt start:end")
     analyze.add_argument("--confidence-json")
-    analyze.add_argument("--iupred-output", help="Full canonical-sequence IUPred output to validate and import")
+    analyze.add_argument(
+        "--iupred-output", help="Full canonical-sequence IUPred output to validate and import"
+    )
     analyze.add_argument("--disable-reliability", action="store_true")
-    analyze.add_argument("--reliability-surface-mode", choices=["strict", "occlusion_sensitivity"], default="strict")
+    analyze.add_argument(
+        "--reliability-surface-mode", choices=["strict", "occlusion_sensitivity"], default="strict"
+    )
     analyze.add_argument("--original-cds")
     analyze.add_argument("--allow-partial", action="store_true")
     analyze.add_argument("--allow-afdb-fallback", action="store_true")
     analyze.add_argument("--min-regions", type=int, default=5)
     analyze.add_argument("--max-regions", type=int, default=8)
+    analyze.add_argument(
+        "--design-engine",
+        choices=["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"],
+        default="surface_v2",
+        help="Backend design engine; joint_v3/joint_v4_ml are opt-in evidence-aware engines",
+    )
+    analyze.add_argument(
+        "--ml-mode",
+        choices=["strict", "preview"],
+        default="strict",
+        help="Joint V4 external-evidence policy",
+    )
+    analyze.add_argument("--max-sectors", type=int, default=7)
+    analyze.add_argument("--max-primary-constructs", type=int, default=7)
+    analyze.add_argument("--allow-spurs-only-final", action="store_true")
+    analyze.add_argument("--biological-context-mode", default="provided_structure")
+    analyze.add_argument("--procaliper-worker", nargs="+", help="Joint V4 ProCaliper worker argv")
+    analyze.add_argument("--spurs-worker", nargs="+", help="Joint V4 SPURS worker argv")
+    analyze.add_argument("--discotope-worker", nargs="+", help="Joint V4 DiscoTope worker argv")
+    analyze.add_argument(
+        "--foldx-worker", nargs="+", help="Joint V4 FoldX confirmation worker argv"
+    )
     analyze.add_argument(
         "--assay-profile",
         choices=[DEFAULT_ASSAY_PROFILE_ID],
@@ -53,7 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         local_hosts = {"127.0.0.1", "localhost", "::1"}
         if args.host.lower() not in local_hosts:
-            raise SystemExit("This local workbench only permits a loopback host. Public deployment requires a dedicated public runtime profile.")
+            raise SystemExit(
+                "This local workbench only permits a loopback host. Public deployment requires a dedicated public runtime profile."
+            )
         import uvicorn
 
         uvicorn.run("ecd_epitope_scanner.api:app", host=args.host, port=args.port, reload=False)
@@ -62,7 +92,12 @@ def main(argv: list[str] | None = None) -> int:
         from .api import STORE
 
         preview = STORE.cleanup_preview(args.include_test_output)
-        print(json.dumps({"candidates": preview, "bytes": sum(item["bytes"] for item in preview)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"candidates": preview, "bytes": sum(item["bytes"] for item in preview)},
+                ensure_ascii=False,
+            )
+        )
         if args.execute:
             removed = STORE.cleanup_successful_engine_runs()
             print(json.dumps({"removed_engine_run_bytes": removed}, ensure_ascii=False))
@@ -76,7 +111,10 @@ def main(argv: list[str] | None = None) -> int:
     elif args.pdb_id:
         input_type, identifier = "pdb_id", args.pdb_id
     else:
-        input_type, identifier = ("af3_upload" if args.confidence_json else "structure"), args.structure
+        input_type, identifier = (
+            ("af3_upload" if args.confidence_json else "structure"),
+            args.structure,
+        )
     original_cds = None
     if args.original_cds:
         path = Path(args.original_cds)
@@ -114,9 +152,26 @@ def main(argv: list[str] | None = None) -> int:
             )
         ),
         output_dir=args.output,
-        metadata={"iupred_output": args.iupred_output, "structure_reliability": {
-            "enabled": not args.disable_reliability, "surface_mode": args.reliability_surface_mode,
-        }},
+        design_engine=args.design_engine,
+        ml_mode=args.ml_mode,
+        max_sectors=args.max_sectors,
+        max_primary_constructs=args.max_primary_constructs,
+        allow_spurs_only_final=args.allow_spurs_only_final,
+        biological_context_mode=args.biological_context_mode,
+        metadata={
+            "iupred_output": args.iupred_output,
+            "structure_reliability": {
+                "enabled": not args.disable_reliability,
+                "surface_mode": args.reliability_surface_mode,
+            },
+            "joint_v4_ml": {
+                "procaliper": {"command": args.procaliper_worker or []},
+                "spurs_single": {"command": args.spurs_worker or []},
+                "spurs_multi": {"command": args.spurs_worker or []},
+                "discotope": {"command": args.discotope_worker or []},
+                "foldx_confirmation": {"command": args.foldx_worker or []},
+            },
+        },
     )
 
     def progress(stage: str, value: float, message: str) -> None:
@@ -125,7 +180,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run_pipeline(request, progress)
     except WaitingForAF3 as exc:
-        print(json.dumps({"status": "WAITING_FOR_AF3_UPLOAD", "message": str(exc)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"status": "WAITING_FOR_AF3_UPLOAD", "message": str(exc)}, ensure_ascii=False
+            )
+        )
         return 2
     print(
         json.dumps(

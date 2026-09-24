@@ -605,18 +605,23 @@ def _median_per_group(
     return output
 
 
-def repair_with_foldx(binary: str, pdb_path: Path, workdir: Path) -> Path | None:
+def repair_with_foldx(
+    binary: str, pdb_path: Path, workdir: Path, *, binary_sha256: str | None = None
+) -> Path | None:
     """Repair one structure and share the result across ALL jobs on this host.
 
     RepairPDB costs minutes, so the repaired PDB is cached under
     ``<jobs-root>/foldx_repair_cache/<sha256-12>/`` -- keyed by the input
-    structure hash, independent of any single job.  Re-running a target with
-    different design parameters skips the repair entirely.
+    structure hash, independent of any single job. V4 can additionally scope
+    the cache by FoldX binary digest. Re-running a target with different design
+    parameters skips the repair entirely.
     """
     from .util import sha256_file
 
     digest = sha256_file(pdb_path)[:12]
     cache_dir = Path(workdir).parent / "foldx_repair_cache" / digest
+    if binary_sha256 is not None:
+        cache_dir = cache_dir / binary_sha256[:12]
     repaired = cache_dir / "structure_Repair.pdb"
     if repaired.exists():
         return repaired

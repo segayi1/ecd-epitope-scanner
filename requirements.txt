@@ -9,6 +9,7 @@ networkx>=3.2
 pandas>=2.0
 dnachisel>=3.2
 gemmi>=0.6
+jsonschema>=4.21,<5
 
 # FreeSASA and the licensed energy engines are optional runtime integrations.
 # The application records the Bio.PDB SASA fallback when FreeSASA is unavailable.

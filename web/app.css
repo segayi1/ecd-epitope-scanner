@@ -295,6 +295,8 @@ table.audit th { color: var(--muted); font-weight: 500; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; display: inline-block; }
 
 .design-card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 10px 12px; margin-bottom: 10px; }
+.design-series { border-bottom: 1px solid var(--line); margin-bottom: 16px; padding-bottom: 6px; }
+.design-series:last-child { border-bottom: 0; }
 .design-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 6px; }
 .design-head strong { font-size: 12.5px; }
 .design-head .st { font-size: 11px; color: var(--muted); }

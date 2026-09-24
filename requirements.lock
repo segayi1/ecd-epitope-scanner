@@ -2,6 +2,7 @@ biopython==1.87
 dnachisel==3.2.16
 fastapi==0.141.1
 gemmi==0.7.5
+jsonschema==4.26.0
 httpx==0.28.1
 networkx==3.2.1
 numpy==1.26.4

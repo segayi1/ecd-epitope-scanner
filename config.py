@@ -4,6 +4,7 @@ Every number here is cited in docs/改进方案.md and echoed into
 run_manifest.json / methods_report.md so that results stay auditable.
 Changing a value changes what the output means; keep it in one place.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,8 +21,186 @@ SIDECHAIN_SASA_THRESHOLD_A2 = 20.0
 
 # --- Patch partitioning (Fab-footprint scale) --------------------------------
 PATCH_ENGINE_VERSION = os.environ.get("ECD_PATCH_ENGINE", "surface_v2").strip().lower()
-if PATCH_ENGINE_VERSION not in {"legacy_v1", "surface_v2"}:
+if PATCH_ENGINE_VERSION not in {"legacy_v1", "surface_v2", "joint_v3", "joint_v4_ml"}:
     PATCH_ENGINE_VERSION = "surface_v2"
+
+# Joint V4-ML is intentionally opt-in.  These are versioned engineering
+# defaults; they are not calibrated probabilities and must be reported in the
+# run manifest. SPURS and DiscoTope use this workstation's WSL2 CUDA workers;
+# explicit command settings or environment variables can override them.
+JOINT_V4_ML_PARAMETERS = {
+    "schema_version": "4.0",
+    "mode": "strict",
+    "max_sectors": 7,
+    "max_primary_constructs": 7,
+    "surface": {
+        "rsasa_threshold": RSASA_THRESHOLD,
+        "sidechain_sasa_threshold_a2": SIDECHAIN_SASA_THRESHOLD_A2,
+        "minimum_mapped_area_a2": 8.0,
+        "borderline_rsasa_threshold": 0.20,
+    },
+    "procaliper": {
+        "enabled": True,
+        "command": [],
+        "backend": "local_worker",
+        "python": r"G:\anaconda\envs\ecd_procaliper\python.exe",
+        "version": "0.2.1",
+        "device": "cpu",
+        "timeout_seconds": 180,
+    },
+    "spurs_single": {
+        "enabled": True,
+        "command": [],
+        "backend": "wsl_gpu",
+        "device": "cuda",
+        "wsl_distro": "Ubuntu-22.04",
+        "wsl_python": "/home/segayi1/miniconda3/envs/spurs_v4/bin/python",
+        "timeout_seconds": 900,
+        "cuda_oom_retries": 1,
+        "allow_cpu_fallback_on_oom": True,
+        "preferred_max_ddg": 0.0,
+        "acceptable_max_ddg": 0.5,
+        "review_max_ddg": 1.0,
+        "max_options_per_site": 3,
+    },
+    "discotope": {
+        "enabled": True,
+        "command": [],
+        "backend": "wsl_gpu",
+        "device": "cuda",
+        "wsl_distro": "Ubuntu-22.04",
+        "wsl_python": "/home/segayi1/miniconda3/envs/discotope_v4/bin/python",
+        "timeout_seconds": 900,
+        "cuda_oom_retries": 1,
+        "allow_cpu_fallback_on_oom": True,
+        "seed_percentile": 0.80,
+        "local_peak_percentile": 0.65,
+        "neighborhood_radii_a": [9.0, 12.0, 15.0],
+    },
+    "sectoring": {
+        "maximum_geodesic_diameter_a": 35.0,
+        "maximum_euclidean_diameter_a": 30.0,
+        "minimum_sector_area_a2": 50.0,
+        "minimum_sector_residues": 4,
+    },
+    "candidate_search": {
+        "site_pool_per_sector": 12,
+        "options_per_site": 3,
+        "beam_width": 300,
+        "shortlist_per_sector": 30,
+        "orders": [2, 3, 4],
+        "maximum_geodesic_span_a": 24.0,
+        "epitope_priority_weight": 1.0,
+        "epitope_site_pool_fraction": 0.5,
+        "fallback_candidate_fraction": 0.5,
+    },
+    "spurs_multi": {
+        "enabled": True,
+        "command": [],
+        "backend": "wsl_gpu",
+        "device": "cuda",
+        "wsl_distro": "Ubuntu-22.04",
+        "wsl_python": "/home/segayi1/miniconda3/envs/spurs_v4/bin/python",
+        "timeout_seconds": 1800,
+        "cuda_oom_retries": 1,
+        "allow_cpu_fallback_on_oom": True,
+        "preferred_max_ddg": 0.5,
+        "review_max_ddg": 1.0,
+        "disagreement_gate_kcal_mol": 1.5,
+    },
+    "foldx_confirmation": {
+        "enabled": True,
+        "command": [],
+        "backend": "local_worker",
+        "device": "cpu",
+        "binary": "vendor/foldx/foldx_1_20270131.exe",
+        "version": "5.1",
+        "timeout_seconds": 3600,
+        "number_of_runs": 5,
+        "max_workers": 8,
+        "combination_gate_kcal_mol": 2.0,
+        "max_candidates": 42,
+    },
+    "panel_optimizer": {
+        "solver": "deterministic_greedy",
+        "time_limit_seconds": 60,
+        "higher_order_max_primary": 2,
+        "minimum_coverage_gain": 0.05,
+        "recommendations_per_sector": 6,
+        "epitope_priority_per_sector": 3,
+        "stability_fallback_per_sector": 3,
+    },
+    "runtime": {"device": "cuda", "cache_dir": "", "license_id": "research_only"},
+}
+
+JOINT_V4_ERROR_CODES = [
+    "TOOL_NOT_CONFIGURED",
+    "TOOL_ENVIRONMENT_INVALID",
+    "MODEL_WEIGHTS_MISSING",
+    "MODEL_REVISION_MISMATCH",
+    "TOOL_TIMEOUT",
+    "TOOL_CRASHED",
+    "OUTPUT_MISSING",
+    "OUTPUT_SCHEMA_INVALID",
+    "RESIDUE_COUNT_MISMATCH",
+    "WT_RESIDUE_MISMATCH",
+    "CHAIN_MAPPING_AMBIGUOUS",
+    "UNSUPPORTED_STRUCTURE",
+    "LICENSE_RESTRICTED",
+    "NO_SURFACE_CANDIDATES",
+    "NO_STABLE_SINGLE_OPTIONS",
+    "NO_FEASIBLE_COMBINATIONS",
+    "NO_CONSENSUS_STABLE_COMBINATION",
+]
+
+# Joint V3 is deliberately opt-in until the benchmark set freezes its
+# thresholds.  These are auditable startup parameters, not scientific
+# acceptance cut-offs or calibrated epitope probabilities.
+JOINT_V3_PARAMETERS = {
+    "schema_version": "3.0",
+    "max_probes": 6,
+    "mutations_per_probe": [2, 4],
+    "footprint_target_areas_a2": [600.0, 800.0, 1000.0],
+    "max_footprint_centers": 64,
+    "sector_maximum_geodesic_diameter_a": 35.0,
+    "sector_maximum_euclidean_diameter_a": 30.0,
+    "surface_rsasa_threshold": RSASA_THRESHOLD if "RSASA_THRESHOLD" in globals() else 0.25,
+    "coverage_scenarios": [
+        "direct_site",
+        "geodesic_tight",
+        "geodesic_medium",
+        "geodesic_wide",
+        "footprint_hit_1",
+        "footprint_hit_2",
+    ],
+    "coverage_distances_a": {
+        "geodesic_tight": 9.0,
+        "geodesic_medium": 12.0,
+        "geodesic_wide": 15.0,
+    },
+    "candidate_search": {
+        "site_pool_cap_per_sector": 12,
+        "mutation_options_cap_per_site": 3,
+        "beam_width": 200,
+        "shortlist_per_sector": 20,
+        "maximum_geodesic_span_a": 24.0,
+    },
+    "solver": {
+        "backend": "scipy_milp",
+        "time_limit_seconds": 60,
+        "mip_relative_gap": 0.01,
+        "deterministic_seed": 0,
+    },
+    "stability": {
+        "enabled": True,
+        "foldx_runs": 5,
+        "foldx_max_workers": 1,
+        "foldx_max_candidates": 81,
+        "combination_gate_kcal_mol": 2.0,
+        "require_pass_for_final_panel": True,
+    },
+    "surface_graph": {"neighbor_cutoff_a": 10.0, "max_neighbors": 8},
+}
 
 # Surface V2 parameters. These affect geometry/footprint enumeration, not the
 # production Shrake-Rupley residue SASA thresholds above.
@@ -48,10 +227,15 @@ SURFACE_V2_PARAMETERS = {
     },
     "residue_inclusion": {"min_surface_area": 8.0, "min_surface_fraction": 0.20},
     "deduplication": {"threshold": 0.75},
-    "regions": {"resolution": 0.65, "maximum_center_geodesic": 24.0,
-                "maximum_geodesic_diameter": 60.0, "domain_boundary_penalty": 0.15,
-                "minimum_surface_area": 700.0, "minimum_shared_surface_area": 40.0,
-                "minimum_weighted_jaccard": 0.12},
+    "regions": {
+        "resolution": 0.65,
+        "maximum_center_geodesic": 24.0,
+        "maximum_geodesic_diameter": 60.0,
+        "domain_boundary_penalty": 0.15,
+        "minimum_surface_area": 700.0,
+        "minimum_shared_surface_area": 40.0,
+        "minimum_weighted_jaccard": 0.12,
+    },
 }
 
 # An antibody footprint buries ~600-900 A2 over 15-25 residues
@@ -69,8 +253,8 @@ PATCH_MAX_EUCLIDEAN_DIAMETER_A = 26.0
 # Non-adjacent residues whose side chains point in strongly opposing
 # directions are generally opposite faces of a beta-sandwich, not one surface.
 PATCH_OPPOSING_FACE_COSINE_MAX = -0.80
-PATCH_MIN_SITE_SPACING_A = 5.0          # key sites inside one patch
-STAGE2_PERTURBATION_RADIUS_A = 10.0     # coverage-matrix neighbourhood
+PATCH_MIN_SITE_SPACING_A = 5.0  # key sites inside one patch
+STAGE2_PERTURBATION_RADIUS_A = 10.0  # coverage-matrix neighbourhood
 
 # --- Compact single-domain surface-face rescue --------------------------------
 # These thresholds are deliberately separate from PATCH_*: they only apply
@@ -101,7 +285,7 @@ COMPACT_COMBO_MAX_SPREAD_A = 15.0
 # Stage-1 panel budget scales with ECD size but never exceeds 7 patches:
 # each patch costs FoldX time linearly and a 7-construct panel already
 # covers a typical single-pass ECD surface.
-ADAPTIVE_REGIONS_DIVISOR = 22           # ~one patch per 22 ECD residues
+ADAPTIVE_REGIONS_DIVISOR = 22  # ~one patch per 22 ECD residues
 ADAPTIVE_REGIONS_CAP = 7
 ADAPTIVE_REGIONS_FLOOR = 3
 SMALL_ECD_LENGTH_AA = 100
@@ -118,13 +302,14 @@ def adaptive_maximum_regions(ecd_length: int) -> int:
     scaled = round(ecd_length / ADAPTIVE_REGIONS_DIVISOR)
     return max(ADAPTIVE_REGIONS_FLOOR, min(ADAPTIVE_REGIONS_CAP, scaled))
 
+
 # Epitope-prior weights (sum of positives = 1.0; penalties subtracted).
-PRIOR_W_EXPOSURE = 0.30                 # mean rSASA of the patch
-PRIOR_W_PROTRUSION = 0.20               # mean low-contact score
-PRIOR_W_LOOP = 0.15                     # loop/turn secondary-structure fraction
-PRIOR_W_VARIABILITY = 0.15              # 1 - conservation (when available)
-PRIOR_W_INTERFACE = 0.05                # native-interface fraction (small bonus)
-PRIOR_PENALTY_GLYCAN = 0.10             # glycan-shielded fraction
+PRIOR_W_EXPOSURE = 0.30  # mean rSASA of the patch
+PRIOR_W_PROTRUSION = 0.20  # mean low-contact score
+PRIOR_W_LOOP = 0.15  # loop/turn secondary-structure fraction
+PRIOR_W_VARIABILITY = 0.15  # 1 - conservation (when available)
+PRIOR_W_INTERFACE = 0.05  # native-interface fraction (small bonus)
+PRIOR_PENALTY_GLYCAN = 0.10  # glycan-shielded fraction
 # Cell-surface accessibility is now continuous.  The legacy value remains
 # only for reading old manifests; new runs calculate a geometry-informed
 # multiplicative penalty from MEMBRANE_ACCESSIBILITY_* below.
@@ -136,30 +321,30 @@ MEMBRANE_ACCESSIBILITY_GLYCAN_PENALTY = 0.20
 
 # Tier assignment by prior rank among patches of one run.
 TIER_HIGH_FRACTION = 0.4
-TIER_MEDIUM_FRACTION = 0.35            # next band; remainder = LOW
+TIER_MEDIUM_FRACTION = 0.35  # next band; remainder = LOW
 
 # --- Mutation policy ----------------------------------------------------------
 # WT classes drive the directed substitution menu.
 BULKY_WT = set("WYFRKMIL")
 SMALL_WT = set("GASTDN")
 CHARGED_WT = set("KRHDE")
-HOTSPOT_WT = set("WYF")                 # Bogan & Thorn 1998 enrichment
-ANCHOR_MUTANTS = {"E", "D"}             # charge-reversal targets from K/R
+HOTSPOT_WT = set("WYF")  # Bogan & Thorn 1998 enrichment
+ANCHOR_MUTANTS = {"E", "D"}  # charge-reversal targets from K/R
 # A one-residue "hotspot removal" (W/Y/F -> A) is an anchor as well.
 
 # Deterministic chemistry gates (stability proxy).  Hard protections
 # (Cys/P/G introduction, native P/G, sequon, PTM, disulfide) are unchanged.
-RISK_GATE_BURIED = 1.45                 # rSASA < EDGE_RSASA boundary
-RISK_GATE_EXPOSED = 1.90                # rSASA >= EXPOSED_RSASA boundary
+RISK_GATE_BURIED = 1.45  # rSASA < EDGE_RSASA boundary
+RISK_GATE_EXPOSED = 1.90  # rSASA >= EXPOSED_RSASA boundary
 EDGE_RSASA = 0.30
 EXPOSED_RSASA = 0.35
 
 # FoldX single-point gates by exposure.  Literature RMSE for FoldX ddG is
 # 0.85-1.1 kcal/mol; the old flat +0.46 gate sat at ~1 sigma even for fully
 # exposed residues whose folding risk is intrinsically low.
-FOLDX_GATE_EXPOSED = 0.80               # rSASA >= EXPOSED_RSASA
-FOLDX_GATE_EDGE = 0.60                  # EDGE_RSASA <= rSASA < EXPOSED_RSASA
-FOLDX_GATE_DEFAULT = 0.46               # tighter elsewhere (conservative)
+FOLDX_GATE_EXPOSED = 0.80  # rSASA >= EXPOSED_RSASA
+FOLDX_GATE_EDGE = 0.60  # EDGE_RSASA <= rSASA < EXPOSED_RSASA
+FOLDX_GATE_DEFAULT = 0.46  # tighter elsewhere (conservative)
 FOLDX_COMBINATION_GATE = 2.0
 
 # --- Flexible terminal segments ------------------------------------------------
@@ -187,23 +372,23 @@ MIN_COMBO_SPACING_A = 5.5
 # C-alpha distance between its mutations.  Without this cap the enumerator
 # happily pairs residues on opposite faces of a domain.
 MAX_COMBO_SPREAD_A = 22.0
-DISRUPTION_LAMBDA_RISK = 0.5            # single-site menu ranking only; combo selection is Pareto
-PARETO_KNEE_RISK_ANCHOR = 1.0           # knee = max D/(risk+anchor); anchor ~ 1x FoldX noise
-MAX_PAIRWISE_CONFIRMS = 2               # stage-2 confirmatory pairs per probe
+DISRUPTION_LAMBDA_RISK = 0.5  # single-site menu ranking only; combo selection is Pareto
+PARETO_KNEE_RISK_ANCHOR = 1.0  # knee = max D/(risk+anchor); anchor ~ 1x FoldX noise
+MAX_PAIRWISE_CONFIRMS = 2  # stage-2 confirmatory pairs per probe
 
 # --- FoldX execution -----------------------------------------------------------
-FOLDX_SINGLE_SCREEN_RUNS = 1            # gate check only; median unnecessary
-FOLDX_COMBINATION_RUNS = 5              # probes/alternates: robust median
-FOLDX_STAGE2_RUNS = 1                   # presets are screened; 5-run median on demand
-FOLDX_MAX_WORKERS = 8                   # parallel BuildModel chunk processes
+FOLDX_SINGLE_SCREEN_RUNS = 1  # gate check only; median unnecessary
+FOLDX_COMBINATION_RUNS = 5  # probes/alternates: robust median
+FOLDX_STAGE2_RUNS = 1  # presets are screened; 5-run median on demand
+FOLDX_MAX_WORKERS = 8  # parallel BuildModel chunk processes
 
 # Disruption-score weights (dimensionless instrument-power score).
-D_W_EXPOSURE = 0.9                      # min(1.2, rsasa*2)
-D_W_VOLUME_GAIN = 1.0                   # max(0, dV)/85 per unit
-D_W_CHARGE_FLIP = 0.8                   # |dq| >= 1 (full reversal)
-D_W_PARTIAL_CHARGE = 0.4                # 0 < |dq| < 1
-D_W_HOTSPOT_REMOVAL = 0.7               # W/Y/F -> A
-D_W_AROMATIC_INSERT = 0.5               # -> W/F/Y from non-aromatic
+D_W_EXPOSURE = 0.9  # min(1.2, rsasa*2)
+D_W_VOLUME_GAIN = 1.0  # max(0, dV)/85 per unit
+D_W_CHARGE_FLIP = 0.8  # |dq| >= 1 (full reversal)
+D_W_PARTIAL_CHARGE = 0.4  # 0 < |dq| < 1
+D_W_HOTSPOT_REMOVAL = 0.7  # W/Y/F -> A
+D_W_AROMATIC_INSERT = 0.5  # -> W/F/Y from non-aromatic
 
 # --- Conservation --------------------------------------------------------------
 CONSERVATION_MAX_ORTHOLOGS = 8
@@ -211,9 +396,18 @@ CONSERVATION_MIN_ORTHOLOGS = 3
 
 # --- Legacy region semantics kept for backwards-compatible tooling -------------
 LEGACY_REGION_COLORS = [
-    "#087E8B", "#E4572E", "#6A4C93", "#2E7D32",
-    "#C47F00", "#1565C0", "#AD1457", "#5D4037",
-    "#00838F", "#8E24AA", "#6D4C41", "#558B2F",
+    "#087E8B",
+    "#E4572E",
+    "#6A4C93",
+    "#2E7D32",
+    "#C47F00",
+    "#1565C0",
+    "#AD1457",
+    "#5D4037",
+    "#00838F",
+    "#8E24AA",
+    "#6D4C41",
+    "#558B2F",
 ]
 
 

@@ -24,6 +24,9 @@
       <input id="identifier" value="Q9NZQ7" autocomplete="off" required></label>
     <label class="fld fld-sm"><span data-i18n="form.chain">链</span>
       <input id="chain" maxlength="4" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
+    <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span>
+      <select id="design-engine"><option value="surface_v2">Surface V2</option><option value="joint_v3">Joint V3</option><option value="joint_v4_ml">Joint V4-ML</option></select></label>
+    <label class="fld fld-sm"><span>V4 模式</span><select id="ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
     <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button>
     <button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
   </form>
@@ -119,6 +122,9 @@
       <label class="fld"><span data-i18n="upload.accession">UniProt accession</span><input id="upload-accession" data-i18n-placeholder="upload.accessionHint" placeholder="推荐填写"></label>
       <label class="fld"><span data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
     </div>
+    <label class="fld"><span data-i18n="form.designEngine">设计引擎</span>
+      <select id="upload-design-engine"><option value="surface_v2">Surface V2</option><option value="joint_v3">Joint V3</option><option value="joint_v4_ml">Joint V4-ML</option></select></label>
+    <label class="fld fld-sm"><span>V4 模式</span><select id="upload-ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
     <details>
       <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
       <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>

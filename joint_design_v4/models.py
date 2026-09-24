@@ -1,0 +1,202 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True, order=True)
+class ResidueKey:
+    model_id: str
+    chain_id: str
+    auth_seq_id: int
+    insertion_code: str = ""
+    label_seq_id: int | None = None
+    uniprot_pos: int | None = None
+    one_letter: str = "X"
+
+    @property
+    def stable_id(self) -> str:
+        insertion = self.insertion_code or ""
+        return f"{self.model_id}:{self.chain_id}:{self.auth_seq_id}{insertion}"
+
+
+@dataclass
+class ToolInventory:
+    name: str
+    available: bool
+    executable: str | None = None
+    environment_type: str = "local_process"
+    version: str | None = None
+    git_revision: str | None = None
+    model_revision: str | None = None
+    weights_sha256: str | None = None
+    device: str | None = None
+    license_id: str | None = None
+    failure_reason: str | None = None
+
+
+@dataclass
+class PredictionRequest:
+    schema_version: str
+    request_id: str
+    structure_path: str
+    chain_id: str
+    structure_type: str = "unknown"
+    sequence: str = ""
+    mutations: list[list[str]] = field(default_factory=list)
+    output_dir: str = ""
+    device: str = "auto"
+    parameters: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PredictionResult:
+    status: str
+    records: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)
+    runtime_seconds: float = 0.0
+
+    @property
+    def ok(self) -> bool:
+        return self.status in {"success", "partial"}
+
+
+@dataclass
+class SurfaceEvidence:
+    residue: ResidueKey
+    procaliper_sasa_a2: float | None = None
+    procaliper_rsasa: float | None = None
+    native_sasa_a2: float | None = None
+    native_rsasa: float | None = None
+    sidechain_sasa_a2: float | None = None
+    mapped_surface_area_a2: float = 0.0
+    surface_component_id: int | None = None
+    sasa_agreement_status: str = "NOT_COMPARED"
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class EpitopeEvidence:
+    residue: ResidueKey
+    raw_score: float | None = None
+    calibrated_score: float | None = None
+    surface_percentile: float | None = None
+    local_peak: bool = False
+    predicted_epitope_label: bool | None = None
+    neighborhood_mean_by_radius: dict[str, float] = field(default_factory=dict)
+    island_id: str | None = None
+    status: str = "MISSING"
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SingleMutationEvidence:
+    residue: ResidueKey
+    mutant_aa: str
+    spurs_ddg_kcal_mol: float | None = None
+    stability_band: str = "NOT_SCORED"
+    chemistry_class: str = "unknown"
+    hard_exclusions: list[str] = field(default_factory=list)
+    soft_warnings: list[str] = field(default_factory=list)
+    eligible: bool = False
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CombinationStabilityEvidence:
+    mutations: tuple[str, ...]
+    spurs_multi_ddg_kcal_mol: float | None = None
+    foldx_ddg_kcal_mol: float | None = None
+    order: int = 0
+    epistasis_estimate: float | None = None
+    extrapolation_level: str = "UNKNOWN"
+    consensus_status: str = "NOT_SCORED"
+    disagreement: float | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class V4MutationOption:
+    residue: ResidueKey
+    mutant_aa: str
+    notation: str
+    chemistry_class: str
+    spurs_ddg_kcal_mol: float | None
+    score: float
+    eligible: bool
+    hard_exclusions: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    epitope_prior: float = 0.0
+    epitope_supported: bool = False
+
+
+@dataclass
+class V4Candidate:
+    candidate_id: str
+    sector_id: str
+    mutations: list[V4MutationOption]
+    connected: bool = True
+    order: int = 0
+    epitope_score: float = 0.0
+    structural_risk: float = 0.0
+    coverage_by_scenario: dict[str, float] = field(default_factory=dict)
+    covered_positions_by_scenario: dict[str, list[int]] = field(default_factory=dict)
+    stability: CombinationStabilityEvidence | None = None
+    formal_eligible: bool = False
+    formal_exclusion_reasons: list[str] = field(default_factory=list)
+    role: str = "UNASSIGNED"
+    warnings: list[str] = field(default_factory=list)
+    epitope_supported_sites: int = 0
+    recommendation_class: str = "STABILITY_FALLBACK"
+
+
+@dataclass
+class V4Sector:
+    sector_id: str
+    residue_positions: list[int]
+    component_id: int | None
+    designable_area_a2: float
+    total_area_a2: float
+    epitope_score: float
+    center_position: int | None = None
+    geodesic_diameter_a: float | None = None
+    euclidean_diameter_a: float | None = None
+    island_ids: list[str] = field(default_factory=list)
+    sector_type: str = "EPITOPE_PRIOR"
+    quality_flags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class V4Panel:
+    selected_candidate_ids: list[str]
+    candidates_by_role: dict[str, list[str]]
+    achieved_coverage: dict[str, float]
+    uncovered_components: list[dict[str, Any]]
+    solver_status: str
+    coverage_denominator_residues: int = 0
+    covered_residues_by_scenario: dict[str, int] = field(default_factory=dict)
+    coverage_denominator_area_a2: float = 0.0
+    achieved_area_coverage: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
+class JointV4Result:
+    schema_version: str
+    recommendation_status: str
+    tool_inventory: dict[str, ToolInventory]
+    surface_evidence: list[SurfaceEvidence]
+    epitope_evidence: list[EpitopeEvidence]
+    mutation_options: list[SingleMutationEvidence]
+    sectors: list[V4Sector]
+    candidates: list[V4Candidate]
+    panel: V4Panel
+    legacy_regions: list[Any] = field(default_factory=list)
+    legacy_designs: list[Any] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    provenance: dict[str, Any] = field(default_factory=dict)

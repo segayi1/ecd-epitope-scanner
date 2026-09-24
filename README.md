@@ -4,6 +4,8 @@
 
 ## 已实现的科学边界
 
+下列既有条目描述默认的 `surface_v2`/legacy 工作流；`joint_v3` 的覆盖定义、候选搜索、稳定性证据和面板目标以其专门章节为准。
+
 - 输入 UniProt accession、PDB ID，或从相关网站下载的 PDB/mmCIF 文件。
 - UniProt 输入自动下载 canonical 序列、拓扑、结构域、二硫键、糖基化和功能注释，并通过 3D-Beacons/PDBe 搜索实验结构。
 - PDB 候选需要满足：ECD 观察覆盖率 >=95%、最大内部缺口 <=8 aa、与 canonical 序列一致性 >=95%、主要结构域覆盖 >=90%。逐残基编号使用 UniProt、PDB author 和 mmCIF label 映射保存。
@@ -18,7 +20,46 @@
 - 可选证据线：UniProt 同源保守性（自动，离线优雅降级）与 ESM zero-shot LLR（设置 `ECD_ESM_MODEL` 且本机装有 torch/fair-esm 时启用，LLR<-3 共识否决）。
 - 输出仅含 ECD 的氨基酸序列和编码片段，不自动添加信号肽、标签、起始/终止密码子、TM 或胞内区；`original_cds` 可解析为全长 CDS 时额外导出**全长**膜蛋白突变编码序列（细胞流式实验需要），无 CDS 时导出全长蛋白序列供基因合成反向翻译。无原始 CDS 时使用 DNA Chisel 的人源/HEK293 密码子优化。
 
+### Joint V3 后端（可选）
+
+当前默认引擎仍为 `surface_v2`，以保持已有结果和网页行为可复现。显式选择 `joint_v3` 后，后端改用“结构审计 + 残基级表面单元 + 多尺度 micro-footprint + 连通 ProbeSector + 联合面板优化”流程：
+
+- `ProbeSector` 是用于少量探针粗定位的连通表面区域，不是真实抗体 footprint；`MicroFootprint` 只用于多个面积尺度的敏感性分析。
+- 候选探针固定为 2–4 个突变位点，采用确定性 beam search，不完整枚举全局组合，也不强制加入 anchor mutation。
+- 面板优先使用 SciPy/HiGHS MILP 最大化多个测地覆盖情景下的稳健可设计表面积；求解器不可用或超时则降级为确定性 greedy，并标记 `HEURISTIC_SOLUTION`。
+- 二硫键 Cys、糖基化 sequon、结构缺失、明显结构风险等进入保护/排除审计；不可设计表面仍保留在覆盖分母中，不会被静默删除。
+- 没有外部组合级稳定性引擎时只输出 `RULE_ONLY` 和无量纲风险代理，不填充 kcal/mol，也不输出结合概率。
+- 孤立 ECD 只提供 C 端锚点和相对方向；没有真实 TM 坐标时不推断唯一膜平面。Myc/表达信号也不能单独证明 ECD 正确折叠。
+
+V3 的详细实现和解释边界见 [`docs/joint_v3.md`](docs/joint_v3.md)。
+
+Joint V4-ML 的独立方法学见 [`docs/method_joint_v4.md`](docs/method_joint_v4.md)。
+
+整个系统的入口、任务队列、结构分析、V4 证据线、分区、候选门控和导出关系见 [`docs/system_flowchart_v4.md`](docs/system_flowchart_v4.md)。
+
+Joint V4-ML（ProCaliper + SPURS single/multi + DiscoTope-3.0）现已作为 `joint_v4_ml` opt-in 后端提供。它复用显式溶剂表面图进行连通性和测地距离判定，将 ProCaliper、SPURS 和 DiscoTope 作为分别审计的证据线；默认 `surface_v2`/`joint_v3` 行为不变。DiscoTope 是软排序先验而不是候选准入门槛：默认每个补丁最多给出 6 个经稳定性门控的组合，其中优先保留最多 3 个 `EPITOPE_PRIORITIZED` 和 3 个 `STABILITY_FALLBACK`；区域没有高分位点或 DiscoTope 不可用时，仍可输出明确标记的低预测折叠风险回退组合。仓库提供隔离进程协议、结果校验和安全门控；模型权重和许可证仍由本机安装负责。命令可写入配置，或通过环境变量 `ECD_V4_PROCALIPER_COMMAND`、`ECD_V4_SPURS_SINGLE_COMMAND`、`ECD_V4_SPURS_MULTI_COMMAND`、`ECD_V4_DISCOTOPE_COMMAND`、`ECD_V4_FOLDX_COMMAND` 设置，环境变量值必须是 JSON argv 数组。为兼容旧配置，`ECD_V4_SPURS_COMMAND` 可同时作为 single/multi 的后备值。
+
+V4 分区将“可作为 sector 节点的高暴露残基”和“可作为表面路径中继的边界残基”分开处理，并通过受限主链桥修复稀疏点云在肽键处造成的假断裂。区域中心采用确定性图 k-center / minimax medoid，而不是把每个 DiscoTope island 强制建成独立区；默认最小 4 个残基，输出中心残基、测地/欧氏直径及超限标记。这可避免 1–2 残基伪分区，同时保持完整表面覆盖和 `max_sectors` 预算。
+
+当前工作站的 V4 默认配置已完整接入全部必需算法。SPURS single/multi 使用 WSL2 环境 `/home/segayi1/miniconda3/envs/spurs_v4`，DiscoTope-3.0 使用 `/home/segayi1/miniconda3/envs/discotope_v4`，通过 CUDA 12.4 在 NVIDIA RTX 3060 Laptop GPU 上推理；ProCaliper 0.2.1 使用 `G:\anaconda\envs\ecd_procaliper\python.exe` 在 CPU 上计算 SASA/rSASA；FoldX 5.1 使用 `vendor/foldx/foldx_1_20270131.exe`，执行 `RepairPDB + BuildModel`，修复结构跨作业缓存，每个候选默认运行 5 次并取中位数。FoldX 对按 sector 均衡抽取的最多 42 个候选启用 8 路 CPU 并行，避免候选规模无界增长。所有 WSL GPU worker 使用跨进程锁串行占用显卡；CUDA OOM 时清理缓存后重试 1 次，仍失败则按配置显式回退到 CPU，并在 warning/provenance 中记录实际设备和回退原因。SPURS single 与 DiscoTope 的超时为 900 秒，SPURS multi 为 1800 秒。已用 290 aa PD-L1 结构实测：SPURS single 约 58 秒、SPURS multi 单组合约 60 秒、DiscoTope 约 39 秒；另一次 215 aa 严格 V4 全流程中，ProCaliper 约 2.28 秒，FoldX 的 42 候选 × 5 次重复约 17.96 分钟，最终得到 `FORMAL_RECOMMENDATION`。修复后还以 CTLA-4 的 125 个结构残基完成 SPURS single CUDA 冒烟测试，约 71.6 秒并返回全部 125 条记录。这些数字仅表示本机量级，冷启动、序列长度、候选数和缓存命中会改变耗时。DiscoTope 的 GPU 路径限短于 1000 aa 的预测链。修改配置或 worker 后需要重启网页服务；`tool_inventory.json` 和各 worker 返回的 provenance 是每次作业实际环境的审计依据。
+
+V4 示例：
+
+```powershell
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze `
+  --structure .\input\model.pdb --accession Q9NZQ7 --chain A `
+  --design-engine joint_v4_ml --ml-mode preview `
+  --max-sectors 7 --max-primary-constructs 7 --output .\results\joint_v4
+```
+
+`strict` 模式只选择单点证据合格且组合级共识通过的候选；缺少稳定性必需证据、模型分歧或没有候选通过门控时会输出 `BLOCKED_EXTERNAL_EVIDENCE`。DiscoTope 缺失会写入 warning 并使候选全部归入 `STABILITY_FALLBACK`，但不再单独阻断正式推荐。`preview` 允许调试和审查，但其设计状态为 `PREVIEW_CANDIDATE`，不会被旧 UI/汇总计为正式推荐。V4 原生结果写入 `v4_manifest.json`、`tool_inventory.json`、`surface_evidence.csv`、`discotope_residues.csv`、`candidate_combinations.csv.gz`、`selected_panel_v4.json` 和 `v4_scientific_report.md`，并同时生成旧 UI 可读取的 `regions.json`/`designs.json` 投影。
+
+V4 worker 使用 stdin/stdout JSON 协议：程序接收一个 `PredictionRequest` JSON，stdout 必须只有一个 JSON 对象，至少包含 `status`（`success`、`partial` 或 `failed`）和 `records`；日志只能写入 stderr。请求中的预测链是连续编号的规范化目标链，`residue_mapping.csv` 保存 `normalized_position`、UniProt 位置、author 编号、插入码和 WT 氨基酸之间的映射。ProCaliper 和 DiscoTope 的成功结果必须覆盖整条规范化链；SPURS/FoldX 的组合结果必须只返回请求过的突变组合，并通过位置范围及 WT 校验。
+
+严格模式的放行条件是：ProCaliper、SPURS single 和 SPURS multi 等稳定性必需证据完成；每个组成单点属于 `PREFERRED` 或 `ACCEPTABLE`；组合状态为 `CONSENSUS_PASS`，或显式允许时为 `SPURS_ONLY_REVIEW_REQUIRED`。DiscoTope 只决定 `EPITOPE_PRIORITIZED` 与 `STABILITY_FALLBACK` 分类及排序，不覆盖安全门控。`MODEL_DISAGREEMENT`、`COMBINATION_REJECT`、`NOT_SCORED`、WT/位置映射错误和缺少 FoldX 的高阶组合不能进入推荐系列。高阶组合还必须相对于低阶候选带来至少配置的覆盖增益，并完成 FoldX 复核。
+
 计算预筛只能说明“低预测风险”。进行表位归因时仍需同时验证表达/膜表面表达、构象对照抗体或折叠控制、稳定性，以及必要时的配体或功能读出。
+V4 目前没有细胞膜场景的 Fab 可达性模拟；`cell_surface` 结果会显式提示这一限制。固定预算的 V2/V3/V4 对照与前瞻验证方案见 [`docs/joint_v4_validation_protocol.md`](docs/joint_v4_validation_protocol.md)，当前未提供经验性能比较结果。
 
 ## 安装与启动
 
@@ -63,6 +104,9 @@ $env:PIP_CACHE_DIR = "$PWD\.pip-cache"
 
 # 上传的官方 AF3 结果可用 confidence JSON 启用 AF3 confidence/PAE 门槛
 .\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\af3_model.cif --accession Q9NZQ7 --chain A --confidence-json .\input\af3_confidences.json --output .\results\af3
+
+# 可选：使用 Joint V3 后端（默认仍为 surface_v2）
+.\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze --structure .\input\model.cif --accession Q9NZQ7 --chain A --design-engine joint_v3 --output .\results\joint_v3
 ```
 
 如果严格 AF3 策略找不到合格模型，CLI 返回退出码 `2` 和 `WAITING_FOR_AF3_UPLOAD`；网页可直接上传 AF3 文件后恢复该作业。
@@ -84,9 +128,13 @@ $env:PIP_CACHE_DIR = "$PWD\.pip-cache"
 - `structure_reliability.json`、`residue_reliability.csv`、`structural_segments.csv`、`surface_mask.csv`、`idr_candidates.csv`：结构可靠性、表面掩膜和无序区审计输出。
 - `surface_v2_qc.json`、`surface_v2_footprints.json`：表面足迹枚举、去重、区域归属与 QC 输出。
 - `fixed_assay_profile.json`：固定双细胞实验方位和解释边界的 assay profile 快照。
+- Joint V3 额外输出：`manifest.json`、`structure_audit.json`、`topology_context.json`、`surface_residues.csv`、`microfootprints.json`、`probe_sectors.json`、`candidate_probes.csv`、`coverage_by_scenario.csv`、`selected_panel.json`、`exclusions.csv` 和 `scientific_report.md`。
+- Joint V4-ML 额外输出：`tool_inventory.json`、`structure_contexts.json`、`prediction_context.pdb`、`residue_mapping.csv`、`surface_evidence.csv`、`sasa_comparison.csv`、`spurs_single_matrix.csv.gz`、`single_mutation_options.csv`、`discotope_residues.csv`、`epitope_islands.json`、`probe_sectors_v4.json`、`panel_candidates.json`、`candidate_combinations.csv.gz`、`combination_stability.csv`、`selected_panel_v4.json`、`v4_manifest.json` 和 `v4_scientific_report.md`。
 - `ecd_epitope_design.zip`：完整导出包。
 
 ## 外部稳定性引擎
+
+以下说明主要适用于 `surface_v2`/legacy 的 FoldX/EvoEF2 评估。Joint V3 在检测到 FoldX 且未被 `disable_external_engines` 禁用时，对候选短名单执行组合级 `RepairPDB + BuildModel`，保存每个组合的 ΔΔG 和 provenance；默认候选上限为 81 个。V3 默认只将 FoldX `PASS`（组合 ΔΔG ≤ +2.0 kcal/mol）纳入最终推荐面板，`ABOVE_GATE` 只用于审计/排序；PASS 不足时报告面板短缺，不用未通过者补齐。FoldX 不可用、修复失败、超时或超过上限的候选明确降级为 `RULE_ONLY`/`PROXY_ONLY`，不填充伪 kcal/mol。
 
 本机开发目录可放置用户自行取得的 FoldX 5.1 Windows 程序；FoldX 二进制及其许可文件不会随 Git 仓库分发。默认先对每区关键位点的候选单点替换做 FoldX 单点筛选，只有通过 `ΔΔG <= +0.46 kcal/mol` 的替换才进入组合搜索。最终区域组合再统一用 `BuildModel --numberOfRuns=5` 直接计算并取中位数。
 
@@ -117,6 +165,8 @@ $env:FOLDX_PATH = 'C:\tools\foldx\foldx.exe'
 - `conservation.py`：UniProt reviewed 直系同源比对，逐残基保守性打分（离线优雅降级）。
 - `partitioning.py`：Fab 足迹尺度表面补丁枚举 + 表位先验 + 覆盖方案。
 - `design.py`、`stability.py`：定向替换字母表、锚点突变、组合全枚举、Stage-2 去卷积设计、EvoEF2/FoldX 适配器。
+- `joint_design/`：Joint V3 结构审计、拓扑上下文、表面单元、多尺度窗口、ProbeSector、候选 beam search、覆盖矩阵、MILP/greedy 面板优化和科学报告。
+- `joint_design_v4/`、`integrations/`：Joint V4-ML 的规范化预测上下文、证据融合、表面分区、候选级稳定性门控、确定性面板优化、JSON worker 运行器和工具输出校验。
 - `esm_scores.py`：可选 ESM zero-shot PLM 证据线（opt-in，见模块说明）。
 - `config.py`：全部科学阈值集中管理（含文献依据，输出到 manifest/methods report）。
 - `api.py`、`jobs.py`：FastAPI、SQLite、本机单队列、SSE、AF3 恢复和自定义构建。
@@ -130,4 +180,6 @@ $env:FOLDX_PATH = 'C:\tools\foldx\foldx.exe'
 .\.venv\Scripts\python.exe -m pytest .\tests -q --basetemp .\test_output\pytest_tmp -p no:cacheprovider
 ```
 
-测试包含 SIFTS/拓扑解析、AF3 严格识别、AF3 恢复回归（UniProt 作业回填 accession）、序列反向翻译、冻结 PD-L1 全流水线（补丁分区/探针锚点/Stage-2 预设/实验计划）、补丁分区与定向菜单单测、区域构建约束与 FastAPI 静态资源检查。
+当前完整回归测试为 106 项通过；V4 专项覆盖 worker 超时/崩溃/输出污染、预览与 strict 状态隔离、模型分歧阻断、候选级正式推荐门控、DiscoTope 优先/稳定性回退系列、缺失 DiscoTope 时的审计降级、规范化残基映射、GPU 请求/缓存隔离、CUDA OOM 识别与重试/CPU 回退计划、FoldX 短名单上限与 sector 均衡、表面中继路径收缩、k-center 分区、孤立表位先验及完整表面分区。测试只验证软件契约和确定性规则，不替代外部模型自身的 benchmark 或实验验证。
+
+测试包含 SIFTS/拓扑解析、AF3 严格识别、AF3 恢复回归（UniProt 作业回填 accession）、序列反向翻译、冻结 PD-L1 全流水线（补丁分区/探针锚点/Stage-2 预设/实验计划）、Joint V3 确定性面板与保护位点测试、Joint V4 worker 契约/证据门控/规范化映射/模型分歧阻断/每补丁候选系列/DiscoTope 审计降级/GPU 缓存隔离/CUDA OOM 恢复计划/FoldX 短名单/表面中继路径/k-center 分区/孤立表位先验测试、补丁分区与定向菜单单测、区域构建约束与 FastAPI 静态资源检查。当前工作区回归测试为 106 项通过；前端 JavaScript 语法检查和 Ruff 检查通过。

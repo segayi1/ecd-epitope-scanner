@@ -45,6 +45,12 @@ class JobCreate(BaseModel):
     allow_partial: bool = False
     structure_candidate_id: str | None = None
     assay_format: Literal["cell_surface", "purified"] = "cell_surface"
+    design_engine: Literal["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"] = "surface_v2"
+    ml_mode: Literal["strict", "preview"] = "strict"
+    max_sectors: int = 7
+    max_primary_constructs: int = 7
+    allow_spurs_only_final: bool = False
+    biological_context_mode: str = "provided_structure"
 
 
 class MutationInput(BaseModel):
@@ -148,6 +154,12 @@ async def create_upload_job(
     ecd_end: int | None = Form(None),
     original_cds: str | None = Form(None),
     allow_partial: bool = Form(False),
+    design_engine: Literal["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"] = Form("surface_v2"),
+    ml_mode: Literal["strict", "preview"] = Form("strict"),
+    max_sectors: int = Form(7),
+    max_primary_constructs: int = Form(7),
+    allow_spurs_only_final: bool = Form(False),
+    biological_context_mode: str = Form("provided_structure"),
 ) -> dict[str, Any]:
     suffix = Path(structure.filename or "structure.cif").suffix.lower()
     if suffix not in {".cif", ".mmcif", ".pdb", ".ent"}:
@@ -165,6 +177,12 @@ async def create_upload_job(
         assay_profile=DEFAULT_ASSAY_PROFILE_ID,
         minimum_regions=1,
         maximum_regions=6,
+        design_engine=design_engine,
+        ml_mode=ml_mode,
+        max_sectors=max_sectors,
+        max_primary_constructs=max_primary_constructs,
+        allow_spurs_only_final=allow_spurs_only_final,
+        biological_context_mode=biological_context_mode,
     )
     job = STORE.create(placeholder)
     target = Path(job["workdir"]) / "uploads" / f"structure{suffix}"

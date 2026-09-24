@@ -305,6 +305,7 @@ function watchJob(jobId) {
 async function submitRun(event) {
   event.preventDefault();
   const inputType = document.querySelector('input[name="input-type"]:checked').value;
+  const designEngine = $("design-engine").value;
   try {
     setJob("QUEUED", t("msg.submitting", "提交作业…"), 0.02);
     const job = await api("/api/jobs", {
@@ -316,6 +317,10 @@ async function submitRun(event) {
         chain: $("chain").value.trim() || null,
         strict_af3: true,
         allow_partial: false,
+        design_engine: designEngine,
+        ml_mode: $("ml-mode").value,
+        max_sectors: 7,
+        max_primary_constructs: 7,
       }),
     });
     state.jobId = job.id;
@@ -339,6 +344,11 @@ async function submitUpload(event) {
   if ($("upload-sequence").value.trim()) form.append("sequence", $("upload-sequence").value.trim());
   if ($("upload-ecd-start").value) form.append("ecd_start", $("upload-ecd-start").value);
   if ($("upload-ecd-end").value) form.append("ecd_end", $("upload-ecd-end").value);
+  const uploadDesignEngine = $("upload-design-engine").value;
+  form.append("design_engine", uploadDesignEngine);
+  form.append("ml_mode", $("upload-ml-mode").value);
+  form.append("max_sectors", "7");
+  form.append("max_primary_constructs", "7");
   try {
     setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
     const job = await api("/api/jobs/upload", { method: "POST", body: form });
@@ -1106,7 +1116,9 @@ function renderStep4() {
 }
 
 function renderStep5() {
-  $("design-list").innerHTML = state.result.designs.map((design) => {
+  const designs = [...state.result.designs].sort((left, right) =>
+    (left.region_id ?? 999) - (right.region_id ?? 999) || left.id.localeCompare(right.id));
+  const renderCard = (design) => {
     const info = scoreInfo(design);
     const chips = (design.mutations || []).map((mutation) =>
       `<span class="mut-chip" data-design-residue="${mutation.position}" title="${h(t("design.locate", "定位"))} ${h(notation(mutation))}">${h(notation(mutation))}</span>`
@@ -1117,12 +1129,18 @@ function renderStep5() {
     const role = design.design_role
       ? `<span class="tag">${h(t("role." + design.design_role, design.design_role))}</span>`
       : "";
+    const recommendationClass = design.foldx_diagnostics?.recommendation_class;
+    const classLabel = recommendationClass === "EPITOPE_PRIORITIZED"
+      ? t("design.epitopePrioritized", "DiscoTope 优先")
+      : recommendationClass === "STABILITY_FALLBACK"
+        ? t("design.stabilityFallback", "结构稳定回退") : "";
+    const classTag = classLabel ? `<span class="tag">${h(classLabel)}</span>` : "";
     const actionable = Boolean(design.mutations?.length);
     const cardAction = actionable ? ` data-view-design="${h(design.id)}" tabindex="0" role="button"` : "";
     return `<div class="design-card ${actionable ? "clickable" : ""} ${state.selectedDesign === design.id ? "is-selected" : ""}"${cardAction}>
       <div class="design-head">
-        <div><strong>${h(design.id)} · ${h(design.name)}</strong><br><span class="st">${scoreLine}</span></div>
-        <span class="st">${role} ${h(design.status)}</span>
+        <div><strong>${h(t("region.patch", "补丁"))} ${h(design.region_id ?? "—")} · ${h(design.id)}</strong><br><span class="st">${h(design.name)} · ${scoreLine}</span></div>
+        <span class="st">${classTag} ${role} ${h(design.status)}</span>
       </div>
       <div>${chips}</div>
       <div class="actions-row">
@@ -1130,7 +1148,18 @@ function renderStep5() {
         <button type="button" class="btn btn-mini" data-copy-design="${h(design.id)}">${h(t("design.copyCustom", "复制到自定义"))}</button>` : ""}
       </div>
     </div>`;
-  }).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`;
+  };
+  const byPatch = new Map();
+  designs.forEach((design) => {
+    const patch = design.region_id ?? "—";
+    if (!byPatch.has(patch)) byPatch.set(patch, []);
+    byPatch.get(patch).push(design);
+  });
+  $("design-list").innerHTML = [...byPatch.entries()].map(([patch, series]) => `
+    <section class="design-series">
+      <h3>${h(t("region.patch", "补丁"))} ${h(patch)} · ${series.length} ${h(t("design.combinations", "个推荐组合"))}</h3>
+      ${series.map(renderCard).join("")}
+    </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`;
   document.querySelectorAll("[data-design-residue]").forEach((el) => {
     el.addEventListener("click", (event) => { event.stopPropagation(); selectResidue(Number(el.dataset.designResidue), true); });
   });
@@ -1162,6 +1191,7 @@ function renderStep7() {
   const summary = result.summary || {};
   const partition = result.partitioning || {};
   const request = result.request || {};
+  const v4 = result.joint_v4_ml || {};
   const files = Object.keys(result.files || {});
   const row = (label, value) => `<dt>${h(label)}</dt><dd>${h(value ?? "—")}</dd>`;
   $("task-overview").innerHTML = `<div class="card task-overview-card">
@@ -1178,6 +1208,8 @@ function renderStep7() {
     ${row(t("overview.run", "运行信息"), result.created_at || "—")}
     ${row(t("overview.structureFile", "结构文件名"), source.identifier || selection.selected_identifier || "—")}
     ${row(t("overview.summary", "结果摘要"), `${summary.mapped_ecd_residues ?? "—"} ECD residues · ${partition.actual_regions ?? result.regions.length} patches · ${result.designs.length} constructs`)}
+    ${v4.recommendation_status ? row("Joint V4-ML 状态", v4.recommendation_status) : ""}
+    ${v4.sectors ? row("V4 补丁 / 推荐组合", `${v4.sectors.length} / ${(v4.selected_panel?.selected_candidate_ids || []).length}`) : ""}
     ${row(t("overview.coverage", "表面覆盖率"), partition.coverage != null ? fmtPct(partition.coverage) : "—")}
     ${row(t("overview.files", "导出文件"), files.length ? `${files.length} files: ${files.join(", ")}` : "—")}
     </dl></div>`;

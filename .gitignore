@@ -14,6 +14,7 @@ workspace_data/
 test_output/
 output/playwright/
 results/
+/models/
 web/vendor/*.map
 vendor/foldx/
 vendor/EvoEF2/

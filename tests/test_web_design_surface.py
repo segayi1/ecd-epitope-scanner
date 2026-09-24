@@ -27,6 +27,8 @@ def test_mutant_combination_uses_surface_showcase_contract():
     assert "WT 位点" in app
     assert "plugin.applyVisualStyles(plugin.assemblyRef, visualStyle)" in renderer
     assert "visual.update(\n      { visualStyle" not in renderer
+    assert 'max_primary_constructs: 7' in app
+    assert 'class="design-series"' in app
 
 
 def test_surface_showcase_translations_are_complete():
@@ -37,6 +39,9 @@ def test_surface_showcase_translations_are_complete():
         "design.surfaceProtein",
         "design.surfaceRegion",
         "design.surfaceSites",
+        "design.epitopePrioritized",
+        "design.stabilityFallback",
+        "design.combinations",
     }
     for language in ("zh", "en"):
         payload = json.loads(

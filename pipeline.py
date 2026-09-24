@@ -18,6 +18,8 @@ from . import config, models
 from .assay_profiles import get_assay_profile
 from .design import design_regions
 from .exporting import write_scientific_outputs
+from .joint_design import run_joint_v3
+from .joint_design_v4 import run_joint_v4_ml
 from .models import ProteinContext, StructureCandidate, to_dict
 from .partitioning import partition_surface
 from .retrieval import (
@@ -78,6 +80,14 @@ class PipelineRequest:
     output_dir: str | None = None
     assay_format: str = "cell_surface"   # cell_surface | purified
     assay_profile: str | None = None
+    # surface_v2 remains the default for reproducibility; joint_v3 is an
+    # explicit opt-in until benchmark calibration is frozen.
+    design_engine: str = "surface_v2"
+    ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
+    max_sectors: int = 7
+    max_primary_constructs: int = 7
+    allow_spurs_only_final: bool = False
+    biological_context_mode: str = "provided_structure"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -731,10 +741,16 @@ def run_pipeline(
         stage1_target = effective_min
     membrane_anchor, membrane_normal = _transmembrane_geometry(mapping, protein)
     assay_geometry = _profile_orientation_geometry(mapping, protein) if assay_profile else None
-    patch_engine = str(request.metadata.get("patch_engine", config.PATCH_ENGINE_VERSION)).lower()
+    patch_engine = str(
+        request.metadata.get("patch_engine", request.design_engine or config.PATCH_ENGINE_VERSION)
+    ).lower()
+    if patch_engine not in {"legacy_v1", "surface_v2", "joint_v3", "joint_v4_ml"}:
+        raise PipelineError(f"Unsupported design engine: {patch_engine}")
     surface_v2_payload: dict[str, Any] | None = None
+    joint_v3_payload: dict[str, Any] | None = None
+    joint_v4_payload: dict[str, Any] | None = None
     reliability = None
-    if patch_engine == "surface_v2":
+    if patch_engine in {"surface_v2", "joint_v3", "joint_v4_ml"}:
         sequence_scores, sequence_provenance = import_iupred(
             request.metadata.get('iupred_output'), protein.sequence
         )
@@ -750,6 +766,12 @@ def run_pipeline(
             for position, residue in mapping.uniprot_to_residue.items()
             if protein.ecd_start <= position <= protein.ecd_end
         }
+    inventory = find_engine_inventory()
+    if request.metadata.get("disable_external_engines"):
+        from .stability import EngineInventory
+
+        inventory = EngineInventory(True, None, None)
+    if patch_engine == "surface_v2":
         surface_result = run_surface_patch_v2(
             parsed.model,
             mapping.chain_id,
@@ -797,6 +819,113 @@ def run_pipeline(
                 }
             },
         }
+    elif patch_engine == "joint_v3":
+        progress("PARTITIONING", 0.62, "Building Joint V3 surface units, multi-scale windows and probe sectors")
+        v3_surface = run_surface_patch_v2(
+            parsed.model,
+            mapping.chain_id,
+            ecd_residues,
+            records,
+            protein,
+            output_dir=None,
+            confidence=confidence,
+            predicted=predicted,
+            parameters=config.SURFACE_V2_PARAMETERS,
+            reliability=reliability,
+        ).surface
+        joint_result = run_joint_v3(
+            records,
+            protein,
+            output_dir,
+            original_cds=request.original_cds,
+            chain_id=mapping.chain_id,
+            tm_anchor_xyz=membrane_anchor,
+            tm_axis_xyz=membrane_normal,
+            parameters=config.JOINT_V3_PARAMETERS,
+            surface_geometry=v3_surface,
+            structure=parsed.structure,
+            source_provenance={
+                "identifier": source.get("identifier"),
+                "provider": source.get("provider"),
+                "structure_sha256": sha256_file(parsed.path),
+                "selected_chain": mapping.chain_id,
+            },
+            structure_pdb=structure_pdb,
+            engine_inventory=inventory,
+        )
+        regions = joint_result.legacy_regions
+        designs = joint_result.designs
+        partition_summary = joint_result.partition_summary
+        design_summary = joint_result.design_summary
+        joint_v3_payload = {
+            "schema_version": "3.0",
+            "structure_audit": to_dict(joint_result.audit),
+            "topology_context": to_dict(joint_result.topology),
+            "microfootprints": to_dict(joint_result.microfootprints),
+            "probe_sectors": to_dict(joint_result.sectors),
+            "candidates": to_dict(joint_result.candidates),
+            "selected_panel": to_dict(joint_result.panel),
+        }
+    elif patch_engine == "joint_v4_ml":
+        progress("PROCALIPER_ANALYSIS", 0.62, "Running Joint V4-ML evidence adapters and surface audit")
+        v4_surface = run_surface_patch_v2(
+            parsed.model, mapping.chain_id, ecd_residues, records, protein,
+            output_dir=None, confidence=confidence, predicted=predicted,
+            parameters=config.SURFACE_V2_PARAMETERS, reliability=reliability,
+        ).surface
+        v4_params = dict(request.metadata.get("joint_v4_ml", {}))
+        v4_params.update({
+            "mode": request.ml_mode,
+            "max_sectors": request.max_sectors,
+            "max_primary_constructs": request.max_primary_constructs,
+            "allow_spurs_only_final": request.allow_spurs_only_final,
+        })
+        joint_result = run_joint_v4_ml(
+            records, protein, output_dir, original_cds=request.original_cds,
+            chain_id=mapping.chain_id, structure_pdb=structure_pdb,
+            structure_type="alphafold" if predicted else "solved",
+            parameters=v4_params, surface_geometry=v4_surface,
+            assay_format=request.assay_format,
+            source_provenance={
+                "identifier": source.get("identifier"), "provider": source.get("provider"),
+                "structure_sha256": sha256_file(parsed.path), "selected_chain": mapping.chain_id,
+                "biological_context_mode": request.biological_context_mode,
+            },
+        )
+        regions = joint_result.legacy_regions
+        designs = joint_result.legacy_designs
+        partition_summary = {
+            "engine": "joint_v4_ml", "schema_version": "4.0",
+            "sector_count": len(joint_result.sectors),
+            "primary_construct_count": len(joint_result.panel.selected_candidate_ids),
+            "recommendation_status": joint_result.recommendation_status,
+            "warnings": list(joint_result.warnings),
+            "selected_panel": to_dict(joint_result.panel),
+            "surface_evidence_count": len(joint_result.surface_evidence),
+            "candidate_count": len(joint_result.candidates),
+        }
+        design_summary = {
+            "engine": "joint_v4_ml", "schema_version": "4.0",
+            "recommendation_status": joint_result.recommendation_status,
+            "tool_inventory": to_dict(joint_result.tool_inventory),
+            "candidate_count": len(joint_result.candidates),
+            "selected_candidate_ids": joint_result.panel.selected_candidate_ids,
+            "recommended_by_class": {
+                key: len(value)
+                for key, value in joint_result.panel.candidates_by_role.items()
+                if key != "PRIMARY"
+            },
+            "higher_order_candidate_count": sum(item.order > 2 for item in joint_result.candidates),
+            "epitope_mapping_plan": {"sectors": to_dict(joint_result.sectors), "soft_target": True},
+        }
+        joint_v4_payload = {
+            "schema_version": "4.0", "recommendation_status": joint_result.recommendation_status,
+            "tool_inventory": to_dict(joint_result.tool_inventory),
+            "surface_evidence": to_dict(joint_result.surface_evidence),
+            "epitope_evidence": to_dict(joint_result.epitope_evidence),
+            "sectors": to_dict(joint_result.sectors), "candidates": to_dict(joint_result.candidates),
+            "selected_panel": to_dict(joint_result.panel), "warnings": joint_result.warnings,
+        }
     else:
         regions, partition_summary = partition_surface(
             records,
@@ -811,57 +940,74 @@ def run_pipeline(
         )
     if assay_profile:
         _annotate_profile_orientation(regions, records, assay_geometry or {})
-    inventory = find_engine_inventory()
-    if request.metadata.get("disable_external_engines"):
-        from .stability import EngineInventory
-
-        inventory = EngineInventory(True, None, None)
-    progress("DESIGNING", 0.76, "Evaluating in-silico saturation substitutions and regional combinations")
-    stage1_regions = regions
-    if patch_engine == "surface_v2" and len(regions) > effective_max:
-        if assay_profile:
-            stage1_regions = _select_geometry_spread_panel(regions, records, effective_max)
-        else:
-            pending = list(regions)
-            stage1_regions = []
-            covered_domains: set[str] = set()
-            while pending and len(stage1_regions) < effective_max:
-                selected = max(pending, key=lambda r: (
-                    r.auto_design_allowed, r.domain not in covered_domains,
-                    len(r.envelope_residues), -r.id,
-                ))
-                stage1_regions.append(selected)
-                covered_domains.add(selected.domain)
-                pending.remove(selected)
-            stage1_regions.sort(key=lambda r: r.id)
-    if patch_engine == "surface_v2":
-        selected_ids = {r.id for r in stage1_regions}
-        partition_summary["coverage_plan"] = [r for r in partition_summary["coverage_plan"] if r["patch_id"] in selected_ids]
-        partition_summary["unselected_region_ids"] = [r.id for r in regions if r.id not in selected_ids]
-    partition_summary["stage1_selected_region_ids"] = [item.id for item in stage1_regions]
-    partition_summary["stage1_min_constructs"] = min(effective_min, len(stage1_regions))
-    partition_summary["stage1_target_constructs"] = stage1_target
-    partition_summary["stage1_max_constructs"] = effective_max
-    if assay_profile:
-        partition_summary["stage1_selection_basis"] = assay_profile["design_policy"]["selection_basis"]
+    progress("DESIGNING", 0.76, "Selecting a deterministic probe panel from the configured design engine")
+    if patch_engine == "joint_v3":
+        # Joint V3 has already enforced the panel budget in its optimizer.
+        stage1_regions = regions
+        partition_summary["stage1_selected_region_ids"] = [item.id for item in regions]
+        partition_summary["stage1_min_constructs"] = min(effective_min, len(designs))
+        partition_summary["stage1_target_constructs"] = min(stage1_target, effective_max)
+        partition_summary["stage1_max_constructs"] = effective_max
+        partition_summary["stage1_selection_basis"] = "joint_v3_robust_surface_coverage"
         partition_summary["epitope_prior_used_for_panel_selection"] = False
-    designs, design_summary = design_regions(
-        stage1_regions,
-        records,
-        protein,
-        inventory,
-        structure_pdb,
-        output_dir,
-        request.original_cds,
-        minimum_combo_sites=(
-            int(assay_profile["design_policy"]["combination_minimum_sites"])
-            if assay_profile else None
-        ),
-        maximum_combo_sites=(
-            int(assay_profile["design_policy"]["combination_maximum_sites"])
-            if assay_profile else None
-        ),
-    )
+    elif patch_engine == "joint_v4_ml":
+        stage1_regions = regions
+        partition_summary["stage1_selected_region_ids"] = [item.id for item in regions]
+        partition_summary["stage1_min_constructs"] = min(len(regions), len(designs))
+        partition_summary["stage1_target_constructs"] = len(designs)
+        partition_summary["stage1_max_constructs"] = request.max_primary_constructs
+        partition_summary["stage1_selection_basis"] = (
+            "joint_v4_stability_gated_sector_series_with_soft_epitope_priority"
+        )
+        partition_summary["epitope_prior_used_for_panel_selection"] = bool(
+            joint_result.panel.candidates_by_role.get("EPITOPE_PRIORITIZED")
+        )
+    else:
+        stage1_regions = regions
+        if patch_engine == "surface_v2" and len(regions) > effective_max:
+            if assay_profile:
+                stage1_regions = _select_geometry_spread_panel(regions, records, effective_max)
+            else:
+                pending = list(regions)
+                stage1_regions = []
+                covered_domains: set[str] = set()
+                while pending and len(stage1_regions) < effective_max:
+                    selected = max(pending, key=lambda r: (
+                        r.auto_design_allowed, r.domain not in covered_domains,
+                        len(r.envelope_residues), -r.id,
+                    ))
+                    stage1_regions.append(selected)
+                    covered_domains.add(selected.domain)
+                    pending.remove(selected)
+                stage1_regions.sort(key=lambda r: r.id)
+        if patch_engine == "surface_v2":
+            selected_ids = {r.id for r in stage1_regions}
+            partition_summary["coverage_plan"] = [r for r in partition_summary["coverage_plan"] if r["patch_id"] in selected_ids]
+            partition_summary["unselected_region_ids"] = [r.id for r in regions if r.id not in selected_ids]
+        partition_summary["stage1_selected_region_ids"] = [item.id for item in stage1_regions]
+        partition_summary["stage1_min_constructs"] = min(effective_min, len(stage1_regions))
+        partition_summary["stage1_target_constructs"] = stage1_target
+        partition_summary["stage1_max_constructs"] = effective_max
+        if assay_profile:
+            partition_summary["stage1_selection_basis"] = assay_profile["design_policy"]["selection_basis"]
+            partition_summary["epitope_prior_used_for_panel_selection"] = False
+        designs, design_summary = design_regions(
+            stage1_regions,
+            records,
+            protein,
+            inventory,
+            structure_pdb,
+            output_dir,
+            request.original_cds,
+            minimum_combo_sites=(
+                int(assay_profile["design_policy"]["combination_minimum_sites"])
+                if assay_profile else None
+            ),
+            maximum_combo_sites=(
+                int(assay_profile["design_policy"]["combination_maximum_sites"])
+                if assay_profile else None
+            ),
+        )
     surface_count = sum(item.surface_accessible for item in records)
     if (
         protein.ecd_length <= config.SMALL_ECD_LENGTH_AA
@@ -920,6 +1066,13 @@ def run_pipeline(
     }
     warnings = list(partition_summary.get("warnings", [])) + list(conservation_warnings)
     warnings.append("Production SASA uses Bio.PDB Shrake-Rupley with pinned Tien/DSSP radii.")
+    if patch_engine == "joint_v3":
+        warnings.extend([
+            "Joint V3 sectors are coarse localization areas; they are not exact antibody footprints.",
+            "Joint V3 does not output binding probabilities or kcal/mol values without a combination-level external engine.",
+        ])
+    elif patch_engine == "joint_v4_ml":
+        warnings.extend(joint_result.warnings)
     if not inventory.evoef2_path and not inventory.foldx_path:
         warnings.append(
             "Neither FoldX nor EvoEF2 is configured; combinations are ranked with the built-in dimensionless structural-risk proxy."
@@ -936,7 +1089,7 @@ def run_pipeline(
             "N-terminal Myc accessibility controls K562 antigen surface display but does not "
             "prove native antigen folding; use an independent conformation-sensitive control."
         )
-    elif request.assay_format == "cell_surface":
+    elif request.assay_format == "cell_surface" and patch_engine != "joint_v4_ml":
         warnings.append(
             "cell_surface assay: membrane-proximal patches were down-weighted because IgG cannot reach them on intact cells."
         )
@@ -1001,6 +1154,8 @@ def run_pipeline(
                 ),
             },
             "patch_engine": patch_engine,
+            "joint_v3": config.JOINT_V3_PARAMETERS if patch_engine == "joint_v3" else None,
+            "joint_v4_ml": config.JOINT_V4_ML_PARAMETERS if patch_engine == "joint_v4_ml" else None,
             "surface_v2": config.SURFACE_V2_PARAMETERS,
             "patch_scale": "Overlapping surface-geodesic footprints at fixed 9/12/15 A and adaptive 600 A2 scales",
             "compact_single_domain_surface_face": {
@@ -1013,6 +1168,10 @@ def run_pipeline(
                 "combo_max_spread_A": config.COMPACT_COMBO_MAX_SPREAD_A,
             },
             "regional_mutations": (
+                "Joint V3 deterministic beam search with 2-4 sites; anchor mutation is not forced"
+                if patch_engine == "joint_v3" else
+                "Joint V4-ML sector search with 2-4 sites; external scores are versioned evidence, not guarantees"
+                if patch_engine == "joint_v4_ml" else
                 "2-4 sites under fixed assay profile; directed alphabet + anchor mutation; "
                 "exhaustive enumeration of cleared menus"
                 if assay_profile else
@@ -1051,6 +1210,8 @@ def run_pipeline(
         "residues": [to_dict(item) for item in records],
         "regions": [to_dict(item) for item in regions],
         "surface_v2": surface_v2_payload,
+        "joint_v3": joint_v3_payload,
+        "joint_v4_ml": joint_v4_payload,
         "structure_reliability": reliability,
         "designs": [to_dict(item) for item in designs],
         "warnings": warnings,
@@ -1078,6 +1239,25 @@ def run_pipeline(
         request.original_cds,
     )
     analysis["files"] = files
+    if patch_engine == "joint_v3":
+        for name in (
+            "manifest.json", "structure_audit.json", "topology_context.json",
+            "surface_residues.csv", "microfootprints.json", "probe_sectors.json",
+            "candidate_probes.csv", "coverage_by_scenario.csv", "selected_panel.json", "exclusions.csv",
+            "scientific_report.md",
+        ):
+            if (output_dir / name).exists():
+                analysis["files"][name] = name
+    if patch_engine == "joint_v4_ml":
+        for name in (
+            "tool_inventory.json", "structure_contexts.json", "residue_mapping.csv",
+            "prediction_context.pdb",
+            "surface_evidence.csv", "discotope_residues.csv", "single_mutation_options.csv",
+            "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
+            "selected_panel_v4.json", "v4_manifest.json", "v4_scientific_report.md",
+        ):
+            if (output_dir / name).exists():
+                analysis["files"][name] = name
     # Flexible terminal segments: excluded from patches, kept as linear-epitope
     # candidates with a ready-to-order alanine-scan block list.
     tail_ranges = methods.get("flexible_terminal_ranges") or []
@@ -1096,5 +1276,9 @@ def run_pipeline(
             }
             for item in tail_ranges
         ]
+    # The exporter creates the initial analysis file before it knows the
+    # complete file map.  Persist the final analysis once more so V3 file
+    # provenance and the legacy view agree on disk and in the API response.
+    write_json(output_dir / "analysis.json", analysis)
     progress("COMPLETE", 1.0, "Analysis and epitope-mapping panel design completed")
     return analysis
