@@ -62,6 +62,7 @@ def test_complete_pdb_only_profile_run_needs_no_sequence_or_accession(tmp_path):
         identifier="pdb_only_profile",
         structure_path=str(PDL1_PDB),
         assay_profile=DEFAULT_ASSAY_PROFILE_ID,
+        ml_mode="preview",
         output_dir=str(tmp_path),
         metadata={"disable_external_engines": True},
     ))
@@ -72,6 +73,11 @@ def test_complete_pdb_only_profile_run_needs_no_sequence_or_accession(tmp_path):
     assert result["assay_profile"]["experimental_roles"]["antigen_cell"] == "K562"
     assert result["assay_geometry"]["physical_membrane_plane_inferred"] is False
     assert 1 <= len(probes) <= 6
+    assert result["partitioning"]["stage1_max_constructs"] == 6
+    assert all(
+        not item["available"] and item["failure_reason"] == "disabled by request"
+        for item in result["design_summary"]["tool_inventory"].values()
+    )
     assert result["partitioning"]["epitope_prior_used_for_panel_selection"] is False
     assert all(len(item["mutations"]) <= 4 for item in probes)
     assert all(region["predicted_accessibility"] == "unknown" for region in result["regions"])

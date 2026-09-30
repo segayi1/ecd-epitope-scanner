@@ -31,34 +31,126 @@ def _position(row: dict[str, Any]) -> int | None:
         return None
 
 
+def _sasa_values_close(left: float, right: float) -> bool:
+    delta = abs(left - right)
+    return delta <= 0.05 or delta / max(left, 0.01) <= 0.20
+
+
+def _procaliper_method_status(
+    procaliper_rows: list[dict[str, Any]],
+    procaliper_provenance: dict[str, Any] | None,
+    normalized_context_method: dict[str, Any] | None,
+) -> str:
+    if not procaliper_rows:
+        return "NOT_COMPARED"
+    if normalized_context_method is None:
+        return "INPUT_SCOPE_UNVERIFIED"
+    provenance = procaliper_provenance or {}
+    required = {
+        "algorithm",
+        "biopython_version",
+        "probe_radius_a",
+        "sphere_points",
+        "rsasa_reference",
+        "atom_radii_a",
+    }
+    if not required.issubset(provenance):
+        return "PROVENANCE_INCOMPLETE"
+    try:
+        settings_match = (
+            "ShrakeRupley" in str(provenance["algorithm"])
+            and float(provenance["probe_radius_a"])
+            == float(normalized_context_method["probe_radius_a"])
+            and int(provenance["sphere_points"])
+            == int(normalized_context_method["sphere_points"])
+            and all(
+                float(provenance["atom_radii_a"][element])
+                == float(normalized_context_method["atom_radii_a"][element])
+                for element in ("C", "N", "O", "S")
+            )
+            and "Tien" in str(provenance["rsasa_reference"])
+            and "Tien" in str(normalized_context_method["radii_reference"])
+        )
+    except (KeyError, TypeError, ValueError):
+        return "PROVENANCE_INCOMPLETE"
+    if not settings_match:
+        return "SETTINGS_DIFFER"
+    return (
+        "MATCHED"
+        if str(provenance["biopython_version"])
+        == str(normalized_context_method["biopython_version"])
+        else "VERSION_DIFFERS"
+    )
+
+
 def surface_evidence(
     records: list[ResidueRecord],
     keys: dict[int, ResidueKey],
     procaliper_rows: list[dict[str, Any]] | None = None,
     areas: dict[int, float] | None = None,
     components: dict[int, int] | None = None,
+    normalized_context_rows: dict[int, dict[str, float]] | None = None,
+    normalized_context_method: dict[str, Any] | None = None,
+    procaliper_provenance: dict[str, Any] | None = None,
+    rsasa_threshold: float = config.RSASA_THRESHOLD,
 ) -> list[SurfaceEvidence]:
-    external = {
-        _position(row): row for row in (procaliper_rows or []) if _position(row) is not None
-    }
+    external = {_position(row): row for row in (procaliper_rows or []) if _position(row) is not None}
+    comparison_method_status = _procaliper_method_status(
+        procaliper_rows or [], procaliper_provenance, normalized_context_method
+    )
     result = []
     for item in records:
         row = external.get(item.uniprot_pos, {})
+        normalized_row = (normalized_context_rows or {}).get(item.uniprot_pos, {})
         pro_sasa = _record(row, "sasa", "residue_sasa", "sasa_a2")
         pro_rsasa = _record(row, "rsasa", "rSASA", "relative_sasa")
+        normalized_sasa = normalized_row.get("sasa")
+        normalized_rsasa = normalized_row.get("rsasa")
         try:
             pro_sasa = float(pro_sasa) if pro_sasa is not None else None
             pro_rsasa = float(pro_rsasa) if pro_rsasa is not None else None
+            normalized_sasa = float(normalized_sasa) if normalized_sasa is not None else None
+            normalized_rsasa = float(normalized_rsasa) if normalized_rsasa is not None else None
         except (TypeError, ValueError):
-            pro_sasa = pro_rsasa = None
+            pro_sasa = pro_rsasa = normalized_sasa = normalized_rsasa = None
         status = "NOT_COMPARED"
         if pro_rsasa is not None:
-            delta = abs(pro_rsasa - item.rsasa)
-            status = (
-                "AGREE"
-                if delta <= 0.05 or delta / max(item.rsasa, 0.01) <= 0.20
-                else "SASA_DISAGREEMENT"
+            if normalized_rsasa is None:
+                status = "COMPARISON_CONTEXT_UNVERIFIED"
+            elif comparison_method_status not in {"MATCHED", "VERSION_DIFFERS"}:
+                status = "METHOD_SETTINGS_UNVERIFIED"
+            else:
+                same_class = (normalized_rsasa >= rsasa_threshold) == (
+                    pro_rsasa >= rsasa_threshold
+                )
+                status = (
+                    "AGREE"
+                    if same_class and _sasa_values_close(normalized_rsasa, pro_rsasa)
+                    else "SASA_DISAGREEMENT"
+                )
+        native_context_delta = (
+            abs(float(item.rsasa) - normalized_rsasa)
+            if normalized_rsasa is not None
+            else None
+        )
+        native_context_classification_changed = (
+            (float(item.rsasa) >= rsasa_threshold) != (normalized_rsasa >= rsasa_threshold)
+            if normalized_rsasa is not None
+            else None
+        )
+        native_context_status = "NOT_COMPARED"
+        if native_context_delta is not None and normalized_rsasa is not None:
+            native_context_status = (
+                "CONTEXT_STABLE"
+                if not native_context_classification_changed
+                and _sasa_values_close(float(item.rsasa), normalized_rsasa)
+                else "CONTEXT_SENSITIVE"
             )
+        procaliper_classification_changed = (
+            (pro_rsasa >= rsasa_threshold) != (normalized_rsasa >= rsasa_threshold)
+            if pro_rsasa is not None and normalized_rsasa is not None
+            else None
+        )
         result.append(
             SurfaceEvidence(
                 residue=keys[item.uniprot_pos],
@@ -66,13 +158,32 @@ def surface_evidence(
                 procaliper_rsasa=pro_rsasa,
                 native_sasa_a2=float(item.sasa),
                 native_rsasa=float(item.rsasa),
+                normalized_context_sasa_a2=normalized_sasa,
+                normalized_context_rsasa=normalized_rsasa,
+                native_context_absolute_delta=native_context_delta,
+                native_context_status=native_context_status,
+                native_context_classification_changed=native_context_classification_changed,
+                procaliper_classification_changed=procaliper_classification_changed,
+                comparison_method_status=comparison_method_status,
                 sidechain_sasa_a2=float(item.sidechain_sasa),
                 mapped_surface_area_a2=float(
                     (areas or {}).get(item.uniprot_pos, max(item.sasa, item.sidechain_sasa, 1.0))
                 ),
                 surface_component_id=(components or {}).get(item.uniprot_pos),
                 sasa_agreement_status=status,
-                provenance={"native_source": "Shrake-Rupley", "procaliper_present": bool(row)},
+                provenance={
+                    "native_scope": "selected source protein chain; standard residues retained, partners excluded",
+                    "normalized_context_scope": (
+                        normalized_context_method.get("scope")
+                        if normalized_context_method
+                        else None
+                    ),
+                    "procaliper_present": bool(row),
+                    "procaliper_input_structure_sha256": (
+                        (procaliper_provenance or {}).get("input_structure_sha256")
+                    ),
+                    "comparison_method_status": comparison_method_status,
+                },
             )
         )
     return result
@@ -210,6 +321,15 @@ def build_single_evidence(
     scores = _spurs_rows(spurs_rows)
     result = []
     for item in records:
+        surface_item = (surface_by_position or {}).get(item.uniprot_pos)
+        surface_warnings = []
+        if surface_item is not None:
+            if surface_item.sasa_agreement_status == "SASA_DISAGREEMENT":
+                surface_warnings.append("SASA_DISAGREEMENT")
+            elif surface_item.sasa_agreement_status == "METHOD_SETTINGS_UNVERIFIED":
+                surface_warnings.append("SASA_METHOD_SETTINGS_UNVERIFIED")
+            if surface_item.native_context_status == "CONTEXT_SENSITIVE":
+                surface_warnings.append("SASA_CONTEXT_SENSITIVE")
         for mutant in "ACDEFGHIKLMNPQRSTVWY":
             if mutant == item.aa:
                 continue
@@ -232,12 +352,7 @@ def build_single_evidence(
                     stability_band=band,
                     chemistry_class=_chemistry(item.aa, mutant),
                     hard_exclusions=sorted(set(hard)),
-                    soft_warnings=(
-                        ["SASA_DISAGREEMENT"]
-                        if (surface_by_position or {}).get(item.uniprot_pos) is not None
-                        and surface_by_position[item.uniprot_pos].sasa_agreement_status == "SASA_DISAGREEMENT"
-                        else []
-                    ),
+                    soft_warnings=sorted(set(surface_warnings)),
                     eligible=not hard
                     and (
                         band in {"PREFERRED", "ACCEPTABLE"}
@@ -257,6 +372,8 @@ def compressed_options(
     epitope_priority_weight: float = 1.0,
     epitope_supported_percentile: float = 0.80,
 ) -> list[V4MutationOption]:
+    # Retained for call compatibility; DiscoTope is no longer folded into a
+    # mutation quality score. It stays as separate hypothesis-prior evidence.
     by_pos: dict[int, list[SingleMutationEvidence]] = defaultdict(list)
     for item in single:
         if item.eligible:
@@ -305,7 +422,6 @@ def compressed_options(
             perturbation = (
                 0.6 if item.chemistry_class in {"charge_reversal", "hotspot_removal"} else 0.3
             )
-            risk = item.spurs_ddg_kcal_mol if item.spurs_ddg_kcal_mol is not None else 0.0
             result.append(
                 V4MutationOption(
                     residue=item.residue,
@@ -313,16 +429,17 @@ def compressed_options(
                     notation=f"{record.aa}{record.uniprot_pos}{item.mutant_aa}",
                     chemistry_class=item.chemistry_class,
                     spurs_ddg_kcal_mol=item.spurs_ddg_kcal_mol,
-                    score=round(
-                        accessibility
-                        + perturbation
-                        + epitope_priority_weight * epitope_prior
-                        - max(0.0, risk) * 0.25,
-                        6,
-                    ),
+                    # Compatibility field only: bounded exposure × chemistry
+                    # proxy. Candidate ranking consumes the component fields.
+                    score=round(accessibility * perturbation, 6),
                     eligible=True,
                     hard_exclusions=list(item.hard_exclusions),
                     warnings=list(item.soft_warnings),
+                    accessibility_score=round(accessibility, 6),
+                    chemical_disruption_score=perturbation,
+                    stability_band=item.stability_band,
+                    glycan_risk=(["GLYCAN_SHIELDED"] if record.glycan_shielded else []),
+                    structural_risk_flags=list(item.soft_warnings),
                     epitope_prior=round(epitope_prior, 6),
                     epitope_supported=epitope_supported,
                 )

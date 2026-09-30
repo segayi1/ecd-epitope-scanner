@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID
+from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID, SUPPORTED_ASSAY_PROFILE_IDS
 from .pipeline import PipelineRequest, run_pipeline
 from .util import WaitingForAF3
 
@@ -47,9 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--max-regions", type=int, default=8)
     analyze.add_argument(
         "--design-engine",
-        choices=["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"],
-        default="surface_v2",
-        help="Backend design engine; joint_v3/joint_v4_ml are opt-in evidence-aware engines",
+        choices=["joint_v4_ml"],
+        default="joint_v4_ml",
+        help="Evidence-aware Joint V4-ML design engine",
     )
     analyze.add_argument(
         "--ml-mode",
@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument(
         "--assay-profile",
-        choices=[DEFAULT_ASSAY_PROFILE_ID],
+        choices=SUPPORTED_ASSAY_PROFILE_IDS,
         help="Fixed dual-cell topology (automatic for a PDB-only --structure run)",
     )
     analyze.add_argument("--output", required=True)

@@ -20,6 +20,7 @@ def fixture_result(tmp_path_factory):
         ecd_start=19,
         ecd_end=238,
         allow_partial=True,
+        ml_mode="preview",
         output_dir=str(output),
         metadata={"disable_external_engines": True},
     )
@@ -32,7 +33,11 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     assert result["summary"]["mapped_ecd_residues"] == 220
     # Patch count is data-driven but bounded by the panel budget (maximum_regions).
     assert 1 <= len(result["regions"]) <= 8
-    assert result["partitioning"]["coverage"] >= 0.85
+    panel = result["partitioning"]["selected_panel"]
+    assert panel["coverage_denominator_residues"] > 0
+    assert panel["achieved_coverage"]
+    assert all(0.0 <= value <= 1.0 for value in panel["achieved_coverage"].values())
+    assert result["partitioning"]["stage1_max_constructs"] <= 7
     region_positions = {region["id"]: set(region["residues"]) for region in result["regions"]}
     protected = {
         residue["uniprot_pos"]
@@ -41,9 +46,9 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     }
 
     primaries = [design for design in result["designs"] if design["design_role"] == "STAGE1_PROBE"]
-    assert len(primaries) == len(result["regions"])
-    for region, design in zip(result["regions"], primaries):
-        assert design["region_id"] == region["id"]
+    assert 0 < len(primaries) <= result["partitioning"]["stage1_max_constructs"]
+    for design in primaries:
+        assert design["region_id"] in region_positions
         assert design["mutations"], "every testable patch must yield a probe or an explicit refusal"
         if design["status"] == "RECOMMENDED_LOW_PREDICTED_RISK":
             assert 2 <= len(design["mutations"]) <= 6
@@ -51,7 +56,7 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
             assert len({item["position"] for item in design["mutations"]}) == len(design["mutations"])
             for mutation in design["mutations"]:
                 assert mutation["wt"] != mutation["mutant"]
-                assert mutation["position"] in region_positions[region["id"]]
+                assert mutation["position"] in region_positions[design["region_id"]]
                 assert mutation["position"] not in protected
             assert translate_cds(design["mutant_coding_sequence"]) == design["mutant_ecd_sequence"]
 
@@ -96,20 +101,26 @@ def test_epitope_mapping_plan_is_complete(fixture_result):
 @pytest.mark.integration
 def test_patch_priors_and_tiers_are_present(fixture_result):
     result, _ = fixture_result
-    assert result["partitioning"]["method"].startswith("Fab-footprint")
+    assert result["partitioning"]["method"].startswith("Joint V4-ML")
     for region in result["regions"]:
         assert region["epitope_prior"] is not None
         assert region["tier"] in {"HIGH", "MEDIUM", "LOW"}
         assert region["prior_components"]
         assert region["required_probe_coverage"] in {1, 2}
     tiers = {region["tier"] for region in result["regions"]}
-    assert "HIGH" in tiers
+    has_epitope_scores = any(
+        item.get("raw_score") is not None
+        for item in result["joint_v4_ml"]["epitope_evidence"]
+    )
+    if not has_epitope_scores:
+        assert tiers == {"LOW"}, "missing external epitope scores must not create a HIGH-priority tier"
 
 
 @pytest.mark.integration
 def test_saturation_remains_full_but_lives_on_probes(fixture_result):
     result, _ = fixture_result
-    assert result["design_summary"]["in_silico_substitutions_evaluated"] > 100
+    assert result["design_summary"]["saturation_scan_status"] == "ENUMERATED_NOT_SCORED"
+    assert result["design_summary"]["unscored_saturation_substitution_count"] > 100
     probes = [design for design in result["designs"] if design["design_role"] == "STAGE1_PROBE"]
     with_scan = [design for design in probes if design["saturation_scan"]]
     assert with_scan
@@ -117,4 +128,5 @@ def test_saturation_remains_full_but_lives_on_probes(fixture_result):
         assert all(len(choices) == 19 for choices in design["saturation_scan"].values())
         for choices in design["saturation_scan"].values():
             classes = {choice["menu_class"] for choice in choices}
-            assert classes, "every substitution carries its directed menu class"
+            assert classes == {"unscored_saturation_option"}
+            assert all(choice["status"] == "NOT_SCORED" for choice in choices)

@@ -1,6 +1,38 @@
-# ECD Epitope Scanner v4 方法流程图
+# ECD Epitope Scanner V4.1 方法流程图
 
-下图只展示 Joint V4-ML 的输入、结构证据、候选生成、稳定性门控与结果；保留可编辑 Mermaid 源码。
+第一张图表示当前 V4.1 的 footprint hypothesis、探针响应和面板设计数据流；第二张图保留 V4.0 的历史流程，供旧结果解释与兼容审查。保留可编辑 Mermaid 源码。
+
+## V4.1 当前数据流
+
+```mermaid
+flowchart TD
+    STRUCTURE["结构与残基映射"] --> SURFACE2["Surface V2 显式溶剂表面"]
+    SURFACE2 --> FOOTPRINTS["12 Å 与 adaptive-area 重叠 footprints"]
+    FOOTPRINTS --> HYP["候选抗体兼容表面假设"]
+    SURFACE2 --> DISPLAY["SurfaceRegion：仅供显示归属"]
+    SURFACE2 --> GRAPH["表面图；路径连通仍由显式表面图决定"]
+    NATIVE["native normalized-context SASA"] --> ELIGIBLE["表面资格与候选突变菜单"]
+    PC["可选 ProCaliper SASA/rSASA 交叉审计"] --> AUDIT["SASA 方法/数值诊断"]
+    AUDIT -. "不单独排除候选" .-> ELIGIBLE
+    STABILITY["SPURS single / multi 与 FoldX"] --> CANDIDATES["双点/三点主池；四点探索池"]
+    HYP --> CANDIDATES
+    DISPLAY --> CANDIDATES
+    GRAPH --> CANDIDATES
+    ELIGIBLE --> CANDIDATES
+    CANDIDATES --> MATRIX["探针 × footprint 响应代理矩阵"]
+    HYP --> MATRIX
+    MATRIX --> OPT["覆盖 + 平均/最小签名区分度贪心选择"]
+    STABILITY --> OPT
+    OPT --> OUTPUT["≤ assay construct budget；未解析假设显式报告"]
+```
+
+响应矩阵是测地距离与化学扰动代理量，不代表结合变化概率；假设不是实验确认的表位。
+
+### SASA 与大分子几何可达性
+
+native normalized-context SASA 用于描述水分子尺度的溶剂暴露，并参与表面资格判断。当前 ProCaliper worker 也只计算残基 SASA/rSASA，作用是独立交叉审计；它没有计算有限尺寸探针的 steric reach。Surface V2 的测地 footprints 表示表面连续性，ECD anchor-axis 和膜相对位置是几何注释；这些量都不等于 Fab 或 SNIPR 的实际可达性。因此，高 SASA 不能单独推出抗体可达，当前流程会把未计算的有限探针可达性标为未知。
+
+## V4.0 历史数据流（兼容说明）
 
 ```mermaid
 flowchart TD
@@ -102,12 +134,12 @@ flowchart TD
 
 ## 外部工具运行路径
 
-| 组件 | 执行路径 | V4 用途 |
+| 组件 | 执行路径 | V4.1 用途 |
 |---|---|---|
-| ProCaliper | Windows CPU | SASA/rSASA 证据及与 native SASA 的实现一致性检查 |
+| ProCaliper | Windows CPU | 当前 worker 只给 SASA/rSASA 交叉审计；不计算有限探针可达性，方法差异只作诊断 |
 | SPURS single/multi | WSL2 CUDA GPU | 单点与组合稳定性预测 |
 | DiscoTope-3.0 | WSL2 CUDA GPU | 表位倾向软先验，不代表指定抗体结合概率 |
 | FoldX 5.1 | Windows CPU | 确定性组合短名单复核 |
-| 表面图、sector 与 panel | Windows CPU | 几何分区、候选约束与确定性面板选择 |
+| Surface V2、V4 display sector 与 V4.1 panel | Windows CPU | 重叠 footprint 假设、独立突变阶数搜索与假设签名区分 |
 
-strict 模式只有在必要证据完整且候选通过映射、单点、组合和几何门控时才形成正式推荐。preview 结果仅供审阅。计算候选仍需通过实验验证，不能直接解释为真实抗体表位或实测稳定性。
+strict 模式只有在必要证据完整且候选通过映射、单点稳定性、组合稳定性和表面几何 QC 时才形成正式推荐。ProCaliper 方法差异只进入 SASA 诊断；SASA 与表面几何也不代表大分子可达性。preview 结果仅供审阅。计算候选仍需通过实验验证，不能直接解释为真实抗体表位或实测稳定性。

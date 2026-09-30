@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 
-from .models import V4Candidate, V4Panel, V4Sector
+from .models import V4Candidate, V4Panel, V4Sector, V4SurfaceHypothesis
 
 
 def _candidate_rank(candidate: V4Candidate) -> tuple:
@@ -61,6 +62,111 @@ def _diverse_take(
     return chosen
 
 
+def _information_take(
+    pool: list[V4Candidate],
+    hypotheses: list[V4SurfaceHypothesis],
+    budget: int,
+    higher_order_max: int,
+) -> tuple[list[V4Candidate], float, float, int, float, float, list[list[str]], list[str], dict[str, list[float]]]:
+    """Greedy panel selection by hypothesis coverage and pair separation."""
+    ids = [item.hypothesis_id for item in hypotheses]
+    pairs = [(left, right) for left in range(len(ids)) for right in range(left + 1, len(ids))]
+    responses = {
+        item.candidate_id: [item.hypothesis_response.get(hypothesis_id, 0.0) for hypothesis_id in ids]
+        for item in pool
+    }
+    selected: list[V4Candidate] = []
+    coverage = [0.0] * len(ids)
+    separation_sq = [0.0] * len(pairs)
+    signatures: set[tuple[int, ...]] = set()
+    for _ in range(max(0, budget)):
+        choices = []
+        for candidate in pool:
+            signature = _position_signature(candidate)
+            if candidate.candidate_id in {item.candidate_id for item in selected} or signature in signatures:
+                continue
+            if candidate.order > 2 and sum(item.order > 2 for item in selected) >= higher_order_max:
+                continue
+            row = responses[candidate.candidate_id]
+            if any(all(abs(left - right) < 1e-6 for left, right in zip(row, responses[item.candidate_id])) for item in selected):
+                continue
+            coverage_gain = sum(max(0.0, value - coverage[index]) for index, value in enumerate(row)) / max(1, len(ids))
+            separation_gain = sum(
+                math.sqrt(old + (row[left] - row[right]) ** 2) - math.sqrt(old)
+                for index, (left, right) in enumerate(pairs)
+                for old in [separation_sq[index]]
+            ) / max(1, len(pairs))
+            minimum_gain = (
+                min(math.sqrt(separation_sq[index] + (row[left] - row[right]) ** 2)
+                for index, (left, right) in enumerate(pairs)
+                ) - min(math.sqrt(value) for value in separation_sq)
+            ) if pairs else 0.0
+            # Stability is already a formal gate. This small penalty breaks
+            # near ties without turning ddG into an epitope probability.
+            penalty = 0.005 * max(0.0, candidate.structural_risk) + (0.01 if candidate.order > 2 else 0.0)
+            value = coverage_gain + 1.5 * separation_gain + 0.5 * minimum_gain - penalty
+            choices.append((value, coverage_gain, separation_gain, candidate))
+        if not choices:
+            break
+        value, coverage_gain, separation_gain, winner = min(
+            choices, key=lambda item: (-item[0], -item[2], -item[1], item[3].candidate_id)
+        )
+        if value <= 0 and selected:
+            break
+        selected.append(winner)
+        signatures.add(_position_signature(winner))
+        row = responses[winner.candidate_id]
+        coverage = [max(old, new) for old, new in zip(coverage, row)]
+        separation_sq = [
+            old + (row[left] - row[right]) ** 2
+            for old, (left, right) in zip(separation_sq, pairs)
+        ]
+    separation = [math.sqrt(value / max(1, len(selected))) for value in separation_sq]
+    prior = {
+        item.hypothesis_id: max(0.05, min(1.0, item.discotope_prior if item.discotope_prior is not None else 0.5))
+        for item in hypotheses
+    }
+    pair_weights = [prior[ids[left]] * prior[ids[right]] for left, right in pairs]
+    weighted_separation = (
+        sum(value * weight for value, weight in zip(separation, pair_weights)) / sum(pair_weights)
+        if pair_weights and sum(pair_weights) else 0.0
+    )
+    signatures_by_hypothesis = {
+        hypothesis_id: [responses[item.candidate_id][index] for item in selected]
+        for index, hypothesis_id in enumerate(ids)
+    }
+    adjacency = {hypothesis_id: set() for hypothesis_id in ids}
+    for distance, (left, right) in zip(separation, pairs):
+        if distance < 0.1:
+            adjacency[ids[left]].add(ids[right])
+            adjacency[ids[right]].add(ids[left])
+    unresolved = []
+    remaining = set(ids)
+    while remaining:
+        start = min(remaining)
+        group = {start}
+        queue = [start]
+        remaining.remove(start)
+        while queue:
+            for neighbor in sorted(adjacency[queue.pop()] & remaining):
+                remaining.remove(neighbor)
+                group.add(neighbor)
+                queue.append(neighbor)
+        if len(group) > 1:
+            unresolved.append(sorted(group))
+    return (
+        selected,
+        sum(coverage) / max(1, len(coverage)),
+        sum(separation) / max(1, len(separation)),
+        sum(value < 0.1 for value in separation),
+        min(separation, default=0.0),
+        weighted_separation,
+        unresolved,
+        [ids[index] for index, value in enumerate(coverage) if value < 0.1],
+        signatures_by_hypothesis,
+    )
+
+
 def select_panel(
     candidates: list[V4Candidate],
     max_primary: int = 7,
@@ -70,8 +176,9 @@ def select_panel(
     stability_fallback_per_sector: int = 3,
     sectors: list[V4Sector] | None = None,
     surface_areas: dict[int, float] | None = None,
+    hypotheses: list[V4SurfaceHypothesis] | None = None,
 ) -> tuple[V4Panel, list[V4Candidate]]:
-    """Select a stability-gated recommendation series for every sector."""
+    """Select a panel; use footprint identifiability when available."""
     by_sector: dict[str, list[V4Candidate]] = defaultdict(list)
     for candidate in candidates:
         if candidate.connected:
@@ -106,9 +213,25 @@ def select_panel(
         sector_series[sector_id] = series[:per_sector]
 
     selected: list[V4Candidate] = []
+    mean_response = mean_separation = None
+    indistinguishable = None
+    minimum_distance = None
+    prior_weighted_separation = None
+    unresolved_groups: list[list[str]] = []
+    uncovered_hypotheses: list[str] = []
+    hypothesis_signatures: dict[str, list[float]] = {}
+    if hypotheses:
+        (selected, mean_response, mean_separation, indistinguishable,
+         minimum_distance, prior_weighted_separation, unresolved_groups, uncovered_hypotheses,
+         hypothesis_signatures) = _information_take(
+            [item for item in candidates if item.connected],
+            hypotheses,
+            max(1, int(max_primary)),
+            max(0, int(higher_order_max)),
+        )
     high_order_count = 0
     offset = 0
-    while len(selected) < max(1, int(max_primary)):
+    while not hypotheses and len(selected) < max(1, int(max_primary)):
         added = False
         for sector_id in sorted(sector_series):
             series = sector_series[sector_id]
@@ -170,12 +293,22 @@ def select_panel(
         candidates_by_role=roles,
         achieved_coverage=coverage,
         uncovered_components=uncovered,
-        solver_status="SECTOR_SERIES_DETERMINISTIC",
+        solver_status="FOOTPRINT_IDENTIFIABILITY_GREEDY" if hypotheses else "SECTOR_SERIES_DETERMINISTIC",
         coverage_denominator_residues=len(denominator),
         covered_residues_by_scenario={
             scenario: len(positions) for scenario, positions in sorted(coverage_positions.items())
         },
         coverage_denominator_area_a2=round(total_area, 3),
         achieved_area_coverage=area_coverage,
+        mean_hypothesis_response=round(mean_response, 6) if mean_response is not None else None,
+        mean_pairwise_separation=round(mean_separation, 6) if mean_separation is not None else None,
+        indistinguishable_hypothesis_pairs=indistinguishable,
+        minimum_signature_distance=round(minimum_distance, 6) if minimum_distance is not None else None,
+        unresolved_hypothesis_groups=unresolved_groups,
+        uncovered_hypotheses=uncovered_hypotheses,
+        hypothesis_signatures=hypothesis_signatures,
+        prior_weighted_mean_pairwise_separation=(
+            round(prior_weighted_separation, 6) if prior_weighted_separation is not None else None
+        ),
     )
     return panel, selected

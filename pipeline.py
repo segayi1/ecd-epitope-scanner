@@ -40,6 +40,7 @@ from .structure_analysis import (
     analyze_residues,
     best_chain_mapping,
     chain_sequence,
+    infer_antigen_chain,
     load_structure,
     standard_residues,
     write_mapped_ecd_cif,
@@ -80,9 +81,7 @@ class PipelineRequest:
     output_dir: str | None = None
     assay_format: str = "cell_surface"   # cell_surface | purified
     assay_profile: str | None = None
-    # surface_v2 remains the default for reproducibility; joint_v3 is an
-    # explicit opt-in until benchmark calibration is frozen.
-    design_engine: str = "surface_v2"
+    design_engine: str = "joint_v4_ml"
     ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
     max_sectors: int = 7
     max_primary_constructs: int = 7
@@ -130,8 +129,8 @@ def _pdb_only_context(
     """Build an ECD-only context from observed coordinates.
 
     No canonical numbering or unobserved residues are invented.  When no
-    chain is specified, the longest observed protein chain is selected and the
-    choice is recorded in the output.
+    chain is specified, a complex-aware antigen-chain heuristic is used and
+    its evidence and uncertainty are recorded in the output.
     """
     chains = {
         str(chain.id): chain_sequence(chain)
@@ -140,12 +139,8 @@ def _pdb_only_context(
     }
     if not chains:
         raise PipelineError("Uploaded structure contains no protein chain with at least 8 residues")
-    if request.chain:
-        if request.chain not in chains:
-            raise PipelineError(f"Requested chain {request.chain!r} is not a usable protein chain")
-        chain_id = request.chain
-    else:
-        chain_id = min(chains, key=lambda item: (-len(chains[item]), item))
+    chain_selection = infer_antigen_chain(parsed, request.chain)
+    chain_id = str(chain_selection["chain_id"])
     sequence = chains[chain_id]
     return ProteinContext(
         accession=f"PDB_ONLY_CHAIN_{chain_id}",
@@ -161,6 +156,7 @@ def _pdb_only_context(
             "sequence_source": "observed coordinate residues",
             "canonical_numbering_available": False,
             "auto_selected_chain": request.chain is None,
+            "chain_selection": chain_selection,
             "available_chain_lengths": {key: len(value) for key, value in sorted(chains.items())},
             "assay_profile": assay_profile["id"],
         },
@@ -381,17 +377,47 @@ def _evaluate_candidate(
         client.download(candidate.model_url, local)
     candidate.local_path = str(local.resolve())
     parsed = load_structure(local)
-    preferred = [preferred_chain] if preferred_chain else candidate.chain_ids
-    mapping = best_chain_mapping(parsed, protein, preferred)
+    preferred = [preferred_chain] if preferred_chain else None
+    if preferred_chain:
+        mapping = best_chain_mapping(
+            parsed, protein, preferred, allowed_chains=[preferred_chain]
+        )
+    else:
+        try:
+            mapping = best_chain_mapping(
+                parsed,
+                protein,
+                allowed_chains=candidate.chain_ids or None,
+            )
+        except PipelineError:
+            # Some providers report label-chain identifiers while the parsed model
+            # exposes author-chain identifiers.  Keep the mapping-based fallback,
+            # but make the identifier mismatch visible in candidate provenance.
+            mapping = best_chain_mapping(parsed, protein)
+            if candidate.chain_ids:
+                candidate.metadata["chain_selection_warning"] = (
+                    "SIFTS/provider chain IDs did not match coordinate author-chain IDs; "
+                    "selected chain by sequence alignment instead."
+                )
+    _apply_admission_gate(candidate, protein, mapping)
+    candidate.metadata["citation"] = _extract_citation(local)
+    return parsed, mapping
+
+
+def _apply_admission_gate(
+    candidate: StructureCandidate,
+    protein: ProteinContext,
+    mapping: ChainMapping,
+) -> None:
+    domain_complete, domain_coverages = _domain_coverage(protein, mapping)
+    candidate.rejection_reasons = []
     candidate.selected_chain = mapping.chain_id
     candidate.observed_ecd_coverage = round(mapping.observed_ecd_coverage, 4)
     candidate.max_internal_gap = mapping.max_internal_gap
     candidate.engineered_mismatches = mapping.engineered_mismatches
-    domain_complete, domain_coverages = _domain_coverage(protein, mapping)
     candidate.metadata["aligned_sequence_identity"] = round(mapping.identity, 4)
     candidate.metadata["domain_coverages"] = domain_coverages
-    candidate.metadata["citation"] = _extract_citation(local)
-    candidate.rejection_reasons = []
+    candidate.metadata["engineered_mismatch_positions"] = list(mapping.mismatch_positions)
     if mapping.observed_ecd_coverage < config.MIN_ECD_COVERAGE:
         candidate.rejection_reasons.append("observed ECD coverage < 95%")
     if mapping.max_internal_gap > config.MAX_INTERNAL_GAP_AA:
@@ -401,7 +427,6 @@ def _evaluate_candidate(
     if not domain_complete:
         candidate.rejection_reasons.append("one or more major ECD domains have < 90% observed coverage")
     candidate.eligible = not candidate.rejection_reasons
-    return parsed, mapping
 
 
 def _select_from_uniprot(
@@ -555,6 +580,7 @@ def run_pipeline(
     candidates: list[StructureCandidate] = []
     predicted = False
     source: dict[str, Any] = {}
+    chain_selection: dict[str, Any] = {}
     input_type = request.input_type.lower()
     if input_type == "uniprot":
         accession = request.identifier or request.accession or ""
@@ -577,20 +603,80 @@ def run_pipeline(
     elif input_type == "pdb_id":
         pdb_id = request.identifier
         sifts = fetch_sifts_mapping(pdb_id, client, output_dir)
-        accession, sifts_chains = infer_uniprot_from_sifts(sifts, pdb_id)
-        protein = fetch_protein_context(
-            request.accession or accession, client, output_dir, ecd_override
-        )
-        selected = direct_pdb_candidate(pdb_id)
-        selected.chain_ids = [request.chain] if request.chain else sifts_chains
-        parsed, mapping = _evaluate_candidate(
-            selected, protein, client, output_dir / "candidates", request.chain
-        )
-        candidates = [selected]
-        if not selected.eligible and not request.allow_partial:
-            raise PipelineError(
-                f"PDB {pdb_id} failed the complete-ECD gate: {', '.join(selected.rejection_reasons)}"
+        try:
+            accession, sifts_chains = infer_uniprot_from_sifts(
+                sifts, pdb_id, request.accession
             )
+        except PipelineError:
+            accession, sifts_chains = request.accession or "", []
+        selected = direct_pdb_candidate(pdb_id)
+        candidate_dir = output_dir / "candidates"
+        candidate_dir.mkdir(parents=True, exist_ok=True)
+        local = candidate_dir / f"{safe_name(selected.identifier)}{_candidate_suffix(selected)}"
+        if not local.exists():
+            client.download(selected.model_url, local)
+        selected.local_path = str(local.resolve())
+        parsed = load_structure(local)
+        if not request.accession and sifts:
+            provisional = infer_antigen_chain(parsed)
+            if provisional["confidence"] in {"high", "medium"}:
+                try:
+                    accession, sifts_chains = infer_uniprot_from_sifts(
+                        sifts, pdb_id, preferred_chain=provisional["chain_id"]
+                    )
+                except PipelineError:
+                    pass
+        if accession:
+            protein = fetch_protein_context(accession, client, output_dir, ecd_override)
+            selected.chain_ids = [request.chain] if request.chain else sifts_chains
+            parsed, mapping = _evaluate_candidate(
+                selected, protein, client, candidate_dir, request.chain
+            )
+            chain_selection = {
+                "chain_id": mapping.chain_id,
+                "method": (
+                    "user specified" if request.chain else
+                    "SIFTS UniProt-to-chain mapping" if sifts_chains else
+                    "best sequence alignment across protein chains"
+                ),
+                "confidence": "explicit" if request.chain else "high" if sifts_chains else "medium",
+                "sifts_candidate_chains": sifts_chains,
+            }
+        elif request.sequence:
+            protein = _synthetic_context(request)
+            selected.chain_ids = [request.chain] if request.chain else []
+            mapping = best_chain_mapping(
+                parsed,
+                protein,
+                [request.chain] if request.chain else None,
+                allowed_chains=[request.chain] if request.chain else None,
+            )
+            _apply_admission_gate(selected, protein, mapping)
+            chain_selection = {
+                "chain_id": mapping.chain_id,
+                "method": "user specified" if request.chain else "best sequence alignment across protein chains",
+                "confidence": "explicit" if request.chain else "medium",
+                "aligned_sequence_identity": round(mapping.identity, 4),
+                "observed_ecd_coverage": round(mapping.observed_ecd_coverage, 4),
+            }
+        elif assay_profile:
+            protein, preferred_chain = _pdb_only_context(parsed, request, assay_profile)
+            selected.chain_ids = [preferred_chain]
+            mapping = best_chain_mapping(
+                parsed, protein, [preferred_chain], allowed_chains=[preferred_chain]
+            )
+            _apply_admission_gate(selected, protein, mapping)
+            chain_selection = dict(protein.raw.get("chain_selection", {}))
+            chain_selection["sifts_candidate_chains"] = []
+        else:
+            raise PipelineError(
+                f"PDB {pdb_id} has no UniProt/SIFTS target mapping; provide an accession, "
+                "sequence with ECD boundaries, or an assay profile for coordinate-only analysis"
+            )
+        selected.metadata["chain_selection"] = chain_selection
+        if protein.raw.get("canonical_numbering_available") is False:
+            selected.metadata["coordinate_only_context"] = True
+        candidates = [selected]
         source = {
             "kind": "PDB identifier",
             "provider": "PDBe",
@@ -598,6 +684,7 @@ def run_pipeline(
             "structure_url": selected.model_url,
             "page_url": selected.page_url,
             "downloaded_at": dt.datetime.now(dt.UTC).isoformat(),
+            "chain_selection": chain_selection,
         }
     elif input_type in {"structure", "af3_upload"}:
         structure_path = Path(request.structure_path or request.identifier)
@@ -612,7 +699,10 @@ def run_pipeline(
         else:
             protein = _synthetic_context(request)
         mapping = best_chain_mapping(
-            parsed, protein, [preferred_chain] if preferred_chain else None
+            parsed,
+            protein,
+            [preferred_chain] if preferred_chain else None,
+            allowed_chains=[preferred_chain] if preferred_chain else None,
         )
         predicted = input_type == "af3_upload" or bool(request.confidence_path)
         selected = StructureCandidate(
@@ -626,16 +716,18 @@ def run_pipeline(
             max_internal_gap=mapping.max_internal_gap,
             engineered_mismatches=mapping.engineered_mismatches,
             explicit_af3=input_type == "af3_upload",
-            eligible=(
-                mapping.observed_ecd_coverage >= config.MIN_ECD_COVERAGE
-                and mapping.max_internal_gap <= config.MAX_INTERNAL_GAP_AA
-                and mapping.identity >= config.MIN_SEQUENCE_IDENTITY
-            ),
         )
-        if not selected.eligible and not request.allow_partial:
-            raise PipelineError(
-                "Uploaded structure failed the complete-ECD mapping gate; enable allow_partial only for deliberate review runs"
-            )
+        _apply_admission_gate(selected, protein, mapping)
+        chain_selection = dict(protein.raw.get("chain_selection", {}))
+        if not chain_selection:
+            chain_selection = {
+                "chain_id": mapping.chain_id,
+                "method": "user specified" if request.chain else "best sequence alignment across protein chains",
+                "confidence": "explicit" if request.chain else "medium",
+                "aligned_sequence_identity": round(mapping.identity, 4),
+                "observed_ecd_coverage": round(mapping.observed_ecd_coverage, 4),
+            }
+        selected.metadata["chain_selection"] = chain_selection
         candidates = [selected]
         source = {
             "kind": "AF3 upload" if predicted else "downloaded structure upload",
@@ -644,14 +736,13 @@ def run_pipeline(
             "original_path": str(structure_path.resolve()),
             "explicit_af3": input_type == "af3_upload",
             "sequence_source": protein.raw.get("sequence_source", "provided or canonical sequence"),
-            "chain_selection": (
-                "user specified" if request.chain else
-                "longest observed protein chain" if protein.raw.get("auto_selected_chain") else
-                "best sequence mapping"
-            ),
+            "chain_selection": chain_selection,
         }
     else:
         raise PipelineError(f"Unsupported input_type: {request.input_type}")
+
+    if candidates:
+        write_json(output_dir / "structure_candidates.json", candidate_manifest(candidates))
 
     progress("ANALYZING", 0.42, "Computing residue-level SASA, interfaces and folding-risk features")
     structure_cif = _standardize_cif(parsed, output_dir / "structure.cif")
@@ -667,21 +758,24 @@ def run_pipeline(
         output_dir,
         predicted=predicted,
         confidence=confidence,
+        ignored_positions=set(mapping.mismatch_positions),
     )
     mismatch_positions = list(getattr(mapping, "mismatch_positions", []) or [])
-    mismatch_records = [
-        record for record in records if record.uniprot_pos in set(mismatch_positions)
+    mismatch_coordinates = [
+        (position, residue["CA"].coord)
+        for position in mismatch_positions
+        if (residue := mapping.uniprot_to_residue.get(position)) is not None
+        and residue.has_id("CA")
     ]
     for record in records:
         if any(
-            abs(record.uniprot_pos - mismatch.uniprot_pos) <= 3
+            abs(record.uniprot_pos - mismatch_position) <= 3
             or (
                 record.ca is not None
-                and mismatch.ca is not None
-                and float(np.linalg.norm(np.asarray(record.ca) - np.asarray(mismatch.ca)))
+                and float(np.linalg.norm(np.asarray(record.ca) - np.asarray(mismatch_ca)))
                 <= config.ENGINEERED_NEIGHBORHOOD_RADIUS_A
             )
-            for mismatch in mismatch_records
+            for mismatch_position, mismatch_ca in mismatch_coordinates
         ):
             record.engineered_neighborhood = True
             if "engineered-neighborhood" not in record.risk_flags:
@@ -744,8 +838,10 @@ def run_pipeline(
     patch_engine = str(
         request.metadata.get("patch_engine", request.design_engine or config.PATCH_ENGINE_VERSION)
     ).lower()
-    if patch_engine not in {"legacy_v1", "surface_v2", "joint_v3", "joint_v4_ml"}:
-        raise PipelineError(f"Unsupported design engine: {patch_engine}")
+    if patch_engine != "joint_v4_ml":
+        raise PipelineError(
+            f"Unsupported design engine: {patch_engine}; new analyses use joint_v4_ml"
+        )
     surface_v2_payload: dict[str, Any] | None = None
     joint_v3_payload: dict[str, Any] | None = None
     joint_v4_payload: dict[str, Any] | None = None
@@ -764,7 +860,8 @@ def run_pipeline(
         ecd_residues = {
             position: residue
             for position, residue in mapping.uniprot_to_residue.items()
-            if protein.ecd_start <= position <= protein.ecd_end
+        if protein.ecd_start <= position <= protein.ecd_end
+        and position not in set(mismatch_positions)
         }
     inventory = find_engine_inventory()
     if request.metadata.get("disable_external_engines"):
@@ -868,34 +965,43 @@ def run_pipeline(
         }
     elif patch_engine == "joint_v4_ml":
         progress("PROCALIPER_ANALYSIS", 0.62, "Running Joint V4-ML evidence adapters and surface audit")
-        v4_surface = run_surface_patch_v2(
+        v4_surface_result = run_surface_patch_v2(
             parsed.model, mapping.chain_id, ecd_residues, records, protein,
             output_dir=None, confidence=confidence, predicted=predicted,
             parameters=config.SURFACE_V2_PARAMETERS, reliability=reliability,
-        ).surface
+        )
         v4_params = dict(request.metadata.get("joint_v4_ml", {}))
         v4_params.update({
             "mode": request.ml_mode,
             "max_sectors": request.max_sectors,
-            "max_primary_constructs": request.max_primary_constructs,
+            "max_primary_constructs": min(request.max_primary_constructs, effective_max),
             "allow_spurs_only_final": request.allow_spurs_only_final,
+            "use_surface_hypotheses": (
+                assay_profile is None or int(assay_profile.get("version", 1)) >= 2
+            ),
         })
         joint_result = run_joint_v4_ml(
             records, protein, output_dir, original_cds=request.original_cds,
             chain_id=mapping.chain_id, structure_pdb=structure_pdb,
             structure_type="alphafold" if predicted else "solved",
-            parameters=v4_params, surface_geometry=v4_surface,
+            parameters=v4_params, surface_geometry=v4_surface_result.surface,
+            surface_v2_result=v4_surface_result,
+            membrane_anchor=membrane_anchor,
+            membrane_normal=membrane_normal,
+            confidence=confidence,
             assay_format=request.assay_format,
             source_provenance={
                 "identifier": source.get("identifier"), "provider": source.get("provider"),
                 "structure_sha256": sha256_file(parsed.path), "selected_chain": mapping.chain_id,
                 "biological_context_mode": request.biological_context_mode,
             },
+            disable_external_engines=bool(request.metadata.get("disable_external_engines")),
         )
         regions = joint_result.legacy_regions
         designs = joint_result.legacy_designs
         partition_summary = {
             "engine": "joint_v4_ml", "schema_version": "4.0",
+            "method": "Joint V4-ML 4.1: Surface V2 overlapping footprint hypotheses with stability-gated probe selection",
             "sector_count": len(joint_result.sectors),
             "primary_construct_count": len(joint_result.panel.selected_candidate_ids),
             "recommendation_status": joint_result.recommendation_status,
@@ -916,8 +1022,86 @@ def run_pipeline(
                 if key != "PRIMARY"
             },
             "higher_order_candidate_count": sum(item.order > 2 for item in joint_result.candidates),
-            "epitope_mapping_plan": {"sectors": to_dict(joint_result.sectors), "soft_target": True},
+            "epitope_mapping_plan": {
+                "sectors": to_dict(joint_result.sectors),
+                "overlapping_hypothesis_count": len(joint_result.surface_hypotheses),
+                "hypothesis_source": "surface_v2_footprints",
+                "hypotheses": to_dict(joint_result.surface_hypotheses),
+                "panel_identifiability": {
+                    "mean_pairwise_separation": joint_result.panel.mean_pairwise_separation,
+                    "minimum_signature_distance": joint_result.panel.minimum_signature_distance,
+                    "prior_weighted_mean_pairwise_separation": joint_result.panel.prior_weighted_mean_pairwise_separation,
+                    "unresolved_hypothesis_groups": joint_result.panel.unresolved_hypothesis_groups,
+                    "uncovered_hypotheses": joint_result.panel.uncovered_hypotheses,
+                },
+                "soft_target": True,
+            },
         }
+        stage2_presets = [
+            item for item in joint_result.legacy_designs
+            if item.design_role in {"STAGE2_SINGLE", "STAGE2_PAIRWISE"}
+        ]
+        design_summary["stage2_preset_count"] = len(stage2_presets)
+        stage1_designs = [
+            item for item in joint_result.legacy_designs
+            if item.design_role == "STAGE1_PROBE"
+        ]
+        unscored_saturation_count = sum(
+            len(options)
+            for design in stage1_designs
+            for options in design.saturation_scan.values()
+        )
+        design_summary["saturation_scan_status"] = "ENUMERATED_NOT_SCORED"
+        design_summary["unscored_saturation_substitution_count"] = unscored_saturation_count
+        selected_by_id = {item.candidate_id: item for item in joint_result.candidates}
+        stage1_probes = []
+        coverage_matrix = []
+        for index, design in enumerate(stage1_designs):
+            candidate_id = joint_result.panel.selected_candidate_ids[index]
+            candidate = selected_by_id[candidate_id]
+            mutation_notations = [choice.notation for choice in design.mutations]
+            stage1_probes.append({
+                "probe_id": design.id,
+                "patch_id": design.region_id,
+                "candidate_id": candidate_id,
+                "mutations": mutation_notations,
+                "targeted_hypotheses": candidate.targeted_hypotheses,
+                "hypothesis_response_proxy": candidate.hypothesis_response,
+                "status": design.status,
+            })
+            scenario_coverage = candidate.coverage_by_scenario or {}
+            for scenario, coverage in sorted(scenario_coverage.items()):
+                coverage_matrix.append({
+                    "probe_id": design.id,
+                    "patch_id": design.region_id,
+                    "scenario": scenario,
+                    "predicted_coverage": coverage,
+                    "evidence_type": "GEOMETRIC_MODEL_ONLY",
+                })
+            if not scenario_coverage:
+                coverage_matrix.append({
+                    "probe_id": design.id,
+                    "patch_id": design.region_id,
+                    "scenario": None,
+                    "predicted_coverage": None,
+                    "evidence_type": "NO_GEOMETRIC_COVERAGE_AVAILABLE",
+                })
+        design_summary["epitope_mapping_plan"].update({
+            "stage1_probes": stage1_probes,
+            "coverage_matrix": coverage_matrix,
+            "blind_spots": to_dict(joint_result.panel.uncovered_components),
+            "assay_note": (
+                "Stage 1 is a predicted probe panel. Geodesic neighborhood coverage is a model output, "
+                "not a measured epitope or binding result."
+            ),
+        })
+        design_summary["epitope_mapping_plan"]["stage2_presets"] = [{
+            "design_id": item.id,
+            "parent_design_id": item.parent_design_id,
+            "role": item.design_role,
+            "mutations": [choice.notation for choice in item.mutations],
+            "conditional_on_parent_probe_hit": True,
+        } for item in stage2_presets]
         joint_v4_payload = {
             "schema_version": "4.0", "recommendation_status": joint_result.recommendation_status,
             "tool_inventory": to_dict(joint_result.tool_inventory),
@@ -925,6 +1109,7 @@ def run_pipeline(
             "epitope_evidence": to_dict(joint_result.epitope_evidence),
             "sectors": to_dict(joint_result.sectors), "candidates": to_dict(joint_result.candidates),
             "selected_panel": to_dict(joint_result.panel), "warnings": joint_result.warnings,
+            "surface_hypotheses": to_dict(joint_result.surface_hypotheses),
         }
     else:
         regions, partition_summary = partition_surface(
@@ -955,13 +1140,16 @@ def run_pipeline(
         partition_summary["stage1_selected_region_ids"] = [item.id for item in regions]
         partition_summary["stage1_min_constructs"] = min(len(regions), len(designs))
         partition_summary["stage1_target_constructs"] = len(designs)
-        partition_summary["stage1_max_constructs"] = request.max_primary_constructs
+        partition_summary["stage1_max_constructs"] = min(
+            request.max_primary_constructs, effective_max
+        )
         partition_summary["stage1_selection_basis"] = (
-            "joint_v4_stability_gated_sector_series_with_soft_epitope_priority"
+            joint_result.panel.solver_status.lower()
         )
-        partition_summary["epitope_prior_used_for_panel_selection"] = bool(
-            joint_result.panel.candidates_by_role.get("EPITOPE_PRIORITIZED")
+        partition_summary["epitope_prior_used_for_candidate_pool"] = bool(
+            any(item.recommendation_class == "EPITOPE_PRIORITIZED" for item in joint_result.candidates)
         )
+        partition_summary["epitope_prior_used_for_panel_selection"] = False
     else:
         stage1_regions = regions
         if patch_engine == "surface_v2" and len(regions) > effective_max:
@@ -1050,11 +1238,13 @@ def run_pipeline(
     selection = {
         "selected_identifier": source.get("identifier", selected_candidate.identifier),
         "selected_chain": mapping.chain_id,
+        "chain_selection": chain_selection,
         "observed_ecd_coverage": mapping.observed_ecd_coverage,
         "max_internal_gap": mapping.max_internal_gap,
         "aligned_sequence_identity": mapping.identity,
         "engineered_mismatches": mapping.engineered_mismatches,
         "engineered_mismatch_positions": mismatch_positions,
+        "ignored_engineered_mismatch_positions": mismatch_positions,
         "eligibility_gate": {
             "minimum_observed_ecd_coverage": config.MIN_ECD_COVERAGE,
             "maximum_internal_gap_aa": config.MAX_INTERNAL_GAP_AA,
@@ -1063,8 +1253,34 @@ def run_pipeline(
         },
         "candidate_count": len(candidates),
         "candidates_file": "structure_candidates.json",
+        "admission": {
+            "eligible": selected_candidate.eligible,
+            "status": "PASS" if selected_candidate.eligible else "CONTINUED_WITH_WARNINGS",
+            "warnings": list(selected_candidate.rejection_reasons),
+        },
     }
     warnings = list(partition_summary.get("warnings", [])) + list(conservation_warnings)
+    for reason in selected_candidate.rejection_reasons:
+        warnings.append(
+            f"PDB admission warning: {reason}. Analysis continued; review mapping coverage and chain provenance."
+        )
+    warnings.extend(chain_selection.get("warnings", []))
+    if selected_candidate.metadata.get("chain_selection_warning"):
+        warnings.append(str(selected_candidate.metadata["chain_selection_warning"]))
+    if mismatch_positions:
+        positions = ", ".join(str(position) for position in mismatch_positions)
+        warnings.append(
+            f"The selected PDB chain differs from the UniProt standard sequence at "
+            f"{len(mismatch_positions)} position(s): {positions}. These may be engineered "
+            "substitutions or sequence variants. The original structure is retained for context; "
+            "those positions are omitted from "
+            "per-residue scoring, surface partitioning, and mutation design."
+        )
+    if protein.raw.get("canonical_numbering_available") is False:
+        warnings.append(
+            "No canonical UniProt sequence or numbering was available; this analysis uses only observed "
+            "coordinates from the selected chain."
+        )
     warnings.append("Production SASA uses Bio.PDB Shrake-Rupley with pinned Tien/DSSP radii.")
     if patch_engine == "joint_v3":
         warnings.extend([
@@ -1170,7 +1386,7 @@ def run_pipeline(
             "regional_mutations": (
                 "Joint V3 deterministic beam search with 2-4 sites; anchor mutation is not forced"
                 if patch_engine == "joint_v3" else
-                "Joint V4-ML sector search with 2-4 sites; external scores are versioned evidence, not guarantees"
+                "Joint V4-ML order-specific 2-4 site search and footprint hypothesis panel; external scores are versioned evidence"
                 if patch_engine == "joint_v4_ml" else
                 "2-4 sites under fixed assay profile; directed alphabet + anchor mutation; "
                 "exhaustive enumeration of cleared menus"
@@ -1250,11 +1466,15 @@ def run_pipeline(
                 analysis["files"][name] = name
     if patch_engine == "joint_v4_ml":
         for name in (
-            "tool_inventory.json", "structure_contexts.json", "residue_mapping.csv",
+            "tool_inventory.json", "structure_contexts.json", "residue_mapping.csv", "surface_graph_v4.json",
             "prediction_context.pdb",
             "surface_evidence.csv", "discotope_residues.csv", "single_mutation_options.csv",
             "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
-            "selected_panel_v4.json", "v4_manifest.json", "v4_scientific_report.md",
+            "selected_panel_v4.json", "surface_hypotheses_v4.json",
+            "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_scientific_report.md",
+            "surface_graph_v41.json", "surface_display_regions_v41.json",
+            "epitope_hypotheses_v41.json", "hypothesis_membership_v41.csv",
+            "probe_hypothesis_matrix_v41.csv", "panel_identifiability_v41.json",
         ):
             if (output_dir / name).exists():
                 analysis["files"][name] = name

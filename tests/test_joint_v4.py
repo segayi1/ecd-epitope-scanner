@@ -10,7 +10,11 @@ from ecd_epitope_scanner.integrations.base import ToolError
 from ecd_epitope_scanner.integrations.spurs_adapter import SPURSAdapter
 from ecd_epitope_scanner.joint_design_v4 import run_joint_v4_ml
 from ecd_epitope_scanner.joint_design_v4.contexts import write_mapping_sidecar
-from ecd_epitope_scanner.joint_design_v4.engine import _foldx_shortlist, _formal_candidate_reasons
+from ecd_epitope_scanner.joint_design_v4.engine import (
+    _adapter,
+    _foldx_shortlist,
+    _formal_candidate_reasons,
+)
 from ecd_epitope_scanner.joint_design_v4.evidence import attach_epitope_islands, epitope_evidence
 from ecd_epitope_scanner.joint_design_v4.models import (
     CombinationStabilityEvidence,
@@ -25,6 +29,7 @@ from ecd_epitope_scanner.joint_design_v4.models import (
 from ecd_epitope_scanner.joint_design_v4.optimizer import select_panel
 from ecd_epitope_scanner.joint_design_v4.sectors import build_epitope_sectors
 from ecd_epitope_scanner.models import ProteinContext, ResidueRecord
+from ecd_epitope_scanner.util import sha256_file
 
 
 def _fixture_records(count: int = 12):
@@ -57,6 +62,29 @@ def _protein(records):
         membrane_anchor_position=len(sequence),
         topology="test",
     )
+
+
+def test_external_engine_disable_ignores_configured_and_environment_commands(tmp_path, monkeypatch):
+    structure = tmp_path / "input.pdb"
+    structure.write_text("PDB fixture", encoding="utf-8")
+    monkeypatch.setenv("ECD_V4_SPURS_COMMAND", json.dumps(["must-not-run"]))
+    adapter = _adapter(
+        "spurs_single",
+        {"backend": "wsl_gpu", "wsl_python": "/env/bin/python", "command": ["configured"]},
+        tmp_path / "cache",
+        tool_name="spurs_single",
+        disabled=True,
+    )
+
+    result = adapter.predict(request_for(
+        adapter, structure, "A", "ACD", tmp_path, parameters={"device": "cuda"}
+    ))
+
+    assert adapter.command == []
+    assert adapter.inventory().available is False
+    assert adapter.inventory().failure_reason == "disabled by request"
+    assert result.status == "failed"
+    assert result.errors[0]["code"] == "TOOL_NOT_CONFIGURED"
 
 
 def test_json_worker_contract_rejects_stdout_pollution(tmp_path: Path):
@@ -278,10 +306,28 @@ def test_v4_preview_is_explicitly_not_formal_and_respects_hard_protection(tmp_pa
         for item in result.candidates
     )
     assert result.legacy_designs
-    assert {item.status for item in result.legacy_designs} == {"PREVIEW_CANDIDATE"}
+    primary_designs = [
+        item for item in result.legacy_designs if item.design_role == "STAGE1_PROBE"
+    ]
+    stage2_designs = [
+        item for item in result.legacy_designs if item.design_role.startswith("STAGE2")
+    ]
+    assert primary_designs and all(item.status == "PREVIEW_CANDIDATE" for item in primary_designs)
+    assert stage2_designs
+    assert all(item.status in {"STAGE2_SINGLE", "STAGE2_PAIRWISE"} for item in stage2_designs)
+    assert all(
+        item.parent_design_id in {primary.id for primary in primary_designs}
+        for item in stage2_designs
+    )
+    assert all("contact" in item.rationale.lower() for item in stage2_designs)
     assert set().union(*(set(item.residue_positions) for item in result.sectors)) == {
         item.uniprot_pos for item in records
     }
+    graph_path = tmp_path / "surface_graph_v4.json"
+    graph_snapshot = json.loads(graph_path.read_text(encoding="utf-8"))
+    manifest = json.loads((tmp_path / "v4_manifest.json").read_text(encoding="utf-8"))
+    assert graph_snapshot["position_system"] == "uniprot_pos"
+    assert manifest["provenance"]["surface_graph"]["snapshot_sha256"] == sha256_file(graph_path)
 
 
 def test_v4_strict_blocks_without_external_evidence(tmp_path: Path):
@@ -401,7 +447,16 @@ def test_v4_strict_recommends_only_candidate_level_consensus_pass(tmp_path: Path
         item.stability and item.stability.consensus_status == "CONSENSUS_PASS"
         for item in selected.values()
     )
-    assert {item.status for item in result.legacy_designs} == {"RECOMMENDED_LOW_PREDICTED_RISK"}
+    primary_designs = [
+        item for item in result.legacy_designs if item.design_role == "STAGE1_PROBE"
+    ]
+    stage2_designs = [
+        item for item in result.legacy_designs if item.design_role.startswith("STAGE2")
+    ]
+    assert primary_designs
+    assert {item.status for item in primary_designs} == {"RECOMMENDED_LOW_PREDICTED_RISK"}
+    assert stage2_designs
+    assert all(item.status in {"STAGE2_SINGLE", "STAGE2_PAIRWISE"} for item in stage2_designs)
     manifest = json.loads((tmp_path / "strict" / "v4_manifest.json").read_text(encoding="utf-8"))
     assert manifest["worker_runs"]["spurs_multi"]["status"] == "success"
     assert manifest["software"]["source_code_sha256"]
@@ -459,13 +514,17 @@ def test_v4_formal_candidate_rejects_surface_and_sector_qc_failures():
     reasons = _formal_candidate_reasons(
         candidate, allow_spurs_only=False, minimum_coverage_gain=0.05,
         lower_order_coverage=0.0, sasa_conflict_positions={1},
+        sasa_context_sensitive_positions={2},
+        sasa_method_unverified_positions={1},
         sector_quality_flags={"DISCONNECTED_SECTOR"},
     )
-    assert "SASA_SURFACE_CLASSIFICATION_DISAGREEMENT" in reasons
+    assert "SASA_SURFACE_CLASSIFICATION_DISAGREEMENT" not in reasons
+    assert "SASA_STRUCTURE_CONTEXT_CLASSIFICATION_CHANGED" in reasons
+    assert "SASA_METHOD_SETTINGS_UNVERIFIED" not in reasons
     assert "SECTOR_GEOMETRY_QC_FAILED" in reasons
 
 
-def test_v4_blocked_projection_is_not_recommended(tmp_path: Path):
+def test_v4_procaliper_is_diagnostic_and_does_not_block_projection(tmp_path: Path):
     records = _fixture_records(10)
     evidence = _complete_per_residue_evidence(records)
     seed = run_joint_v4_ml(
@@ -486,9 +545,18 @@ def test_v4_blocked_projection_is_not_recommended(tmp_path: Path):
         parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
-    assert result.recommendation_status == "BLOCKED_EXTERNAL_EVIDENCE"
+    assert result.recommendation_status == "FORMAL_RECOMMENDATION"
     assert result.legacy_designs
-    assert {item.status for item in result.legacy_designs} == {"BLOCKED_EXTERNAL_EVIDENCE"}
+    primary_designs = [
+        item for item in result.legacy_designs if item.design_role == "STAGE1_PROBE"
+    ]
+    stage2_designs = [
+        item for item in result.legacy_designs if item.design_role.startswith("STAGE2")
+    ]
+    assert primary_designs
+    assert all(item.status == "RECOMMENDED_LOW_PREDICTED_RISK" for item in primary_designs)
+    assert any("ProCaliper SASA cross-check is unavailable" in item for item in result.warnings)
+    assert all(item.status in {"STAGE2_SINGLE", "STAGE2_PAIRWISE"} for item in stage2_designs)
 
 
 def test_mapping_sidecar_has_explicit_normalized_position(tmp_path: Path):

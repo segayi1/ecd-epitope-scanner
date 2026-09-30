@@ -73,6 +73,13 @@ class SurfaceEvidence:
     procaliper_rsasa: float | None = None
     native_sasa_a2: float | None = None
     native_rsasa: float | None = None
+    normalized_context_sasa_a2: float | None = None
+    normalized_context_rsasa: float | None = None
+    native_context_absolute_delta: float | None = None
+    native_context_status: str = "NOT_COMPARED"
+    native_context_classification_changed: bool | None = None
+    procaliper_classification_changed: bool | None = None
+    comparison_method_status: str = "NOT_COMPARED"
     sidechain_sasa_a2: float | None = None
     mapped_surface_area_a2: float = 0.0
     surface_component_id: int | None = None
@@ -127,12 +134,17 @@ class V4MutationOption:
     notation: str
     chemistry_class: str
     spurs_ddg_kcal_mol: float | None
-    score: float
+    score: float  # compatibility exposure x chemistry proxy; components are authoritative
     eligible: bool
     hard_exclusions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     epitope_prior: float = 0.0
     epitope_supported: bool = False
+    accessibility_score: float = 0.0
+    chemical_disruption_score: float = 0.0
+    stability_band: str = "NOT_SCORED"
+    glycan_risk: list[str] = field(default_factory=list)
+    structural_risk_flags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -153,6 +165,9 @@ class V4Candidate:
     warnings: list[str] = field(default_factory=list)
     epitope_supported_sites: int = 0
     recommendation_class: str = "STABILITY_FALLBACK"
+    hypothesis_response: dict[str, float] = field(default_factory=dict)
+    search_role: str = "PRIMARY_POOL"
+    targeted_hypotheses: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -172,6 +187,37 @@ class V4Sector:
 
 
 @dataclass
+class V4SurfaceHypothesis:
+    hypothesis_id: str
+    residue_weights: dict[int, float]
+    region_id: str | None = None
+    source_footprint_id: str | None = None
+    quality_flags: list[str] = field(default_factory=list)
+    center_position: int | None = None
+    generation_mode: str | None = None
+    geodesic_radius_a: float | None = None
+    geodesic_diameter_a: float | None = None
+    realized_area_a2: float | None = None
+    target_area_a2: float | None = None
+    center_xyz: tuple[float, float, float] | None = None
+    mean_normal: tuple[float, float, float] | None = None
+    mutable_positions: list[int] = field(default_factory=list)
+    protected_positions: list[int] = field(default_factory=list)
+    normal_dispersion: float | None = None
+    mean_plddt: float | None = None
+    minimum_plddt: float | None = None
+    low_confidence_surface_fraction: float | None = None
+    surface_component_id: int | None = None
+    core_positions: list[int] = field(default_factory=list)
+    boundary_positions: list[int] = field(default_factory=list)
+    membership_fraction: dict[int, float] = field(default_factory=dict)
+    discotope_prior: float | None = None
+    glycan_fraction: float | None = None
+    membrane_geometry: dict[str, Any] = field(default_factory=dict)
+    structural_uncertainty: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class V4Panel:
     selected_candidate_ids: list[str]
     candidates_by_role: dict[str, list[str]]
@@ -182,6 +228,14 @@ class V4Panel:
     covered_residues_by_scenario: dict[str, int] = field(default_factory=dict)
     coverage_denominator_area_a2: float = 0.0
     achieved_area_coverage: dict[str, float] = field(default_factory=dict)
+    mean_hypothesis_response: float | None = None
+    mean_pairwise_separation: float | None = None
+    indistinguishable_hypothesis_pairs: int | None = None
+    minimum_signature_distance: float | None = None
+    unresolved_hypothesis_groups: list[list[str]] = field(default_factory=list)
+    uncovered_hypotheses: list[str] = field(default_factory=list)
+    hypothesis_signatures: dict[str, list[float]] = field(default_factory=dict)
+    prior_weighted_mean_pairwise_separation: float | None = None
 
 
 @dataclass
@@ -195,6 +249,7 @@ class JointV4Result:
     sectors: list[V4Sector]
     candidates: list[V4Candidate]
     panel: V4Panel
+    surface_hypotheses: list[V4SurfaceHypothesis] = field(default_factory=list)
     legacy_regions: list[Any] = field(default_factory=list)
     legacy_designs: list[Any] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

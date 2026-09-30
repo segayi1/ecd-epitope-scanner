@@ -123,13 +123,36 @@ JURKAT_FAB_K562_ANTIGEN_V1 = {
     },
 }
 
-DEFAULT_ASSAY_PROFILE_ID = JURKAT_FAB_K562_ANTIGEN_V1["id"]
+LEGACY_ASSAY_PROFILE_ID = JURKAT_FAB_K562_ANTIGEN_V1["id"]
+
+# New V4.1 runs use an information-oriented panel objective. Keep V1 available
+# for replay and preserve its original geometry-spread semantics.
+JURKAT_FAB_K562_ANTIGEN_V2 = deepcopy(JURKAT_FAB_K562_ANTIGEN_V1)
+JURKAT_FAB_K562_ANTIGEN_V2.update({
+    "id": "jurkat_fab_k562_antigen_v2",
+    "version": 2,
+    "display_name": "Jurkat membrane-Fab x K562 membrane-antigen (hypothesis panel)",
+})
+JURKAT_FAB_K562_ANTIGEN_V2["design_policy"].update({
+    "selection_basis": "hypothesis_identifiability_with_stability_constraints",
+    "epitope_prior_role": "soft_hypothesis_prior",
+    "geometry_role": "annotation_not_reporter_prediction",
+    "reporter_is_affinity": False,
+    "surface_tag_proves_native_fold": False,
+})
+
+ASSAY_PROFILES = {
+    JURKAT_FAB_K562_ANTIGEN_V1["id"]: JURKAT_FAB_K562_ANTIGEN_V1,
+    JURKAT_FAB_K562_ANTIGEN_V2["id"]: JURKAT_FAB_K562_ANTIGEN_V2,
+}
+DEFAULT_ASSAY_PROFILE_ID = JURKAT_FAB_K562_ANTIGEN_V2["id"]
+SUPPORTED_ASSAY_PROFILE_IDS = tuple(ASSAY_PROFILES)
 
 
 def get_assay_profile(profile_id: str | None) -> dict[str, Any] | None:
     """Return an isolated profile payload, or None for generic workflows."""
     if profile_id is None:
         return None
-    if profile_id != DEFAULT_ASSAY_PROFILE_ID:
+    if profile_id not in ASSAY_PROFILES:
         raise ValueError(f"Unknown assay profile: {profile_id}")
-    return deepcopy(JURKAT_FAB_K562_ANTIGEN_V1)
+    return deepcopy(ASSAY_PROFILES[profile_id])

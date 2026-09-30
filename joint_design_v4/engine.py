@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import itertools
 import json
+import math
 import os
 import re
 import sys
@@ -23,10 +26,11 @@ from ..models import (
     to_dict,
 )
 from ..sequences import apply_mutations, coding_fragment
-from ..util import write_json
+from ..util import sha256_file, write_json
 from .candidate_search import generate_candidates
 from .contexts import (
     context_manifest,
+    normalized_prediction_surface_rows,
     residue_keys,
     validate_mapping,
     write_mapping_sidecar,
@@ -40,6 +44,8 @@ from .evidence import (
     epitope_evidence,
     surface_evidence,
 )
+from .hypotheses import attach_hypothesis_responses, hypotheses_from_surface_v2
+from .geometry_evidence import annotate_hypothesis_geometry
 from .models import (
     CombinationStabilityEvidence,
     JointV4Result,
@@ -52,10 +58,44 @@ from .models import (
 from .optimizer import select_panel
 from .reporting import write_v4_outputs
 from .sectors import build_epitope_sectors
+from .surface_snapshot import write_surface_graph_snapshot
 
 
 def _complete_success(result: PredictionResult) -> bool:
     return result.status == "success" and not result.errors
+
+
+def _validate_procaliper_input_scope(
+    result: PredictionResult,
+    structure_path: Path | None,
+    chain_id: str,
+    sequence: str,
+) -> PredictionResult:
+    """Fail closed if ProCaliper did not analyze the frozen normalized input."""
+    if structure_path is None or not _complete_success(result):
+        return result
+    provenance = result.provenance
+    expected = {
+        "input_structure_sha256": sha256_file(structure_path),
+        "chain_id": chain_id,
+        "sequence_sha256": hashlib.sha256(sequence.encode("ascii")).hexdigest(),
+        "residue_count": len(sequence),
+    }
+    mismatches = [
+        key for key, value in expected.items()
+        if provenance.get(key) != value
+    ]
+    if not mismatches:
+        return result
+    message = "ProCaliper result is not bound to the normalized prediction input: " + ", ".join(mismatches)
+    return PredictionResult(
+        status="failed",
+        records=[],
+        warnings=list(result.warnings),
+        errors=[*result.errors, {"code": "PROCALIPER_INPUT_SCOPE_UNVERIFIED", "message": message}],
+        provenance={**provenance, "scope_validation": "FAILED", "scope_validation_fields": mismatches},
+        runtime_seconds=result.runtime_seconds,
+    )
 
 
 def _prediction(
@@ -195,49 +235,57 @@ def _foldx_shortlist(
 
 
 def _adapter(
-    name: str, settings: dict[str, Any], cache_dir: Path, *, tool_name: str | None = None
+    name: str,
+    settings: dict[str, Any],
+    cache_dir: Path,
+    *,
+    tool_name: str | None = None,
+    disabled: bool = False,
 ) -> Any:
     tool_name = tool_name or name
-    command = settings.get("command") or []
-    env_names = [f"ECD_V4_{name.upper()}_COMMAND"]
-    if name.startswith("spurs_"):
-        env_names.append("ECD_V4_SPURS_COMMAND")
-    env_value = next((os.environ[key] for key in env_names if os.environ.get(key)), None)
-    if not command and env_value:
-        try:
-            value = json.loads(env_value)
-            command = [str(item) for item in value] if isinstance(value, list) else []
-        except json.JSONDecodeError:
-            command = []
-    if not command and settings.get("backend") == "wsl_gpu" and os.name == "nt":
-        worker_name = {
-            "spurs_single": "spurs_gpu_worker.py",
-            "spurs_multi": "spurs_gpu_worker.py",
-            "discotope": "discotope_gpu_worker.py",
-        }.get(name)
-        if worker_name:
-            root = Path(__file__).resolve().parents[1]
-            command = [
-                sys.executable,
-                str(root / "integrations" / "wsl_bridge.py"),
-                "--distro",
-                str(settings.get("wsl_distro", "Ubuntu-22.04")),
-                "--python",
-                str(settings["wsl_python"]),
-                "--worker",
-                str(root / "integrations" / "workers" / worker_name),
-            ]
-    if not command and settings.get("backend") == "local_worker":
-        worker_name = {
-            "procaliper": "procaliper_worker.py",
-            "foldx": "foldx_worker.py",
-        }.get(name)
-        if worker_name:
-            root = Path(__file__).resolve().parents[1]
-            command = [
-                str(settings.get("python") or sys.executable),
-                str(root / "integrations" / "workers" / worker_name),
-            ]
+    if disabled:
+        command: list[str] = []
+    else:
+        command = settings.get("command") or []
+        env_names = [f"ECD_V4_{name.upper()}_COMMAND"]
+        if name.startswith("spurs_"):
+            env_names.append("ECD_V4_SPURS_COMMAND")
+        env_value = next((os.environ[key] for key in env_names if os.environ.get(key)), None)
+        if not command and env_value:
+            try:
+                value = json.loads(env_value)
+                command = [str(item) for item in value] if isinstance(value, list) else []
+            except json.JSONDecodeError:
+                command = []
+        if not command and settings.get("backend") == "wsl_gpu" and os.name == "nt":
+            worker_name = {
+                "spurs_single": "spurs_gpu_worker.py",
+                "spurs_multi": "spurs_gpu_worker.py",
+                "discotope": "discotope_gpu_worker.py",
+            }.get(name)
+            if worker_name:
+                root = Path(__file__).resolve().parents[1]
+                command = [
+                    sys.executable,
+                    str(root / "integrations" / "wsl_bridge.py"),
+                    "--distro",
+                    str(settings.get("wsl_distro", "Ubuntu-22.04")),
+                    "--python",
+                    str(settings["wsl_python"]),
+                    "--worker",
+                    str(root / "integrations" / "workers" / worker_name),
+                ]
+        if not command and settings.get("backend") == "local_worker":
+            worker_name = {
+                "procaliper": "procaliper_worker.py",
+                "foldx": "foldx_worker.py",
+            }.get(name)
+            if worker_name:
+                root = Path(__file__).resolve().parents[1]
+                command = [
+                    str(settings.get("python") or sys.executable),
+                    str(root / "integrations" / "workers" / worker_name),
+                ]
     inventory = ToolInventory(
         name=name,
         available=bool(command),
@@ -254,7 +302,9 @@ def _adapter(
         model_revision=settings.get("model_revision"),
         weights_sha256=settings.get("weights_sha256"),
         license_id=settings.get("license_id"),
-        failure_reason=None if command else "not configured",
+        failure_reason=(
+            "disabled by request" if disabled else None if command else "not configured"
+        ),
     )
     klass = {
         "procaliper": ProCaliperAdapter,
@@ -371,17 +421,26 @@ def _formal_candidate_reasons(
     allow_spurs_only: bool,
     minimum_coverage_gain: float,
     lower_order_coverage: float,
+    higher_order_information_gain: float | None = None,
     sasa_conflict_positions: set[int] | None = None,
+    sasa_context_sensitive_positions: set[int] | None = None,
+    sasa_method_unverified_positions: set[int] | None = None,
     sector_quality_flags: set[str] | None = None,
 ) -> list[str]:
     reasons = []
     if not candidate.connected:
         reasons.append("DISCONNECTED_CANDIDATE")
+    if candidate.order >= 4:
+        reasons.append("EXPLORATORY_FOUR_SITE_NOT_PRIMARY")
+    # External ProCaliper disagreement remains diagnostic. The authoritative
+    # surface gate is the native normalized-context classification.
     if any(
-        option.residue.uniprot_pos in (sasa_conflict_positions or set())
+        option.residue.uniprot_pos in (sasa_context_sensitive_positions or set())
         for option in candidate.mutations
     ):
-        reasons.append("SASA_SURFACE_CLASSIFICATION_DISAGREEMENT")
+        reasons.append("SASA_STRUCTURE_CONTEXT_CLASSIFICATION_CHANGED")
+    # ProCaliper settings/provenance are a diagnostic cross-check. Native
+    # context and explicit surface geometry remain the eligibility source.
     if (sector_quality_flags or set()) & {
         "DISCONNECTED_SECTOR",
         "GEODESIC_DISTANCE_UNAVAILABLE",
@@ -404,8 +463,12 @@ def _formal_candidate_reasons(
     else:
         reasons.append(stability.consensus_status)
     if candidate.order > 2:
-        candidate_coverage = max(candidate.coverage_by_scenario.values(), default=0.0)
-        if candidate_coverage - lower_order_coverage < minimum_coverage_gain:
+        candidate_gain = (
+            higher_order_information_gain
+            if higher_order_information_gain is not None else
+            max(candidate.coverage_by_scenario.values(), default=0.0) - lower_order_coverage
+        )
+        if candidate_gain < minimum_coverage_gain:
             reasons.append("INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN")
         if stability is None or stability.foldx_ddg_kcal_mol is None:
             reasons.append("HIGHER_ORDER_REQUIRES_FOLDX")
@@ -474,19 +537,38 @@ def _legacy_designs(
                 wt=option.residue.one_letter,
                 mutant=option.mutant_aa,
                 stability_score=round(1.0 - max(0.0, option.spurs_ddg_kcal_mol or 0.0), 4),
-                perturbation_score=round(option.score, 4),
-                stability_percentile=round(option.score, 4),
+                perturbation_score=round(option.chemical_disruption_score, 4),
+                stability_percentile=None,
                 allowed=True,
                 reasons=list(option.warnings),
                 stability_class="spurs" if option.spurs_ddg_kcal_mol is not None else "proxy",
                 menu_class=option.chemistry_class,
-                disruption_score=option.score,
+                disruption_score=option.chemical_disruption_score,
+                accessibility_score=option.accessibility_score,
+                chemical_disruption_score=option.chemical_disruption_score,
+                epitope_prior=option.epitope_prior,
+                structural_risk_flags=list(option.structural_risk_flags),
             )
             for option in candidate.mutations
         ]
         sequence = apply_mutations(protein.ecd_sequence, choices, protein.ecd_start)
         cds, source = coding_fragment(protein, sequence, original_cds)
         energy = candidate.stability.foldx_ddg_kcal_mol if candidate.stability else None
+        saturation_scan = {
+            str(option.residue.uniprot_pos): [
+                {
+                    "position": option.residue.uniprot_pos,
+                    "wt": option.residue.one_letter,
+                    "mutant": amino_acid,
+                    "notation": f"{option.residue.one_letter}{option.residue.uniprot_pos}{amino_acid}",
+                    "menu_class": "unscored_saturation_option",
+                    "status": "NOT_SCORED",
+                }
+                for amino_acid in "ACDEFGHIKLMNPQRSTVWY"
+                if amino_acid != option.residue.one_letter
+            ]
+            for option in candidate.mutations
+        }
         if recommendation_status == "FORMAL_RECOMMENDATION":
             status = "RECOMMENDED_LOW_PREDICTED_RISK"
         elif recommendation_status == "PREVIEW_NOT_FOR_FORMAL_RECOMMENDATION":
@@ -513,9 +595,11 @@ def _legacy_designs(
                 warnings=list(candidate.warnings)
                 + [candidate.recommendation_class]
                 + [f"Coding fragment source: {source}."]
-                + ([candidate.stability.consensus_status] if candidate.stability else []),
+                + ([candidate.stability.consensus_status] if candidate.stability else [])
+                + ["Saturation substitutions are enumerated options; they were not scored by V4."],
                 mutant_ecd_sequence=sequence,
                 mutant_coding_sequence=cds,
+                saturation_scan=saturation_scan,
                 score_origin="foldx" if energy is not None else "proxy",
                 foldx_diagnostics={
                     **(to_dict(candidate.stability) if candidate.stability else {}),
@@ -534,6 +618,98 @@ def _legacy_designs(
     return output
 
 
+def _deconvolution_presets(
+    primary_designs: list[DesignRecord],
+    records: list[ResidueRecord],
+    protein: ProteinContext,
+    original_cds: str | None,
+) -> list[DesignRecord]:
+    """Create conditional single and pair controls for selected multi-site probes."""
+    by_position = {item.uniprot_pos: item for item in records}
+    output: list[DesignRecord] = []
+    for parent in primary_designs:
+        if parent.design_role != "STAGE1_PROBE" or len(parent.mutations) < 2:
+            continue
+        choices = sorted(parent.mutations, key=lambda item: item.position)
+        for choice in choices:
+            sequence = apply_mutations(protein.ecd_sequence, [choice], protein.ecd_start)
+            coding, coding_source = coding_fragment(protein, sequence, original_cds)
+            output.append(DesignRecord(
+                id=f"SING_{parent.id}_{choice.position}",
+                name=f"{parent.name} single {choice.notation}",
+                region_id=None,
+                mutations=[choice],
+                status="STAGE2_SINGLE",
+                stability_engine=parent.stability_engine,
+                combined_stability_score=None,
+                perturbation_score=choice.disruption_score,
+                rationale=(
+                    "Conditional Stage-2 construct to test whether one parent-probe substitution "
+                    "reproduces the functional phenotype; it does not establish a direct contact."
+                ),
+                warnings=[
+                    "Test only after the linked Stage-1 probe shows the phenotype.",
+                    f"Coding fragment source: {coding_source}.",
+                ],
+                mutant_ecd_sequence=sequence,
+                mutant_coding_sequence=coding,
+                score_origin=parent.score_origin,
+                design_role="STAGE2_SINGLE",
+                parent_design_id=parent.id,
+                disruption_score=choice.disruption_score,
+                anchor_notation=choice.notation,
+                source_engine=parent.source_engine,
+                source_schema_version=parent.source_schema_version,
+                semantic_projection=parent.semantic_projection,
+            ))
+
+        pair_options = []
+        for left, right in itertools.combinations(choices, 2):
+            left_record = by_position.get(left.position)
+            right_record = by_position.get(right.position)
+            if left_record is None or right_record is None or left_record.ca is None or right_record.ca is None:
+                continue
+            distance = math.dist(left_record.ca, right_record.ca)
+            if distance >= config.MIN_COMBO_SPACING_A:
+                pair_options.append((left, right))
+        pair_options.sort(
+            key=lambda pair: -(pair[0].disruption_score + pair[1].disruption_score)
+        )
+        for left, right in pair_options[: config.MAX_PAIRWISE_CONFIRMS]:
+            sequence = apply_mutations(
+                protein.ecd_sequence, [left, right], protein.ecd_start
+            )
+            coding, coding_source = coding_fragment(protein, sequence, original_cds)
+            output.append(DesignRecord(
+                id=f"PAIR_{parent.id}_{left.position}_{right.position}",
+                name=f"{parent.name} pair {left.notation}+{right.notation}",
+                region_id=None,
+                mutations=[left, right],
+                status="STAGE2_PAIRWISE",
+                stability_engine=parent.stability_engine,
+                combined_stability_score=None,
+                perturbation_score=left.disruption_score + right.disruption_score,
+                rationale=(
+                    "Conditional confirmatory subset for combination-only functional loss; "
+                    "the result does not establish direct residue-residue contacts."
+                ),
+                warnings=[
+                    "Test only when linked Stage-2 singles do not reproduce the phenotype.",
+                    f"Coding fragment source: {coding_source}.",
+                ],
+                mutant_ecd_sequence=sequence,
+                mutant_coding_sequence=coding,
+                score_origin=parent.score_origin,
+                design_role="STAGE2_PAIRWISE",
+                parent_design_id=parent.id,
+                disruption_score=left.disruption_score + right.disruption_score,
+                source_engine=parent.source_engine,
+                source_schema_version=parent.source_schema_version,
+                semantic_projection=parent.semantic_projection,
+            ))
+    return output
+
+
 def run_joint_v4_ml(
     records: list[ResidueRecord],
     protein: ProteinContext,
@@ -546,7 +722,12 @@ def run_joint_v4_ml(
     source_provenance: dict[str, Any] | None = None,
     prediction_results: dict[str, PredictionResult] | None = None,
     surface_geometry: Any | None = None,
+    surface_v2_result: Any | None = None,
+    membrane_anchor: tuple[float, float, float] | None = None,
+    membrane_normal: tuple[float, float, float] | None = None,
+    confidence: dict[str, Any] | None = None,
     assay_format: str | None = None,
+    disable_external_engines: bool = False,
 ) -> JointV4Result:
     params = {**config.JOINT_V4_ML_PARAMETERS, **(parameters or {})}
     # Nested configuration is merged explicitly to keep caller overrides small.
@@ -555,6 +736,18 @@ def run_joint_v4_ml(
             (parameters or {}).get(key), dict
         ):
             params[key] = {**config.JOINT_V4_ML_PARAMETERS[key], **(parameters or {})[key]}
+    supplied_predictions = dict(prediction_results or {})
+    if disable_external_engines:
+        for name in ("procaliper", "spurs", "spurs_multi", "discotope", "foldx"):
+            supplied_predictions.setdefault(name, PredictionResult(
+                status="failed",
+                errors=[{
+                    "code": "ENGINE_DISABLED",
+                    "message": "External engine execution was disabled by the request.",
+                }],
+                provenance={"disabled_by_request": True},
+            ))
+        prediction_results = supplied_predictions
     output_dir.mkdir(parents=True, exist_ok=True)
     mode = str(params.get("mode", "strict")).lower()
     if mode not in {"strict", "preview"}:
@@ -571,17 +764,30 @@ def run_joint_v4_ml(
     )
     prediction_structure = normalized_path or structure_pdb
     prediction_sequence = "".join(item.aa for item in records)
+    procaliper_parameters = dict(params.get("procaliper", {}))
+    procaliper_parameters["_normalized_context_contract_version"] = 2
     cache_dir = Path(params.get("runtime", {}).get("cache_dir") or (output_dir / "cache"))
     adapters = {
-        "procaliper": _adapter("procaliper", params.get("procaliper", {}), cache_dir),
+        "procaliper": _adapter(
+            "procaliper", params.get("procaliper", {}), cache_dir,
+            disabled=disable_external_engines,
+        ),
         "spurs_single": _adapter(
-            "spurs_single", params.get("spurs_single", {}), cache_dir, tool_name="spurs_single"
+            "spurs_single", params.get("spurs_single", {}), cache_dir,
+            tool_name="spurs_single", disabled=disable_external_engines,
         ),
         "spurs_multi": _adapter(
-            "spurs_multi", params.get("spurs_multi", {}), cache_dir, tool_name="spurs_multi"
+            "spurs_multi", params.get("spurs_multi", {}), cache_dir,
+            tool_name="spurs_multi", disabled=disable_external_engines,
         ),
-        "discotope": _adapter("discotope", params.get("discotope", {}), cache_dir),
-        "foldx": _adapter("foldx", params.get("foldx_confirmation", {}), cache_dir),
+        "discotope": _adapter(
+            "discotope", params.get("discotope", {}), cache_dir,
+            disabled=disable_external_engines,
+        ),
+        "foldx": _adapter(
+            "foldx", params.get("foldx_confirmation", {}), cache_dir,
+            disabled=disable_external_engines,
+        ),
     }
     inventories = {name: adapter.inventory() for name, adapter in adapters.items()}
     graph_provenance: dict[str, Any] = {}
@@ -601,8 +807,11 @@ def run_joint_v4_ml(
         prediction_sequence,
         output_dir,
         structure_type,
-        params.get("procaliper", {}),
+        procaliper_parameters,
         prediction_results,
+    )
+    procaliper = _validate_procaliper_input_scope(
+        procaliper, normalized_path, chain, prediction_sequence
     )
     spurs = _prediction(
         adapters["spurs_single"],
@@ -628,12 +837,26 @@ def run_joint_v4_ml(
     procaliper.records = _map_external_rows(procaliper.records, records)
     spurs.records = _map_external_rows(spurs.records, records)
     discotope.records = _map_external_rows(discotope.records, records)
+    normalized_context_rows = None
+    normalized_context_method = None
+    if normalized_path is not None and _complete_success(procaliper):
+        normalized_context_rows, normalized_context_method = normalized_prediction_surface_rows(
+            normalized_path, chain, records
+        )
     native_rows = [
         {"position": item.position, "sasa": item.mapped_area_a2, "rsasa": item.rasa}
         for item in native_units
     ]
     surface = surface_evidence(
-        records, keys, procaliper.records if _complete_success(procaliper) else [], areas, components
+        records,
+        keys,
+        procaliper.records if _complete_success(procaliper) else [],
+        areas,
+        components,
+        normalized_context_rows=normalized_context_rows,
+        normalized_context_method=normalized_context_method,
+        procaliper_provenance=procaliper.provenance,
+        rsasa_threshold=float(params["surface"].get("rsasa_threshold", config.RSASA_THRESHOLD)),
     )
     epitope = epitope_evidence(
         records, keys, discotope.records if _complete_success(discotope) else [], graph
@@ -669,7 +892,55 @@ def run_joint_v4_ml(
         min(7, max(1, int(params.get("max_sectors", 7)))),
         params.get("sectoring", {}),
     )
-    candidates = generate_candidates(sectors, options, graph, params["candidate_search"])
+    graph_snapshot_path = output_dir / "surface_graph_v4.json"
+    graph_snapshot_sha256 = write_surface_graph_snapshot(
+        graph_snapshot_path,
+        graph,
+        areas,
+        sectors,
+        mapping_path=output_dir / "residue_mapping.csv",
+        structure_path=structure_pdb,
+        provenance=graph_provenance,
+    )
+    graph_provenance["snapshot_file"] = graph_snapshot_path.name
+    graph_provenance["snapshot_sha256"] = graph_snapshot_sha256
+    if surface_v2_result is not None:
+        write_surface_graph_snapshot(
+            output_dir / "surface_graph_v41.json", graph, areas, sectors,
+            mapping_path=output_dir / "residue_mapping.csv",
+            structure_path=structure_pdb,
+            provenance=graph_provenance,
+            include_display_ownership=False,
+        )
+        write_json(
+            output_dir / "surface_display_regions_v41.json",
+            {
+                "schema_version": "4.1",
+                "interpretation": "Display ownership only; scientific footprint memberships may overlap.",
+                "regions": to_dict(surface_v2_result.surface_regions),
+            },
+        )
+    hypotheses = (
+        hypotheses_from_surface_v2(surface_v2_result, records, epitope)
+        if bool(params.get("use_surface_hypotheses", True)) else []
+    )
+    candidates = generate_candidates(
+        sectors, options, graph, params["candidate_search"],
+        hypotheses=hypotheses or None,
+    )
+    annotate_hypothesis_geometry(
+        hypotheses, records,
+        membrane_anchor=membrane_anchor,
+        membrane_normal=membrane_normal,
+        confidence=confidence,
+        predicted=structure_type in {"alphafold", "predicted"},
+    )
+    response_radius = float(params["panel_optimizer"].get("hypothesis_response_radius_a", 15.0))
+    response_decay = float(params["panel_optimizer"].get("hypothesis_response_decay_a", 6.0))
+    attach_hypothesis_responses(
+        candidates, hypotheses, graph,
+        radius_a=response_radius, decay_length_a=response_decay,
+    )
     normalized_positions = {item.uniprot_pos: index for index, item in enumerate(records, 1)}
 
     def candidate_notation(candidate: V4Candidate) -> list[str]:
@@ -730,12 +1001,23 @@ def run_joint_v4_ml(
     minimum_gain = float(params["panel_optimizer"].get("minimum_coverage_gain", 0.05))
     by_sector: dict[str, list[V4Candidate]] = {}
     sector_flags = {sector.sector_id: set(sector.quality_flags) for sector in sectors}
-    surface_threshold = float(params["surface"].get("rsasa_threshold", config.RSASA_THRESHOLD))
     sasa_conflicts = {
         item.residue.uniprot_pos
         for item in surface
-        if item.procaliper_rsasa is not None
-        and (item.native_rsasa >= surface_threshold) != (item.procaliper_rsasa >= surface_threshold)
+        if item.procaliper_classification_changed is True
+        and item.sasa_agreement_status == "SASA_DISAGREEMENT"
+    }
+    sasa_context_sensitive = {
+        item.residue.uniprot_pos
+        for item in surface
+        if item.native_context_classification_changed is True
+    }
+    sasa_method_unverified = {
+        item.residue.uniprot_pos
+        for item in surface
+        if normalized_context_rows is not None
+        and item.procaliper_rsasa is not None
+        and item.sasa_agreement_status == "METHOD_SETTINGS_UNVERIFIED"
     }
     for candidate in candidates:
         by_sector.setdefault(candidate.sector_id, []).append(candidate)
@@ -748,12 +1030,41 @@ def run_joint_v4_ml(
             ),
             default=0.0,
         )
+        information_gain = None
+        if hypotheses and candidate.order > 2:
+            def separation(item: V4Candidate) -> float:
+                values = list(item.hypothesis_response.values())
+                count = len(values)
+                if count < 2:
+                    return 0.0
+                return sum(abs(left - right) for left, right in itertools.combinations(values, 2)) / (count * (count - 1) / 2)
+
+            candidate_sites = {item.residue.uniprot_pos for item in candidate.mutations}
+            comparable = [
+                item for item in by_sector[candidate.sector_id]
+                if item.order < candidate.order
+                and {mutation.residue.uniprot_pos for mutation in item.mutations} <= candidate_sites
+            ]
+            if comparable:
+                candidate_values = list(candidate.hypothesis_response.values())
+                candidate_mean = sum(candidate_values) / max(1, len(candidate_values))
+                lower_mean = max(
+                    sum(item.hypothesis_response.values()) / max(1, len(item.hypothesis_response))
+                    for item in comparable
+                )
+                information_gain = max(
+                    candidate_mean - lower_mean,
+                    separation(candidate) - max(separation(item) for item in comparable),
+                )
         candidate.formal_exclusion_reasons = _formal_candidate_reasons(
             candidate,
             allow_spurs_only=allow_spurs_only,
             minimum_coverage_gain=minimum_gain,
             lower_order_coverage=lower_coverage,
+            higher_order_information_gain=information_gain,
             sasa_conflict_positions=sasa_conflicts,
+            sasa_context_sensitive_positions=sasa_context_sensitive,
+            sasa_method_unverified_positions=sasa_method_unverified,
             sector_quality_flags=sector_flags.get(candidate.sector_id),
         )
         candidate.formal_eligible = not candidate.formal_exclusion_reasons
@@ -769,6 +1080,7 @@ def run_joint_v4_ml(
         int(params["panel_optimizer"].get("stability_fallback_per_sector", 3)),
         sectors=sectors,
         surface_areas={item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface},
+        hypotheses=hypotheses,
     )
     selected_sector_ids = {item.sector_id for item in selected}
     reported_uncovered = {item["sector_id"] for item in panel.uncovered_components}
@@ -777,9 +1089,14 @@ def run_joint_v4_ml(
             panel.uncovered_components.append(
                 {"sector_id": sector.sector_id, "reason": "NO_FEASIBLE_CANDIDATE"}
             )
-    required = {"procaliper": procaliper, "spurs_single": spurs, "spurs_multi": multi}
+    required = {"spurs_single": spurs, "spurs_multi": multi}
     missing = [name for name, result in required.items() if not _complete_success(result)]
-    foldx_ok = bool(selected) and all(
+    foldx_run_success = _complete_success(foldx)
+    foldx_candidate_coverage = sum(
+        item.stability is not None and item.stability.foldx_ddg_kcal_mol is not None
+        for item in candidates
+    )
+    selected_panel_foldx_complete = bool(selected) and all(
         item.stability and item.stability.foldx_ddg_kcal_mol is not None for item in selected
     )
     multi_ok = bool(selected) and all(
@@ -791,30 +1108,52 @@ def run_joint_v4_ml(
         missing
         or not selected
         or not multi_ok
-        or (not foldx_ok and not allow_spurs_only)
-        or (not allow_spurs_only and not _complete_success(foldx))
+        or (not selected_panel_foldx_complete and not allow_spurs_only)
+        or (not allow_spurs_only and not foldx_run_success)
     ):
         recommendation_status = "BLOCKED_EXTERNAL_EVIDENCE"
     else:
         recommendation_status = "FORMAL_RECOMMENDATION"
-    warnings = ["Joint V4-ML is opt-in and its thresholds are uncalibrated heuristics."]
+    warnings = ["Joint V4-ML thresholds are uncalibrated engineering heuristics."]
     if assay_format == "cell_surface":
         warnings.append(
-            "V4 has not evaluated membrane orientation or Fab reach; cell-surface accessibility is unassessed."
+            "Membrane-relative geometry is an anchor-axis surrogate; intermembrane distance and Fab-specific reach remain unknown."
         )
     if sasa_conflicts:
         warnings.append(
-            f"Native and ProCaliper SASA disagree on surface classification at {len(sasa_conflicts)} positions; affected candidates are excluded from strict recommendations."
+            f"ProCaliper and native Shrake-Rupley disagree on the normalized prediction input at {len(sasa_conflicts)} positions; ProCaliper is diagnostic, and native surface eligibility remains authoritative."
+        )
+    if sasa_context_sensitive:
+        warnings.append(
+            f"Original-chain and normalized ECD SASA cross the surface threshold at {len(sasa_context_sensitive)} positions; affected candidates are excluded from strict recommendations because structure context changes classification."
+        )
+    if sasa_method_unverified:
+        warnings.append(
+            f"ProCaliper and native SASA settings differ at {len(sasa_method_unverified)} positions; ProCaliper values are diagnostic only there, while surface eligibility uses the native isolated-protein calculation."
         )
     if not _complete_success(discotope):
         warnings.append(
             "DiscoTope evidence is unavailable; candidates are stability-gated fallback "
             "recommendations without epitope-prior support."
         )
+    if not _complete_success(procaliper):
+        warnings.append(
+            "ProCaliper SASA cross-check is unavailable; native SASA and explicit surface geometry remain authoritative."
+        )
+    else:
+        warnings.append(
+            "ProCaliper contributes an independently audited residue SASA cross-check only; this worker does not compute finite-probe steric accessibility."
+        )
     if missing:
         warnings.append("Missing external evidence: " + ", ".join(missing) + ".")
-    if not foldx_ok:
-        warnings.append("FoldX confirmation is missing; no kcal/mol value was fabricated.")
+    if not foldx_run_success:
+        warnings.append("FoldX run did not complete successfully; no kcal/mol value was fabricated.")
+    elif not selected:
+        warnings.append(
+            f"FoldX scored {foldx_candidate_coverage}/{len(candidates)} candidates, but no candidate passed panel selection."
+        )
+    elif not selected_panel_foldx_complete:
+        warnings.append("FoldX run succeeded, but selected panel coverage is incomplete.")
     if mode == "strict" and not selected:
         warnings.append("No candidate satisfied all strict candidate-level evidence gates.")
     if mode == "preview":
@@ -824,6 +1163,9 @@ def run_joint_v4_ml(
     legacy_regions = _legacy_regions(sectors, records)
     legacy_designs = _legacy_designs(
         selected, sectors, protein, original_cds, recommendation_status
+    )
+    legacy_designs.extend(
+        _deconvolution_presets(legacy_designs, records, protein, original_cds)
     )
     result = JointV4Result(
         schema_version="4.0",
@@ -835,6 +1177,7 @@ def run_joint_v4_ml(
         sectors=sectors,
         candidates=candidates,
         panel=panel,
+        surface_hypotheses=hypotheses,
         legacy_regions=legacy_regions,
         legacy_designs=legacy_designs,
         warnings=warnings,
@@ -846,6 +1189,19 @@ def run_joint_v4_ml(
         provenance={
             **dict(source_provenance or {}),
             "surface_graph": graph_provenance,
+            "foldx_evidence_status": {
+                "run_success": foldx_run_success,
+                "scored_candidates": foldx_candidate_coverage,
+                "total_candidates": len(candidates),
+                "selected_panel_complete": selected_panel_foldx_complete,
+            },
+            "hypothesis_response_model": {
+                "kind": "surface_geodesic_chemical_noisy_or_proxy",
+                "radius_a": response_radius,
+                "decay_length_a": response_decay,
+                "source": "surface_v2_deduplicated_footprints",
+                "hypothesis_count": len(hypotheses),
+            },
             "assay_format": assay_format,
             "assay_accessibility_status": "UNASSESSED" if assay_format == "cell_surface" else "NOT_APPLICABLE",
         },

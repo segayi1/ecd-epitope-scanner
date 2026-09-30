@@ -7,8 +7,6 @@ Changing a value changes what the output means; keep it in one place.
 
 from __future__ import annotations
 
-import os
-
 # --- Structure eligibility gate (UniProt/PDB candidate audit) ---------------
 MIN_ECD_COVERAGE = 0.95
 MAX_INTERNAL_GAP_AA = 8
@@ -20,12 +18,10 @@ RSASA_THRESHOLD = 0.25
 SIDECHAIN_SASA_THRESHOLD_A2 = 20.0
 
 # --- Patch partitioning (Fab-footprint scale) --------------------------------
-PATCH_ENGINE_VERSION = os.environ.get("ECD_PATCH_ENGINE", "surface_v2").strip().lower()
-if PATCH_ENGINE_VERSION not in {"legacy_v1", "surface_v2", "joint_v3", "joint_v4_ml"}:
-    PATCH_ENGINE_VERSION = "surface_v2"
+PATCH_ENGINE_VERSION = "joint_v4_ml"
 
-# Joint V4-ML is intentionally opt-in.  These are versioned engineering
-# defaults; they are not calibrated probabilities and must be reported in the
+# These are versioned engineering defaults; they are not calibrated
+# probabilities and must be reported in the
 # run manifest. SPURS and DiscoTope use this workstation's WSL2 CUDA workers;
 # explicit command settings or environment variables can override them.
 JOINT_V4_ML_PARAMETERS = {
@@ -85,10 +81,16 @@ JOINT_V4_ML_PARAMETERS = {
     },
     "candidate_search": {
         "site_pool_per_sector": 12,
+        "site_pool_per_hypothesis": 8,
         "options_per_site": 3,
         "beam_width": 300,
+        "beam_width_by_order": {},
         "shortlist_per_sector": 30,
-        "orders": [2, 3, 4],
+        "shortlist_per_order": 10,
+        "shortlist_by_order": {},
+        "orders": [2, 3],
+        "primary_orders": [2, 3],
+        "exploratory_orders": [4],
         "maximum_geodesic_span_a": 24.0,
         "epitope_priority_weight": 1.0,
         "epitope_site_pool_fraction": 0.5,
@@ -126,6 +128,8 @@ JOINT_V4_ML_PARAMETERS = {
         "time_limit_seconds": 60,
         "higher_order_max_primary": 2,
         "minimum_coverage_gain": 0.05,
+        "hypothesis_response_radius_a": 15.0,
+        "hypothesis_response_decay_a": 6.0,
         "recommendations_per_sector": 6,
         "epitope_priority_per_sector": 3,
         "stability_fallback_per_sector": 3,

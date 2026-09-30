@@ -82,6 +82,65 @@ def write_v4_outputs(
     write_json(output_dir / "probe_sectors_v4.json", _rows(result.sectors))
     write_json(output_dir / "panel_candidates.json", _rows(result.candidates))
     write_json(output_dir / "selected_panel_v4.json", _rows(result.panel))
+    write_json(output_dir / "surface_hypotheses_v4.json", _rows(result.surface_hypotheses))
+    write_json(
+        output_dir / "epitope_hypotheses_v41.json",
+        {"schema_version": "4.1", "interpretation": "Candidate antibody-compatible surface footprints, not established epitopes.",
+         "hypotheses": _rows(result.surface_hypotheses)},
+    )
+    membership_rows = [
+        {
+            "hypothesis_id": hypothesis.hypothesis_id,
+            "uniprot_pos": position,
+            "surface_area_in_hypothesis_a2": hypothesis.residue_weights.get(position, 0.0),
+            "membership_fraction": hypothesis.membership_fraction.get(position, 0.0),
+            "core_or_boundary": (
+                "CORE" if position in hypothesis.core_positions else
+                "BOUNDARY" if position in hypothesis.boundary_positions else "NOMINAL"
+            ),
+        }
+        for hypothesis in result.surface_hypotheses
+        for position in sorted(set(hypothesis.residue_weights) | set(hypothesis.boundary_positions))
+    ]
+    _write_csv(
+        output_dir / "hypothesis_membership_v41.csv", membership_rows,
+        ["hypothesis_id", "uniprot_pos", "surface_area_in_hypothesis_a2",
+         "membership_fraction", "core_or_boundary"],
+    )
+    write_json(
+        output_dir / "hypothesis_probe_matrix_v4.json",
+        {
+            "interpretation": "Geometry and chemistry perturbation proxy; not a binding-change prediction or epitope probability.",
+            "model": result.provenance.get("hypothesis_response_model", {}),
+            "hypothesis_ids": [item.hypothesis_id for item in result.surface_hypotheses],
+            "candidate_responses": {
+                item.candidate_id: item.hypothesis_response for item in result.candidates
+            },
+        },
+    )
+    _write_csv(
+        output_dir / "probe_hypothesis_matrix_v41.csv",
+        [
+            {"candidate_id": item.candidate_id, "hypothesis_id": hypothesis.hypothesis_id,
+             "perturbation_proxy": item.hypothesis_response.get(hypothesis.hypothesis_id, 0.0)}
+            for item in result.candidates for hypothesis in result.surface_hypotheses
+        ],
+        ["candidate_id", "hypothesis_id", "perturbation_proxy"],
+    )
+    write_json(
+        output_dir / "panel_identifiability_v41.json",
+        {
+            "schema_version": "4.1",
+            "interpretation": "Geometry and chemistry perturbation signatures; separation is not experimental binding evidence.",
+            "selected_candidate_ids": result.panel.selected_candidate_ids,
+            "mean_pairwise_separation": result.panel.mean_pairwise_separation,
+            "prior_weighted_mean_pairwise_separation": result.panel.prior_weighted_mean_pairwise_separation,
+            "minimum_signature_distance": result.panel.minimum_signature_distance,
+            "unresolved_hypothesis_groups": result.panel.unresolved_hypothesis_groups,
+            "uncovered_hypotheses": result.panel.uncovered_hypotheses,
+            "hypothesis_signatures": result.panel.hypothesis_signatures,
+        },
+    )
     surface_rows = [_rows(item) for item in result.surface_evidence]
     _write_csv(
         output_dir / "surface_evidence.csv",
@@ -92,6 +151,13 @@ def write_v4_outputs(
             "procaliper_rsasa",
             "native_sasa_a2",
             "native_rsasa",
+            "normalized_context_sasa_a2",
+            "normalized_context_rsasa",
+            "native_context_absolute_delta",
+            "native_context_status",
+            "native_context_classification_changed",
+            "procaliper_classification_changed",
+            "comparison_method_status",
             "sidechain_sasa_a2",
             "mapped_surface_area_a2",
             "surface_component_id",
@@ -104,17 +170,36 @@ def write_v4_outputs(
             {
                 "position": item.residue.uniprot_pos,
                 "native_rsasa": item.native_rsasa,
+                "normalized_context_rsasa": item.normalized_context_rsasa,
                 "procaliper_rsasa": item.procaliper_rsasa,
                 "absolute_delta": (
-                    abs(item.native_rsasa - item.procaliper_rsasa)
-                    if item.native_rsasa is not None and item.procaliper_rsasa is not None
+                    abs(item.normalized_context_rsasa - item.procaliper_rsasa)
+                    if item.normalized_context_rsasa is not None
+                    and item.procaliper_rsasa is not None
                     else None
                 ),
+                "native_context_absolute_delta": item.native_context_absolute_delta,
+                "native_context_status": item.native_context_status,
+                "native_context_classification_changed": item.native_context_classification_changed,
+                "procaliper_classification_changed": item.procaliper_classification_changed,
+                "comparison_method_status": item.comparison_method_status,
                 "status": item.sasa_agreement_status,
             }
             for item in result.surface_evidence
         ],
-        ["position", "native_rsasa", "procaliper_rsasa", "absolute_delta", "status"],
+        [
+            "position",
+            "native_rsasa",
+            "normalized_context_rsasa",
+            "procaliper_rsasa",
+            "absolute_delta",
+            "native_context_absolute_delta",
+            "native_context_status",
+            "native_context_classification_changed",
+            "procaliper_classification_changed",
+            "comparison_method_status",
+            "status",
+        ],
     )
     _write_csv(
         output_dir / "discotope_residues.csv",
@@ -257,7 +342,13 @@ def write_v4_outputs(
         "",
         f"- Recommendation status: `{result.recommendation_status}`",
         f"- Sectors: {len(result.sectors)}; candidates: {len(result.candidates)}",
-        f"- Recommended series: {len(result.panel.selected_candidate_ids)} combinations",
+        f"- Selected panel: {len(result.panel.selected_candidate_ids)} combinations",
+        f"- Overlapping surface hypotheses: {len(result.surface_hypotheses)}",
+        f"- Hypothesis selection method: {result.panel.solver_status}",
+        f"- Mean and minimum hypothesis signature separation: {result.panel.mean_pairwise_separation}, {result.panel.minimum_signature_distance}",
+        f"- DiscoTope-prior weighted mean separation (reported alongside uniform): {result.panel.prior_weighted_mean_pairwise_separation}",
+        f"- Unresolved hypothesis groups: {len(result.panel.unresolved_hypothesis_groups)}",
+        f"- Uncovered hypotheses: {len(result.panel.uncovered_hypotheses)}",
         f"- Global surface coverage denominator: {result.panel.coverage_denominator_residues} mapped residues",
         f"- Global union coverage by geodesic scenario: {result.panel.achieved_coverage}",
         f"- Epitope-prioritized: {len(result.panel.candidates_by_role.get('EPITOPE_PRIORITIZED', []))}",
@@ -268,6 +359,8 @@ def write_v4_outputs(
         "DiscoTope scores are soft epitope-prior evidence, not assertions of true antibody contacts.",
         "SPURS/FoldX results are predicted stability evidence and do not ensure expression, folding, or cell-surface display.",
         "Preview outputs are not formal recommendations.",
+        "Hypothesis responses are surface-geodesic and chemistry proxies, not predicted binding changes.",
+        "Hypotheses are candidate antibody-compatible footprints, not experimentally established epitopes.",
         "",
         "## Warnings",
         "",

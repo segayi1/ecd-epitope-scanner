@@ -187,7 +187,7 @@ class MutationChoice:
     mutant: str
     stability_score: float
     perturbation_score: float
-    stability_percentile: float
+    stability_percentile: float | None
     allowed: bool
     reasons: list[str] = field(default_factory=list)
     foldx_ddg: float | None = None
@@ -198,6 +198,10 @@ class MutationChoice:
     # conservative | other
     disruption_score: float = 0.0           # instrument-power score
     esm_llr: float | None = None            # PLM zero-shot log-likelihood ratio
+    accessibility_score: float | None = None
+    chemical_disruption_score: float | None = None
+    epitope_prior: float | None = None
+    structural_risk_flags: list[str] = field(default_factory=list)
 
     @property
     def notation(self) -> str:

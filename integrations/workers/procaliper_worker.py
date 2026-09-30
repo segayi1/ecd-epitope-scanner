@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import json
 import sys
+import tempfile
 import time
 import traceback
+from collections import Counter
 from pathlib import Path
 
+from Bio import __version__ as biopython_version
 from Bio.Data.PDBData import protein_letters_3to1
-from Bio.PDB import PDBParser
+from Bio.PDB import PDBIO, PDBParser
 from Bio.PDB.Polypeptide import is_aa
+from Bio.PDB.SASA import ShrakeRupley
+from Bio.PDB.Select import Select
 
 MAX_ASA = {
     "A": 129.0,
@@ -51,6 +57,64 @@ def _residue_sequence(path: Path, chain_id: str) -> str:
     return "".join(letters)
 
 
+class _ProteinChainSelect(Select):
+    """Keep only standard amino-acid residues from one target chain."""
+
+    def __init__(self, chain_id: str):
+        self.chain_id = chain_id
+
+    def accept_model(self, model) -> bool:
+        return model.id == 0
+
+    def accept_chain(self, chain) -> bool:
+        return chain.id == self.chain_id
+
+    def accept_residue(self, residue) -> bool:
+        return residue.id[0] == " " and is_aa(residue, standard=True)
+
+
+def _write_protein_only_structure(
+    source_path: Path, output_path: Path, chain_id: str
+) -> dict[str, object]:
+    """Strip solvent, ions, ligands and partner chains before SASA calculation."""
+    structure = PDBParser(QUIET=True).get_structure("sasa_source", str(source_path))
+    model = next(structure.get_models(), None)
+    if model is None or chain_id not in model:
+        raise RuntimeError(f"Target protein chain {chain_id!r} was not found")
+
+    protein_residues = [
+        residue
+        for residue in model[chain_id]
+        if residue.id[0] == " " and is_aa(residue, standard=True)
+    ]
+    if not protein_residues:
+        raise RuntimeError(f"Target chain {chain_id!r} has no standard protein residues")
+
+    partner_protein_chains = [
+        chain
+        for chain in model
+        if chain.id != chain_id
+        and any(is_aa(residue, standard=True) for residue in chain)
+    ]
+    nonstandard_residues = [
+        residue
+        for chain in model
+        for residue in chain
+        if not (residue.id[0] == " " and is_aa(residue, standard=True))
+    ]
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(str(output_path), _ProteinChainSelect(chain_id))
+    return {
+        "retained_protein_residue_count": len(protein_residues),
+        "excluded_nonstandard_or_hetero_residue_count": len(nonstandard_residues),
+        "excluded_nonstandard_or_hetero_residue_names": dict(
+            Counter(residue.resname.strip().upper() for residue in nonstandard_residues)
+        ),
+        "excluded_partner_protein_chain_count": len(partner_protein_chains),
+    }
+
+
 def main() -> int:
     started = time.perf_counter()
     try:
@@ -60,18 +124,34 @@ def main() -> int:
             PROBE_RADIUS,
             calculate_sasa,
         )
+        default_radii = ShrakeRupley(
+            probe_radius=PROBE_RADIUS, n_points=N_POINTS, radii_dict=None
+        ).radii_dict
+        atom_radii = {
+            element: float(default_radii[element]) for element in ("C", "N", "O", "S")
+        }
 
-        structure_path = Path(request["structure_path"])
-        sequence = _residue_sequence(structure_path, str(request["chain_id"]))
-        if sequence != request["sequence"]:
-            raise RuntimeError(
-                "ProCaliper input sequence does not match the normalized prediction chain"
+        source_structure_path = Path(request["structure_path"])
+        chain_id = str(request["chain_id"])
+        requested_sequence = str(request["sequence"])
+        with tempfile.TemporaryDirectory(prefix="procaliper_protein_only_") as temp_dir:
+            structure_path = Path(temp_dir) / "target_protein_chain.pdb"
+            calculation_scope = _write_protein_only_structure(
+                source_structure_path, structure_path, chain_id
             )
-        sasa = calculate_sasa(str(structure_path))["all_sasa_value"]
-        if len(sasa) != len(sequence):
-            raise RuntimeError(
-                f"ProCaliper returned {len(sasa)} residues for sequence length {len(sequence)}"
-            )
+            sequence = _residue_sequence(structure_path, chain_id)
+            if sequence != requested_sequence:
+                raise RuntimeError(
+                    "ProCaliper input sequence does not match the normalized prediction chain"
+                )
+            sasa = calculate_sasa(str(structure_path))["all_sasa_value"]
+            if len(sasa) != len(sequence):
+                raise RuntimeError(
+                    f"ProCaliper returned {len(sasa)} residues for sequence length {len(sequence)}"
+                )
+            calculation_structure_sha256 = hashlib.sha256(
+                structure_path.read_bytes()
+            ).hexdigest()
         records = [
             {
                 "position": position,
@@ -94,9 +174,26 @@ def main() -> int:
                         "version": importlib.metadata.version("procaliper"),
                         "device": "cpu",
                         "algorithm": "Bio.PDB ShrakeRupley via ProCaliper",
+                        "scientific_role": "SASA_CROSSCHECK_ONLY",
+                        "capabilities": ["residue_sasa", "relative_sasa"],
+                        "not_computed": ["finite_probe_accessibility", "steric_probe_reach", "residue_distance_network"],
+                        "biopython_version": biopython_version,
                         "probe_radius_a": PROBE_RADIUS,
                         "sphere_points": N_POINTS,
                         "rsasa_reference": "Tien et al. 2013 maximum ASA",
+                        "atom_radii_a": atom_radii,
+                        "radii_reference": "Bio.PDB default Shrake-Rupley radii",
+                        "calculation_scope": "single_target_standard_protein_chain_only",
+                        **calculation_scope,
+                        "source_structure_sha256": hashlib.sha256(
+                            source_structure_path.read_bytes()
+                        ).hexdigest(),
+                        "input_structure_sha256": calculation_structure_sha256,
+                        "chain_id": chain_id,
+                        "sequence_sha256": hashlib.sha256(
+                            requested_sequence.encode("ascii")
+                        ).hexdigest(),
+                        "residue_count": len(sequence),
                     },
                     "runtime_seconds": time.perf_counter() - started,
                 },

@@ -4,10 +4,12 @@ import copy
 import csv
 from pathlib import Path
 
+from Bio import __version__ as biopython_version
 from Bio.PDB import PDBIO, Chain, MMCIFParser, Model, PDBParser, Structure
 from Bio.PDB.Polypeptide import protein_letters_3to1
 
 from ..models import ProteinContext, ResidueRecord
+from ..structure_analysis import MAX_ASA, TIEN_DSSP_RADII, calculate_sasa, load_structure
 from .models import ResidueKey
 
 
@@ -139,3 +141,53 @@ def write_normalized_prediction_chain(
     io.set_structure(structure)
     io.save(str(output_path))
     return output_path
+
+
+def normalized_prediction_surface_rows(
+    structure_path: Path,
+    chain_id: str,
+    records: list[ResidueRecord],
+) -> tuple[dict[int, dict[str, float]], dict[str, object]]:
+    """Measure SASA on the exact normalized single-chain prediction input.
+
+    The pipeline's native SASA retains all standard residues from the selected
+    source chain, including engineered substitutions and residues outside the
+    mapped ECD. Prediction workers receive the normalized canonical ECD chain.
+    This second reference separates structural-context changes from differences
+    between the native and external SASA implementations.
+    """
+    parsed = load_structure(structure_path)
+    if chain_id not in parsed.model:
+        raise ValueError("NORMALIZED_PREDICTION_CHAIN_MISSING")
+    observed = "".join(
+        protein_letters_3to1.get(residue.resname.upper(), "X")
+        for residue in parsed.model[chain_id]
+        if residue.id[0] == " "
+    )
+    expected = "".join(item.aa for item in records)
+    if observed != expected:
+        raise ValueError("NORMALIZED_PREDICTION_SEQUENCE_MISMATCH")
+
+    measured, native_method = calculate_sasa(parsed, structure_path.parent, chain_id)
+    if len(measured) != len(records):
+        raise ValueError("NORMALIZED_PREDICTION_RESIDUE_COUNT_MISMATCH")
+    rows: dict[int, dict[str, float]] = {}
+    for normalized_position, item in enumerate(records, start=1):
+        total_sasa = measured.get((chain_id, normalized_position, ""))
+        if total_sasa is None:
+            raise ValueError(f"NORMALIZED_PREDICTION_RESIDUE_MISSING:{normalized_position}")
+        absolute_sasa = float(total_sasa[0])
+        rows[item.uniprot_pos] = {
+            "sasa": absolute_sasa,
+            "rsasa": absolute_sasa / MAX_ASA.get(item.aa, 200.0),
+        }
+    return rows, {
+        "algorithm": "Bio.PDB Shrake-Rupley",
+        "biopython_version": biopython_version,
+        "probe_radius_a": 1.4,
+        "sphere_points": 960,
+        "radii_reference": "Tien et al. 2013/DSSP",
+        "atom_radii_a": dict(TIEN_DSSP_RADII),
+        "scope": "normalized mapped canonical ECD; no partners, engineered mismatches, or unmapped flanks",
+        "method_description": native_method,
+    }
