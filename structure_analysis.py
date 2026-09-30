@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean
@@ -91,6 +92,7 @@ class ParsedStructure:
     raw_text: str
     label_lookup: dict[tuple[str, int, str], tuple[str, int | None]] = field(default_factory=dict)
     secondary_lookup: dict[tuple[str, int, str], str] = field(default_factory=dict)
+    chain_descriptions: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -181,6 +183,59 @@ def _parse_pdb_secondary(text: str) -> dict[tuple[str, int, str], str]:
     return secondary
 
 
+def _parse_chain_descriptions(path: Path, fmt: str) -> dict[str, str]:
+    if fmt == "mmcif":
+        data = MMCIF2Dict(str(path))
+
+        def values(key: str) -> list[str]:
+            value = data.get(key, [])
+            return value if isinstance(value, list) else [value] if value else []
+
+        entity_ids = values("_entity.id")
+        descriptions = values("_entity.pdbx_description")
+        entity_names = {
+            entity_id: description.strip(" '\"")
+            for entity_id, description in zip(entity_ids, descriptions, strict=False)
+            if description and description not in {"?", "."}
+        }
+        auth_chains = values("_atom_site.auth_asym_id")
+        entity_refs = values("_atom_site.label_entity_id")
+        chain_names: dict[str, set[str]] = {}
+        for chain_id, entity_id in zip(auth_chains, entity_refs, strict=False):
+            description = entity_names.get(entity_id)
+            if description:
+                chain_names.setdefault(str(chain_id).strip(), set()).add(description)
+        return {chain_id: "; ".join(sorted(names)) for chain_id, names in chain_names.items()}
+
+    molecules: dict[str, list[str]] = {}
+    current_molecule: str | None = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.startswith("COMPND"):
+            continue
+        text = line[10:].strip()
+        molecule_match = re.search(r"(?:^|;)\s*MOL_ID:\s*([^;]+)", text, re.I)
+        if molecule_match:
+            current_molecule = molecule_match.group(1).strip()
+            molecules.setdefault(current_molecule, [])
+        if current_molecule is None:
+            continue
+        name_match = re.search(r"(?:^|;)\s*MOLECULE:\s*([^;]+)", text, re.I)
+        if name_match:
+            molecules[current_molecule].append(name_match.group(1).strip())
+        chain_match = re.search(r"(?:^|;)\s*CHAIN:\s*([^;]+)", text, re.I)
+        if chain_match:
+            chain_ids = [item.strip() for item in chain_match.group(1).split(",") if item.strip()]
+            description = "; ".join(molecules[current_molecule])
+            if description:
+                for chain_id in chain_ids:
+                    molecules.setdefault(f"chain:{chain_id}", []).append(description)
+    return {
+        key.removeprefix("chain:"): "; ".join(dict.fromkeys(names))
+        for key, names in molecules.items()
+        if key.startswith("chain:") and names
+    }
+
+
 def load_structure(path: Path) -> ParsedStructure:
     if not path.exists():
         raise PipelineError(f"Structure file does not exist: {path}")
@@ -199,7 +254,10 @@ def load_structure(path: Path) -> ParsedStructure:
     models = list(structure.get_models())
     if not models:
         raise PipelineError("Structure contains no coordinate models")
-    return ParsedStructure(path, fmt, structure, models[0], raw, label_lookup, secondary)
+    return ParsedStructure(
+        path, fmt, structure, models[0], raw, label_lookup, secondary,
+        _parse_chain_descriptions(path, fmt),
+    )
 
 
 def standard_residues(chain: Any) -> list[Any]:
@@ -294,9 +352,17 @@ def best_chain_mapping(
     parsed: ParsedStructure,
     protein: ProteinContext,
     preferred_chains: Iterable[str] | None = None,
+    allowed_chains: Iterable[str] | None = None,
 ) -> ChainMapping:
-    preferred = list(dict.fromkeys(preferred_chains or []))
-    available = [chain.id for chain in parsed.model if standard_residues(chain)]
+    allowed = set(allowed_chains or [])
+    preferred = [
+        item for item in dict.fromkeys(preferred_chains or [])
+        if not allowed or item in allowed
+    ]
+    available = [
+        chain.id for chain in parsed.model
+        if standard_residues(chain) and (not allowed or chain.id in allowed)
+    ]
     order = preferred + [item for item in available if item not in preferred]
     mappings: list[ChainMapping] = []
     for chain_id in order:
@@ -309,12 +375,183 @@ def best_chain_mapping(
     return max(
         mappings,
         key=lambda item: (
-            item.observed_ecd_coverage,
+            item.observed_ecd_coverage * item.identity,
             item.identity,
+            item.observed_ecd_coverage,
             -item.max_internal_gap,
             -item.engineered_mismatches,
         ),
     )
+
+
+def _looks_like_immunoglobulin(sequence: str) -> bool:
+    if not 65 <= len(sequence) <= 300:
+        return False
+    cysteines = [index for index, residue in enumerate(sequence) if residue == "C"]
+    try:
+        conserved_pair = any(
+            12 <= first <= 48 and 58 <= second <= 135
+            for first in cysteines
+            for second in cysteines
+            if second - first >= 35
+        )
+    except ValueError:
+        return False
+    aromatic = any(residue in "WFY" for residue in sequence[25:70])
+    return conserved_pair and aromatic
+
+
+def _interface_residue_pairs(chain_a: Any, chain_b: Any, cutoff: float = 8.0) -> int:
+    residues_a = standard_residues(chain_a)
+    residues_b = standard_residues(chain_b)
+    atoms_b = [
+        atom for residue in residues_b for atom in residue
+        if atom.element.upper() not in {"H", "D"}
+    ]
+    if not atoms_b:
+        return 0
+    search = NeighborSearch(atoms_b)
+    pairs: set[tuple[tuple[str, int, str], tuple[str, int, str]]] = set()
+    for residue_a in residues_a:
+        for atom in residue_a:
+            if atom.element.upper() in {"H", "D"}:
+                continue
+            for residue_b in search.search(atom.coord, cutoff, level="R"):
+                pairs.add((residue_a.id, residue_b.id))
+    return len(pairs)
+
+
+def infer_antigen_chain(
+    parsed: ParsedStructure,
+    preferred_chain: str | None = None,
+) -> dict[str, Any]:
+    """Best-effort target-chain selection for coordinate-only structures.
+
+    Entity descriptions and antibody-target interfaces are used when available.
+    The result includes the fallback and uncertainty so selection is auditable.
+    """
+    chains = {
+        str(chain.id): chain_sequence(chain)
+        for chain in parsed.model.get_chains()
+        if len(standard_residues(chain)) >= 8
+    }
+    if not chains:
+        raise PipelineError("Uploaded structure contains no protein chain with at least 8 residues")
+    if preferred_chain:
+        if preferred_chain not in chains:
+            raise PipelineError(f"Requested chain {preferred_chain!r} is not a usable protein chain")
+        return {
+            "chain_id": preferred_chain,
+            "method": "user specified",
+            "confidence": "explicit",
+            "warnings": [],
+            "scores": {},
+            "antibody_chains": [],
+        }
+    if len(chains) == 1:
+        return {
+            "chain_id": next(iter(chains)),
+            "method": "single protein chain",
+            "confidence": "high",
+            "warnings": [],
+            "scores": {},
+            "antibody_chains": [],
+        }
+
+    descriptions = {
+        chain_id: parsed.chain_descriptions.get(chain_id, "")
+        for chain_id in chains
+    }
+    antibody_terms = re.compile(
+        r"\b(?:antibody|immunoglobulin|heavy chain|light chain|fab|fc region|"
+        r"variable region|scfv|nanobody|vhh)\b",
+        re.I,
+    )
+    antigen_terms = re.compile(r"\b(?:antigen|ligand|target protein)\b", re.I)
+    described_antibody = {
+        chain_id for chain_id, description in descriptions.items()
+        if antibody_terms.search(description)
+    }
+    antibody_chains = described_antibody or {
+        chain_id for chain_id, sequence in chains.items()
+        if _looks_like_immunoglobulin(sequence)
+    }
+    antigen_annotated = {
+        chain_id for chain_id, description in descriptions.items()
+        if antigen_terms.search(description) and chain_id not in antibody_chains
+    }
+    candidates = [chain_id for chain_id in chains if chain_id not in antibody_chains]
+    if not candidates:
+        candidates = list(chains)
+    scores: dict[str, dict[str, Any]] = {}
+    for chain_id in candidates:
+        contacts = {
+            antibody_id: _interface_residue_pairs(
+                parsed.model[chain_id], parsed.model[antibody_id]
+            )
+            for antibody_id in antibody_chains
+            if antibody_id != chain_id
+        }
+        scores[chain_id] = {
+            "length": len(chains[chain_id]),
+            "antigen_annotation": chain_id in antigen_annotated,
+            "antibody_interface_residue_pairs": sum(contacts.values()),
+            "contacts_by_antibody_chain": contacts,
+            "description": descriptions[chain_id],
+        }
+    selected = max(
+        candidates,
+        key=lambda chain_id: (
+            chain_id in antigen_annotated,
+            scores[chain_id]["antibody_interface_residue_pairs"],
+            scores[chain_id]["length"],
+            chain_id,
+        ),
+    )
+    warnings: list[str] = []
+    if not antibody_chains and antigen_annotated:
+        method = "antigen entity annotation"
+        confidence = "high" if len(antigen_annotated) == 1 else "medium"
+        if len(antigen_annotated) > 1:
+            warnings.append(
+                "Multiple protein chains are annotated as antigen; the interface and length ranking was used."
+            )
+    elif not antibody_chains:
+        warnings.append(
+            "No antibody-chain annotation or immunoglobulin sequence signature was identified; "
+            "the longest protein chain was selected as a best-effort target."
+        )
+        method = "longest-chain fallback"
+        confidence = "low"
+    elif scores[selected]["antibody_interface_residue_pairs"] == 0 and not antigen_annotated:
+        warnings.append(
+            "No antibody-target interface contacts were detected; chain selection used protein length."
+        )
+        method = "antibody annotation plus length fallback"
+        confidence = "low"
+    else:
+        method = (
+            "entity annotation and antibody interface"
+            if described_antibody else "immunoglobulin sequence signature and interface"
+        )
+        ranked_scores = sorted(
+            (score["antibody_interface_residue_pairs"] for score in scores.values()),
+            reverse=True,
+        )
+        confidence = "high" if len(ranked_scores) == 1 or ranked_scores[0] > ranked_scores[1] * 1.2 else "medium"
+        if len(ranked_scores) > 1 and confidence == "medium":
+            warnings.append(
+                "Multiple non-antibody protein chains have similar interface evidence; "
+                "the top-ranked chain was selected."
+            )
+    return {
+        "chain_id": selected,
+        "method": method,
+        "confidence": confidence,
+        "warnings": warnings,
+        "scores": scores,
+        "antibody_chains": sorted(antibody_chains),
+    }
 
 
 class _FirstModelSelect(Select):
@@ -401,28 +638,32 @@ def write_mapped_ecd_pdb(
     return path
 
 
-def calculate_sasa(parsed: ParsedStructure, workdir: Path) -> tuple[dict[tuple[str, int, str], tuple[float, float]], str]:
-    """Production SASA: one deterministic, pinned-radius implementation."""
+def calculate_sasa(
+    parsed: ParsedStructure, workdir: Path, target_chain_id: str
+) -> tuple[dict[tuple[str, int, str], tuple[float, float]], str]:
+    """Measure the selected protein chain without crystallization solvent or partners."""
+    chain = deepcopy(parsed.model[target_chain_id])
+    for residue in list(chain):
+        if not is_aa(residue, standard=False):
+            chain.detach_child(residue.id)
     calculator = ShrakeRupley(
         probe_radius=1.4,
         n_points=960,
         radii_dict=dict(TIEN_DSSP_RADII),   # pin to the reference-table radius set
     )
-    calculator.compute(parsed.model, level="A")
+    calculator.compute(chain, level="A")
     output: dict[tuple[str, int, str], tuple[float, float]] = {}
-    for chain in parsed.model:
-        for residue in chain:
-            if residue.id[0] == "W":
-                continue
-            total = sum(float(getattr(atom, "sasa", 0.0)) for atom in residue)
-            side = sum(
-                float(getattr(atom, "sasa", 0.0))
-                for atom in residue
-                if atom.name not in BACKBONE_ATOMS
-            )
-            output[(chain.id, int(residue.id[1]), _clean_icode(residue.id[2]))] = (total, side)
+    for residue in chain:
+        total = sum(float(getattr(atom, "sasa", 0.0)) for atom in residue)
+        side = sum(
+            float(getattr(atom, "sasa", 0.0))
+            for atom in residue
+            if atom.name not in BACKBONE_ATOMS
+        )
+        output[(chain.id, int(residue.id[1]), _clean_icode(residue.id[2]))] = (total, side)
     return output, (
-        "Bio.PDB Shrake-Rupley fallback 1.4A/960 points, "
+        "Bio.PDB Shrake-Rupley 1.4A/960 points on the isolated selected protein chain "
+        "(solvent, ions, ligands and partner chains excluded), "
         "element radii pinned to the Tien-2013/DSSP set (C 1.80 N 1.60 O 1.40 S 1.85)"
     )
 
@@ -567,10 +808,16 @@ def analyze_residues(
     rsasa_threshold: float = config.RSASA_THRESHOLD,
     sidechain_sasa_threshold: float = config.SIDECHAIN_SASA_THRESHOLD_A2,
     plddt_threshold: float = 70.0,
+    ignored_positions: set[int] | None = None,
 ) -> tuple[list[ResidueRecord], dict[str, Any]]:
-    sasa, sasa_method = calculate_sasa(parsed, workdir)
+    ignored = set(ignored_positions or ())
+    sasa, sasa_method = calculate_sasa(parsed, workdir, mapping.chain_id)
     af3_plddt = _af3_atom_plddt(parsed, confidence)
-    target_residue_ids = {id(residue) for residue in mapping.uniprot_to_residue.values()}
+    target_residue_ids = {
+        id(residue)
+        for position, residue in mapping.uniprot_to_residue.items()
+        if position not in ignored
+    }
 
     partner_atoms: list[Any] = []
     glycan_atoms: list[Any] = []
@@ -580,7 +827,10 @@ def analyze_residues(
                 continue
             if residue.resname.upper() in GLYCAN_RESNAMES:
                 glycan_atoms.extend(list(residue.get_atoms()))
-            if chain.id != mapping.chain_id or residue.id[0] != " ":
+            if (
+                (chain.id != mapping.chain_id and is_aa(residue, standard=False))
+                or residue.resname.upper() in GLYCAN_RESNAMES
+            ):
                 partner_atoms.extend(list(residue.get_atoms()))
     partner_search = NeighborSearch(partner_atoms) if partner_atoms else None
     glycan_search = NeighborSearch(glycan_atoms) if glycan_atoms else None
@@ -588,7 +838,7 @@ def analyze_residues(
     ecd_residues = [
         (position, residue)
         for position, residue in mapping.uniprot_to_residue.items()
-        if protein.ecd_start <= position <= protein.ecd_end
+        if protein.ecd_start <= position <= protein.ecd_end and position not in ignored
     ]
     ecd_residues.sort(key=lambda pair: pair[0])
     ca_positions = [residue["CA"].coord for _, residue in ecd_residues if residue.has_id("CA")]
@@ -614,7 +864,11 @@ def analyze_residues(
     position_to_record: dict[int, ResidueRecord] = {}
     for query_index, residue in enumerate(mapping.residues):
         uniprot_pos = mapping.query_to_uniprot.get(query_index)
-        if uniprot_pos is None or not (protein.ecd_start <= uniprot_pos <= protein.ecd_end):
+        if (
+            uniprot_pos is None
+            or uniprot_pos in ignored
+            or not (protein.ecd_start <= uniprot_pos <= protein.ecd_end)
+        ):
             continue
         aa = _one_letter(residue.resname)
         auth_seq = int(residue.id[1])
@@ -760,12 +1014,13 @@ def analyze_residues(
         "sidechain_sasa_threshold_A2": sidechain_sasa_threshold,
         "sidechain_sasa_role": "descriptive_only_not_surface_gate",
         "plddt_threshold": plddt_threshold if predicted else None,
-        "interface_definition": "any target heavy atom within 5.0 A of a non-target-chain or hetero residue",
+        "interface_definition": "any target heavy atom within 5.0 A of a partner protein or recognized glycan residue",
         "glycan_shield_definition": "any target heavy atom within 8.0 A of a recognized glycan residue",
         "flexible_terminal_ranges": [
             {"start": start, "end": end} for start, end in flexible_ranges
         ],
         "mapped_ecd_residues": len(records),
+        "ignored_engineered_mismatch_positions": sorted(ignored),
     }
     return records, metadata
 
