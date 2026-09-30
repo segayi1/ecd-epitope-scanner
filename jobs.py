@@ -224,12 +224,20 @@ class JobRunner:
                 )
 
             result = run_pipeline(request, progress)
+            design_summary = result.get("design_summary") or {}
+            recommendation_status = design_summary.get("recommendation_status")
+            completion_message = "Analysis complete"
+            if recommendation_status == "BLOCKED_EXTERNAL_EVIDENCE":
+                outcome = (design_summary.get("recommendation_diagnostics") or {}).get(
+                    "outcome", "FORMAL_RECOMMENDATIONS_BLOCKED"
+                )
+                completion_message = f"Analysis complete; no formal panel: {outcome}. See recommendation diagnostics."
             self.store.update(
                 job_id,
                 status="COMPLETE",
                 stage="COMPLETE",
                 progress=1.0,
-                message="Analysis complete",
+                message=completion_message,
                 result_json=result,
                 error=None,
             )

@@ -60,8 +60,10 @@ def build_epitope_sectors(
     params = parameters or {}
     min_area = float(params.get("minimum_sector_area_a2", 50.0))
     min_residues = max(1, int(params.get("minimum_sector_residues", 4)))
-    max_geodesic = float(params.get("maximum_geodesic_diameter_a", 35.0))
-    max_euclidean = float(params.get("maximum_euclidean_diameter_a", 30.0))
+    max_geodesic = float(params.get("maximum_geodesic_diameter_a", 26.0))
+    max_euclidean = float(params.get("maximum_euclidean_diameter_a", 18.0))
+    if not all(math.isfinite(v) and v > 0 for v in (max_geodesic, max_euclidean)):
+        raise ValueError("Display region diameter limits must be positive and finite")
     by_position = {item.residue.uniprot_pos: item for item in surface}
     epi = {item.residue.uniprot_pos: item for item in epitope}
     components = _components(graph)
@@ -158,14 +160,49 @@ def build_epitope_sectors(
             key=lambda center: (distances[center].get(position, float("inf")), center),
         )
         groups_by_center[owner].add(position)
-    groups = [set(group) for group in groups_by_center.values() if group]
+    coordinates_by_position = {
+        p: np.asarray(records[p].ca, dtype=float)
+        for p in graph if p in records and records[p].ca is not None
+    }
+
+    def bounded(group: set[int]) -> bool:
+        return all(
+            distances[left].get(right, float("inf")) <= max_geodesic
+            and (
+                left not in coordinates_by_position or right not in coordinates_by_position
+                or float(np.linalg.norm(coordinates_by_position[left] - coordinates_by_position[right])) <= max_euclidean
+            )
+            for left in group for right in group if left < right
+        )
+
+    # The requested count is a display target. Connectivity and physical extent
+    # are invariants: never join a tail and core merely to keep seven colors.
+    # Growing through the induced graph also repairs disconnected Voronoi cells.
+    groups = []
+    for original in groups_by_center.values():
+        remaining = set(original)
+        while remaining:
+            seed = min(remaining)
+            group = {seed}
+            remaining.remove(seed)
+            while True:
+                frontier = {
+                    neighbor for position in group for neighbor in graph.get(position, {})
+                    if neighbor in remaining
+                }
+                feasible = [p for p in frontier if bounded(group | {p})]
+                if not feasible:
+                    break
+                chosen = min(feasible, key=lambda p: (distances[seed].get(p, float("inf")), p))
+                group.add(chosen)
+                remaining.remove(chosen)
+            groups.append(group)
 
     def adjacent(left: set[int], right: set[int]) -> bool:
         return any(neighbor in right for position in left for neighbor in graph.get(position, {}))
 
-    # Merge graph-adjacent undersized groups before enforcing the requested
-    # maximum. A one-residue epitope island is evidence attached to a surface
-    # neighborhood, not a useful standalone experimental sector.
+    # Merge only if the union remains connected and bounded. Small regions
+    # remain auditable when no safe merge exists; count never overrides geometry.
     groups.sort(
         key=lambda group: (
             -sum(by_position.get(p).mapped_surface_area_a2 for p in group if p in by_position),
@@ -176,7 +213,8 @@ def build_epitope_sectors(
         mergeable = [
             index
             for index, group in enumerate(groups)
-            if any(adjacent(group, other) for other in groups if other is not group)
+            if any(adjacent(group, other) and bounded(group | other)
+                   for other in groups if other is not group)
         ]
         if not mergeable:
             break
@@ -204,7 +242,8 @@ def build_epitope_sectors(
             ),
         )
         tiny = groups.pop(tiny_index)
-        adjacent_targets = [i for i, group in enumerate(groups) if adjacent(tiny, group)]
+        adjacent_targets = [i for i, group in enumerate(groups)
+                            if adjacent(tiny, group) and bounded(tiny | group)]
         target_index = min(
             adjacent_targets,
             key=lambda i: (
@@ -241,6 +280,10 @@ def build_epitope_sectors(
         flags = [] if islands else ["LOW_EPITOPE_PRIOR"]
         if area < min_area:
             flags.append("LOW_SURFACE_AREA")
+        if len(group) < min_residues:
+            flags.append("SMALL_DISPLAY_REGION")
+        if len(groups) > max(1, max_sectors):
+            flags.append("DISPLAY_COUNT_EXPANDED_FOR_GEOMETRY")
         # Diameter is a molecular-surface geodesic and therefore uses the full
         # surface graph; artificial sector boundaries must not lengthen it.
         group_distances = {position: distances[position] for position in group}
@@ -274,6 +317,8 @@ def build_epitope_sectors(
             flags.append("GEODESIC_DIAMETER_EXCEEDED")
         if euclidean_diameter > max_euclidean:
             flags.append("EUCLIDEAN_DIAMETER_EXCEEDED")
+        if len(induced_reachable) != len(group) or not bounded(group):
+            raise ValueError("Display region violates connectivity or diameter constraints")
         center = min(
             group,
             key=lambda position: (

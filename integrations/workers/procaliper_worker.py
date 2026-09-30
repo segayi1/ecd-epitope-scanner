@@ -12,10 +12,9 @@ from pathlib import Path
 
 from Bio import __version__ as biopython_version
 from Bio.Data.PDBData import protein_letters_3to1
-from Bio.PDB import PDBIO, PDBParser
+from Bio.PDB import PDBIO, PDBParser, Select
 from Bio.PDB.Polypeptide import is_aa
 from Bio.PDB.SASA import ShrakeRupley
-from Bio.PDB.Select import Select
 
 MAX_ASA = {
     "A": 129.0,

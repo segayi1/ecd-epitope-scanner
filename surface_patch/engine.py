@@ -64,7 +64,10 @@ def run_surface_patch_v2(
             excluded_objects = {id(r) for p, r in ecd_residues.items() if p in excluded}
         # Omit boundary samples but retain their atoms as occluders. This is a
         # conservative whole-residue cap guard, not a reconstructed cut mesh.
-        omitted = excluded | set(reliability['qc']['boundary_positions'])
+        omitted = excluded | set(reliability['qc']['boundary_positions']) | {
+            p for p, row in reliability_rows.items()
+            if not row.get('use_for_3d_footprint', True)
+        }
         ecd_residues = {p: r for p, r in ecd_residues.items() if p not in omitted}
     surface = backend.build(
         structure,

@@ -407,7 +407,9 @@ async function submitAf3(event) {
 /* ---------------- viewport (3D) ---------------- */
 
 function residueQuery(residue) {
-  if (residue.label_seq_id != null && residue.label_chain_id) {
+  // ECD export rebuilds label_seq_id from 1; records retain the input AF3
+  // labels. Author IDs and insertion codes survive the export unchanged.
+  if (residue.auth_seq_id == null || !residue.chain_id) {
     return { label_asym_id: residue.label_chain_id, label_seq_id: residue.label_seq_id };
   }
   const q = { auth_asym_id: residue.chain_id, auth_seq_id: residue.auth_seq_id };
@@ -462,9 +464,10 @@ function beadsColorFor(residue) {
   if (state.previewMode === "custom" && state.customMutations.some((m) => m.position === residue.uniprot_pos)) return "#8a2f1d";
   if (designPos.has(residue.uniprot_pos)) return LAYER_META.design.color;
   if (state.layers.has("interface") && residue.interface) return LAYER_META.interface.color;
-  if (state.layers.has("regions") && residue.region_id != null) {
+  if (state.layers.has("regions")) {
     const region = state.result.regions.find((r) => r.id === residue.region_id);
     if (region) return state.selectedRegion && state.selectedRegion !== region.id ? "#C8CDD1" : region.color;
+    return "#7c909d";
   }
   if (state.layers.has("folding") && residue.folding_screen_pass) return LAYER_META.folding.color;
   if (state.layers.has("surface") && residue.surface_accessible) return LAYER_META.surface.color;
@@ -532,8 +535,8 @@ async function paintMolstar() {
     renderDesignSurfaceCallout();
     return;
   }
-  if (state.layers.has("surface")) add(state.result.residues.filter((r) => r.surface_accessible), LAYER_META.surface.color);
-  if (state.layers.has("folding")) add(state.result.residues.filter((r) => r.folding_screen_pass), LAYER_META.folding.color);
+  if (state.layers.has("surface") && !state.layers.has("regions")) add(state.result.residues.filter((r) => r.surface_accessible), LAYER_META.surface.color);
+  if (state.layers.has("folding") && !state.layers.has("regions")) add(state.result.residues.filter((r) => r.folding_screen_pass), LAYER_META.folding.color);
   if (state.layers.has("interface")) {
     add(state.result.residues.filter((r) => r.interface), LAYER_META.interface.color,
       { sideChain: true, representation: "ball-and-stick", representationColor: LAYER_META.interface.color });
@@ -1019,6 +1022,12 @@ function criteriaText() {
 }
 
 function renderStep3() {
+  if (state.result.joint_v4_ml) {
+    const note = $("region-list").previousElementSibling;
+    if (note?.classList.contains("note")) note.textContent = state.lang === "zh"
+      ? "颜色表示空间连续、直径受限的显示区域；区域数可因几何约束增加。重叠足迹是假设层，不是已验证表位。AF3 位置不可靠的末端保留在结构中，但不参与三维分区；序列相距远不等于空间相距远。"
+      : "Colors represent connected display regions with bounded diameters; geometry may require extra regions. Overlapping footprints are hypotheses, not validated epitopes. Unreliable AF3 termini remain in the structure and are omitted from 3D partitioning; sequence distance is not spatial distance.";
+  }
   if (state.result.partitioning?.partition_mode === "surface_v2") {
     const note = $("region-list").previousElementSibling;
     if (note?.classList.contains("note")) note.textContent = state.lang === "zh"
@@ -1037,7 +1046,7 @@ function renderStep3() {
       <span class="swatch" style="background:${h(region.color)}"></span>
       <span><b>${h(region.partition_mode === "compact_surface_face" ? t("region.surfaceFace", "表面区域") : t("region.patch", "补丁"))} ${region.id} · ${h(region.name)}</b><br>
       <span class="muted">${h(region.structural_character)} · ${h(region.membrane_position || "")}${h(tier)}${h(accessibility)} · ${h(mutations)}</span></span>
-      <span class="grow"></span><span class="muted">${(region.envelope_residues?.length || region.residues.length)} ${h(t("region.surfaceSites", "表面残基"))}<br>${(region.mutable_residues?.length || region.residues.length)} ${h(t("region.mutableSites", "可突变"))}</span>
+      <span class="grow"></span><span class="muted">${(region.envelope_residues?.length ?? region.residues.length)} ${h(t("region.surfaceSites", "表面残基"))}<br>${(region.mutable_residues?.length ?? region.residues.length)} ${h(t("region.mutableSites", "可突变"))}</span>
     </div><div class="note" style="margin:0 0 10px 20px">${h(region.rationale)}${region.footprint_residues?.length ? ` · ${h(t("region.footprint", "局部足迹"))} ${region.footprint_residues.length} ${h(t("region.sites", "位点"))}` : ""}${region.candidate_footprints?.length ? ` · ${region.candidate_footprints.length} ${h(t("region.candidateFootprints", "个候选足迹"))}` : ""}${region.partition_basis ? ` · ${h(t("region.basis", "依据"))}: ${h(region.partition_basis)}` : ""}</div>`;
   }).join("") || `<div class="empty">${h(t("region.none", "没有可辩护的结构分区。"))}</div>`;
   const v2 = state.result.surface_v2;

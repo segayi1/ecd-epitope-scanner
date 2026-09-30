@@ -25,10 +25,12 @@ const MolstarView = (() => {
   async function waitReady(timeoutMs = 15000) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
-      if (plugin && plugin.plugin && plugin.plugin.managers) return;
+      if (plugin && plugin.plugin && plugin.plugin.managers
+          && plugin.assemblyRef
+          && plugin.plugin.managers.structure.hierarchy.current.structures.length > 0) return;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error("Mol* initialization timed out");
+    throw new Error("Mol* structure loading timed out");
   }
 
   /* Mol* defaults ship with distance fog (intensity 15) and far-plane

@@ -385,6 +385,29 @@ def classify_reliability(
             ):
                 row["state"] = "CONDITIONALLY_FOLDED"
                 row["quality_flags"].append("CONDITIONAL_FOLD_HYPOTHESIS")
+    # Coordinate eligibility is separate from a biological disorder diagnosis.
+    # AF3 can place a poorly anchored terminal chain near a folded domain even
+    # when there is not enough evidence to call that chain an IDR. Preserve its
+    # state and sequence screening, but do not use that placement as a footprint.
+    uncertain_geometry = set()
+    if cfg["enabled"] and predicted:
+        for run in _runs(rows, lambda r: r["state"] == "UNCERTAIN"):
+            if run[0]["state"] != "UNCERTAIN":
+                continue
+            terminal_run = (
+                run[0]["residue_id"] == protein.ecd_start
+                or run[-1]["residue_id"] == protein.ecd_end
+            )
+            supported = (
+                terminal_run
+                and all(r["plddt"] is not None and r["plddt"] < cfg["structured_plddt"] for r in run)
+                and np.mean([r["contact_count"] <= cfg["low_contacts"] for r in run]) >= 0.8
+                and any(r["mean_core_pae"] is not None and r["mean_core_pae"] >= cfg["core_pae_threshold"] for r in run)
+            )
+            if supported:
+                for row in run:
+                    uncertain_geometry.add(row["residue_id"])
+                    row["quality_flags"].append("TERMINAL_COORDINATES_UNRELIABLE_FOR_3D")
     excluded = set()
     for row in rows:
         row["use_for_surface_mesh"] = row["state"] not in {
@@ -395,18 +418,21 @@ def classify_reliability(
         row["use_for_epitope_screening"] = True
         if not row["use_for_surface_mesh"]:
             excluded.add(row["residue_id"])
+    geometry_excluded = excluded | uncertain_geometry
     boundaries = {
         row["residue_id"]
         for row in rows
         if row["use_for_surface_mesh"]
+        and row["residue_id"] not in geometry_excluded
         and any(
-            abs(row["residue_id"] - p) <= cfg["boundary_residues"] for p in excluded
+            abs(row["residue_id"] - p) <= cfg["boundary_residues"] for p in geometry_excluded
         )
     }
     for row in rows:
         row["boundary_cap_flag"] = row["residue_id"] in boundaries
         row["use_for_3d_footprint"] = (
             row["use_for_surface_mesh"] and not row["boundary_cap_flag"]
+            and row["residue_id"] not in uncertain_geometry
         )
         if row["boundary_cap_flag"]:
             row["quality_flags"].append("ARTIFICIAL_BOUNDARY_POSSIBLE")
@@ -500,7 +526,7 @@ def classify_reliability(
                     )
                 )
     qc = dict(
-        classification_version="reliability_rules_v1",
+        classification_version="reliability_rules_v2",
         parameters=cfg,
         enabled=cfg["enabled"],
         predicted=predicted,
@@ -508,6 +534,8 @@ def classify_reliability(
         sequence_predictor=sequence_provenance or {"status": "unavailable"},
         state_counts=dict(Counter(r["state"] for r in rows)),
         excluded_positions=sorted(excluded),
+        footprint_excluded_positions=sorted(geometry_excluded),
+        uncertain_terminal_geometry_positions=sorted(uncertain_geometry),
         boundary_positions=sorted(boundaries),
         idr_candidate_count=len(candidates),
         smoothing="centered median evidence diagnostic; classification uses segment consensus, not score thresholds",
