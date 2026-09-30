@@ -227,3 +227,10 @@ def test_empty_order_pool_reports_hypothesis_quota_deficits():
     audit={}
     assert hypothesis_balanced_shortlist([], [SimpleNamespace(hypothesis_id="H0")], {"orders":[2,3]}, audit)==[]
     assert [(row["order"],row["quota_deficits"]["H0"]) for row in audit["global_order_pools"]]==[(2,2),(3,1)]
+
+
+def test_missing_predicted_pae_is_not_low_uncertainty():
+    surface,records,graph = hierarchy_fixture()
+    _,families,hypotheses = build_hierarchy(surface,records,[],graph,predicted=True,confidence={"unmapped":True})
+    assert all(f.structural_uncertainty["pae_band"]=="UNAVAILABLE" for f in families)
+    assert len(hypotheses)==2

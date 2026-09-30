@@ -48,6 +48,7 @@ def build_hierarchy(surface_result, records, evidence, graph, parameters=None, *
         area = {p: max(f.residue_surface_area.get(p, 0.0) for f in members) for p in extended}
         domains = sorted({records_by_position[p].domain for p in nominal_positions if p in records_by_position})
         states = sorted({records_by_position[p].coordinate_status for p in nominal_positions if p in records_by_position})
+        local_pae = median_region_pae(sorted(nominal_positions), records, confidence) if predicted and confidence else None
         families.append(FootprintFamily(
             family_id=f"HF_C{center:06d}", center_vertex_id=center,
             member_footprint_ids=[f.footprint_id for f in members],
@@ -60,7 +61,7 @@ def build_hierarchy(surface_result, records, evidence, graph, parameters=None, *
             reliability_states=states, mean_normal=nominal.mean_normal,
             structural_uncertainty={
                 "contains_review_positions": any(records_by_position[p].review_reasons for p in nominal_positions if p in records_by_position),
-                "pae_band": ("HIGH" if (median_region_pae(sorted(nominal_positions), records, confidence) or 0) >= 15 else "LOW") if predicted and confidence else "UNAVAILABLE",
+                "pae_band": ("HIGH" if local_pae >= 15 else "LOW") if local_pae is not None else "UNAVAILABLE",
             },
         ))
     allowed = set(graph)
@@ -85,6 +86,10 @@ def build_hierarchy(surface_result, records, evidence, graph, parameters=None, *
         if len(a.domains) != 1 or a.domains != b.domains or a.reliability_states != b.reliability_states:
             return False
         if a.structural_uncertainty != b.structural_uncertainty:
+            return False
+        if predicted and a.structural_uncertainty.get("pae_band") == "UNAVAILABLE":
+            return False
+        if not a.reliability_states or "NOT_ASSESSED" in a.reliability_states:
             return False
         if a.structural_uncertainty.get("pae_band") == "HIGH":
             return False
