@@ -1,0 +1,98 @@
+{
+  "default_threshold": 0.25,
+  "runs": [
+    {
+      "threshold": 0.15,
+      "candidate_count": 258,
+      "formal_candidate_count": 28,
+      "review_candidate_count": 0,
+      "added_vs_025": [
+        42,
+        53,
+        62,
+        90,
+        115,
+        124,
+        130,
+        141,
+        142,
+        148,
+        151,
+        157
+      ],
+      "selected_candidate_ids": [
+        "V41_02a4b175a8646afb",
+        "V41_22469e184799817f",
+        "V41_185bd214ea3b8662"
+      ],
+      "exclusion_counts": {
+        "COMBINATION_REJECT": 61,
+        "EXPLORATORY_FOUR_SITE_NOT_PRIMARY": 60,
+        "HIGHER_ORDER_REQUIRES_FOLDX": 133,
+        "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN": 140,
+        "MODEL_DISAGREEMENT": 9,
+        "SPURS_ONLY_REVIEW_REQUIRED": 155
+      },
+      "worker_failures": {},
+      "selected_count": 3,
+      "stop_reason": "NO_POSITIVE_NET_INFORMATION_GAIN"
+    },
+    {
+      "threshold": 0.2,
+      "candidate_count": 250,
+      "formal_candidate_count": 28,
+      "review_candidate_count": 0,
+      "added_vs_025": [
+        53,
+        62,
+        124,
+        130,
+        141,
+        142,
+        148,
+        151,
+        157
+      ],
+      "selected_candidate_ids": [
+        "V41_22469e184799817f",
+        "V41_02a4b175a8646afb",
+        "V41_185bd214ea3b8662"
+      ],
+      "exclusion_counts": {
+        "COMBINATION_REJECT": 56,
+        "EXPLORATORY_FOUR_SITE_NOT_PRIMARY": 60,
+        "HIGHER_ORDER_REQUIRES_FOLDX": 130,
+        "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN": 138,
+        "MODEL_DISAGREEMENT": 9,
+        "SASA_STRUCTURE_CONTEXT_CLASSIFICATION_CHANGED": 8,
+        "SPURS_ONLY_REVIEW_REQUIRED": 152
+      },
+      "worker_failures": {},
+      "selected_count": 3,
+      "stop_reason": "NO_POSITIVE_NET_INFORMATION_GAIN"
+    },
+    {
+      "threshold": 0.25,
+      "candidate_count": 245,
+      "formal_candidate_count": 26,
+      "review_candidate_count": 0,
+      "added_vs_025": [],
+      "selected_candidate_ids": [
+        "V41_d98b58d4a8f0a118",
+        "V41_02a4b175a8646afb",
+        "V41_7e454b8a038e7110"
+      ],
+      "exclusion_counts": {
+        "COMBINATION_REJECT": 59,
+        "EXPLORATORY_FOUR_SITE_NOT_PRIMARY": 60,
+        "HIGHER_ORDER_REQUIRES_FOLDX": 125,
+        "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN": 134,
+        "MODEL_DISAGREEMENT": 9,
+        "SPURS_ONLY_REVIEW_REQUIRED": 144
+      },
+      "worker_failures": {},
+      "selected_count": 3,
+      "stop_reason": "NO_POSITIVE_NET_INFORMATION_GAIN"
+    }
+  ]
+}
