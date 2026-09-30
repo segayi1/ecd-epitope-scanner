@@ -57,6 +57,7 @@ from .models import (
 )
 from .optimizer import select_panel
 from .reporting import write_v4_outputs
+from .risk import annotate_candidate_risks
 from .sectors import build_epitope_sectors
 from .surface_snapshot import write_surface_graph_snapshot
 
@@ -725,6 +726,7 @@ def run_joint_v4_ml(
     surface_v2_result: Any | None = None,
     membrane_anchor: tuple[float, float, float] | None = None,
     membrane_normal: tuple[float, float, float] | None = None,
+    assay_orientation_geometry: dict[str, Any] | None = None,
     confidence: dict[str, Any] | None = None,
     assay_format: str | None = None,
     disable_external_engines: bool = False,
@@ -932,6 +934,7 @@ def run_joint_v4_ml(
         hypotheses, records,
         membrane_anchor=membrane_anchor,
         membrane_normal=membrane_normal,
+        assay_orientation_geometry=assay_orientation_geometry,
         confidence=confidence,
         predicted=structure_type in {"alphafold", "predicted"},
     )
@@ -997,6 +1000,7 @@ def run_joint_v4_ml(
         params["foldx_confirmation"],
         position_map,
     )
+    annotate_candidate_risks(candidates, records, hypotheses)
     allow_spurs_only = bool(params.get("allow_spurs_only_final", False))
     minimum_gain = float(params["panel_optimizer"].get("minimum_coverage_gain", 0.05))
     by_sector: dict[str, list[V4Candidate]] = {}
@@ -1081,6 +1085,7 @@ def run_joint_v4_ml(
         sectors=sectors,
         surface_areas={item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface},
         hypotheses=hypotheses,
+        risk_penalty_weights=params["panel_optimizer"].get("risk_penalty_weights", {}),
     )
     selected_sector_ids = {item.sector_id for item in selected}
     reported_uncovered = {item["sector_id"] for item in panel.uncovered_components}
@@ -1117,7 +1122,7 @@ def run_joint_v4_ml(
     warnings = ["Joint V4-ML thresholds are uncalibrated engineering heuristics."]
     if assay_format == "cell_surface":
         warnings.append(
-            "Membrane-relative geometry is an anchor-axis surrogate; intermembrane distance and Fab-specific reach remain unknown."
+            "Cell-surface assay accessibility is unassessed: membrane-relative geometry is a structural proxy, while intermembrane distance and receptor/Fab-specific reach remain unknown."
         )
     if sasa_conflicts:
         warnings.append(

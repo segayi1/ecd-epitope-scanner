@@ -47,10 +47,13 @@ def hypotheses_from_surface_v2(
     for footprint in candidate_footprints:
         if "ERROR_DISCONNECTED_SURFACE" in footprint.quality_flags:
             continue
+        footprint_residues = set(
+            getattr(footprint, "residues", getattr(footprint, "residue_surface_area", {}).keys())
+        )
         weights = {
             int(position): max(0.0, float(area))
             for position, area in footprint.residue_surface_area.items()
-            if float(area) > 0 and int(position) in set(footprint.residues)
+            if float(area) > 0 and int(position) in footprint_residues
         }
         if not weights:
             continue
@@ -68,6 +71,21 @@ def hypotheses_from_surface_v2(
             weight for position, weight in weights.items()
             if getattr(records_by_position.get(position), "glycan_shielded", False)
         )
+        direct_glycosylation_positions = sorted(
+            position for position in weights
+            if getattr(records_by_position.get(position), "glycosylation_site", False)
+        )
+        sequon_positions = sorted(
+            position for position in weights
+            if getattr(records_by_position.get(position), "glycosylation_sequon", False)
+        )
+        near_resolved_glycan_positions = sorted(
+            position for position in weights
+            if getattr(records_by_position.get(position), "glycan_shielded", False)
+        )
+        prohibited_positions = sorted(set(direct_glycosylation_positions) | set(sequon_positions))
+        direct_glycan_area = sum(weights[position] for position in direct_glycosylation_positions)
+        sequon_area = sum(weights[position] for position in sequon_positions)
         prior_area = sum(
             weight * float(prior_by_position[position])
             for position, weight in weights.items() if position in prior_by_position
@@ -99,6 +117,19 @@ def hypotheses_from_surface_v2(
             membership_fraction=membership,
             discotope_prior=round(prior_area / scored_area, 6) if scored_area else None,
             glycan_fraction=round(glycan_area / total, 6),
+            glycan_evidence={
+                "mutation_prohibition_positions": prohibited_positions,
+                "direct_glycosylation_positions": direct_glycosylation_positions,
+                "sequon_positions": sequon_positions,
+                "near_resolved_glycan_positions": near_resolved_glycan_positions,
+                "direct_glycosylation_area_fraction": round(direct_glycan_area / total, 6),
+                "sequon_area_fraction": round(sequon_area / total, 6),
+                "near_resolved_glycan_area_fraction": round(glycan_area / total, 6),
+                "interpretation": (
+                    "Direct sites and sequons prohibit mutation; nearby resolved glycans indicate "
+                    "accessibility uncertainty, not a mutation prohibition."
+                ),
+            },
         ))
     return sorted(hypotheses, key=lambda item: item.hypothesis_id)
 
@@ -161,3 +192,4 @@ def attach_hypothesis_responses(
                 survival *= 1.0 - min(1.0, max(0.0, overlap * chemical))
             response[hypothesis.hypothesis_id] = round(1.0 - survival, 6)
         candidate.hypothesis_response = response
+        candidate.hypothesis_perturbation = dict(response)

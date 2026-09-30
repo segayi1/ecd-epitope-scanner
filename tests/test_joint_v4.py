@@ -1,6 +1,7 @@
 import csv
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,11 @@ from ecd_epitope_scanner.joint_design_v4.models import (
     V4Candidate,
     V4MutationOption,
     V4Sector,
+    V4SurfaceHypothesis,
 )
+from ecd_epitope_scanner.joint_design_v4.geometry_evidence import annotate_hypothesis_geometry
+from ecd_epitope_scanner.joint_design_v4.hypotheses import hypotheses_from_surface_v2
+from ecd_epitope_scanner.joint_design_v4.candidate_search import generate_candidates
 from ecd_epitope_scanner.joint_design_v4.optimizer import select_panel
 from ecd_epitope_scanner.joint_design_v4.sectors import build_epitope_sectors
 from ecd_epitope_scanner.models import ProteinContext, ResidueRecord
@@ -320,14 +325,29 @@ def test_v4_preview_is_explicitly_not_formal_and_respects_hard_protection(tmp_pa
         for item in stage2_designs
     )
     assert all("contact" in item.rationale.lower() for item in stage2_designs)
+    assert all(
+        next(candidate for candidate in result.candidates if candidate.candidate_id == candidate_id).order < 4
+        for candidate_id in result.panel.selected_candidate_ids
+    )
+    assert result.candidates
+    assert all(
+        {"spurs_multi_ddg_kcal_mol", "foldx_ddg_kcal_mol", "hypothesis_near_glycan_fraction"}
+        <= set(candidate.risk_components)
+        for candidate in result.candidates
+    )
     assert set().union(*(set(item.residue_positions) for item in result.sectors)) == {
         item.uniprot_pos for item in records
     }
     graph_path = tmp_path / "surface_graph_v4.json"
     graph_snapshot = json.loads(graph_path.read_text(encoding="utf-8"))
     manifest = json.loads((tmp_path / "v4_manifest.json").read_text(encoding="utf-8"))
+    manifest_v41 = json.loads((tmp_path / "v4_manifest_v41.json").read_text(encoding="utf-8"))
     assert graph_snapshot["position_system"] == "uniprot_pos"
     assert manifest["provenance"]["surface_graph"]["snapshot_sha256"] == sha256_file(graph_path)
+    assert manifest["schema_version"] == "4.0"
+    assert manifest_v41["schema_version"] == "4.1"
+    assert manifest_v41["base_schema_version"] == "4.0"
+    assert (tmp_path / "panel_identifiability_v41.json").is_file()
 
 
 def test_v4_strict_blocks_without_external_evidence(tmp_path: Path):
@@ -507,6 +527,132 @@ def test_v4_panel_coverage_is_union_over_all_sectors():
     assert panel.covered_residues_by_scenario["geodesic_12"] == 3
     assert panel.achieved_coverage["geodesic_12"] == 0.75
     assert panel.achieved_area_coverage["geodesic_12"] == 0.75
+
+
+def _probe(candidate_id: str, order: int, positions: tuple[int, ...], response: dict[str, float], exploratory=False):
+    mutations = [
+        V4MutationOption(
+            residue=ResidueKey("0", "A", position, uniprot_pos=position, one_letter="D"),
+            mutant_aa="A", notation=f"D{position}A", chemistry_class="charge_removal",
+            spurs_ddg_kcal_mol=0.0, score=1.0, eligible=True,
+        )
+        for position in positions
+    ]
+    return V4Candidate(
+        candidate_id=candidate_id, sector_id="VS001", anchor_region_id="VS001",
+        mutations=mutations, order=order, hypothesis_response=response,
+        hypothesis_perturbation=dict(response),
+        search_role="EXPLORATORY" if exploratory else "PRIMARY_POOL",
+    )
+
+
+def test_v41_identifiability_panel_never_selects_exploratory_four_site_probes():
+    hypotheses = [
+        V4SurfaceHypothesis("H1", {1: 1.0}, discotope_prior=0.8),
+        V4SurfaceHypothesis("H2", {2: 1.0}, discotope_prior=0.2),
+    ]
+    probes = [
+        _probe("double", 2, (1, 2), {"H1": 0.45, "H2": 0.45}),
+        _probe("triple", 3, (3, 4, 5), {"H1": 1.0, "H2": 0.0}),
+        _probe("z_duplicate", 3, (10, 11, 12), {"H1": 1.0, "H2": 0.0}),
+        _probe("exploratory-four", 4, (6, 7, 8, 9), {"H1": 0.0, "H2": 1.0}, True),
+    ]
+    panel, selected = select_panel(probes, max_primary=3, hypotheses=hypotheses)
+    assert "triple" in panel.selected_candidate_ids
+    assert len({"triple", "z_duplicate"} & set(panel.selected_candidate_ids)) == 1
+    assert all(item.order < 4 and item.search_role != "EXPLORATORY" for item in selected)
+    assert panel.prior_weighted_hypothesis_response > panel.mean_hypothesis_response
+    assert set(panel.selected_candidate_ids) == set(panel.marginal_information_gain)
+
+    only_exploratory = [probes[-1]]
+    panel, selected = select_panel(only_exploratory, max_primary=3, hypotheses=hypotheses)
+    assert selected == []
+    assert panel.selected_candidate_ids == []
+
+
+def test_v41_double_and_triple_search_budgets_are_independent():
+    positions = list(range(1, 9))
+    sector = V4Sector("VS001", positions, 1, 800.0, 800.0, 0.5)
+    options = [
+        V4MutationOption(
+            residue=ResidueKey("0", "A", position, uniprot_pos=position, one_letter="D"),
+            mutant_aa="A", notation=f"D{position}A", chemistry_class="charge_removal",
+            spurs_ddg_kcal_mol=0.0, score=1.0, eligible=True,
+            accessibility_score=1.0, chemical_disruption_score=1.0,
+        )
+        for position in positions
+    ]
+    graph = {
+        position: {
+            neighbor: 3.0 for neighbor in (position - 1, position + 1)
+            if neighbor in positions
+        }
+        for position in positions
+    }
+    candidates = generate_candidates(
+        [sector], options, graph,
+        {
+            "orders": [2, 3], "exploratory_orders": [],
+            "site_pool_per_sector": 8, "shortlist_per_sector": 12,
+            "beam_width_by_order": {2: 1, 3: 100},
+            "shortlist_by_order": {2: 2, 3: 3},
+            "maximum_geodesic_span_a": 24.0,
+        },
+    )
+    by_order = {order: sum(item.order == order for item in candidates) for order in (2, 3)}
+    assert by_order == {2: 1, 3: 3}
+    assert all(item.anchor_region_id == "VS001" for item in candidates)
+
+
+def test_v41_glycan_evidence_separates_mutation_prohibition_from_nearby_shielding():
+    records = [
+        ResidueRecord(1, "N", "A", 1, glycosylation_site=True),
+        ResidueRecord(2, "A", "A", 2, glycan_shielded=True),
+    ]
+    footprint = SimpleNamespace(
+        footprint_id="H1", center_vertex_id=0, center_residue_id=1,
+        generation_mode="adaptive_area", radius=None, target_area=600.0,
+        residues=[1, 2], residue_surface_area={1: 10.0, 2: 30.0},
+        residue_surface_fraction={1: 1.0, 2: 1.0}, total_surface_area=40.0,
+        quality_flags=[], region_id="R1", mutable_residues=[1, 2],
+        protected_residues=[],
+    )
+    hypotheses = hypotheses_from_surface_v2(
+        SimpleNamespace(raw_footprints=[], footprints=[footprint]), records
+    )
+    glycan = hypotheses[0].glycan_evidence
+    assert glycan["mutation_prohibition_positions"] == [1]
+    assert glycan["near_resolved_glycan_positions"] == [2]
+    assert glycan["direct_glycosylation_area_fraction"] == 0.25
+    assert glycan["near_resolved_glycan_area_fraction"] == 0.75
+
+
+def test_v41_geometry_keeps_relative_anchor_axis_distinct_from_membrane_plane():
+    records = [
+        ResidueRecord(1, "A", "A", 1, ca=(0.0, 0.0, 5.0)),
+        ResidueRecord(2, "A", "A", 2, ca=(0.0, 0.0, 10.0)),
+        ResidueRecord(3, "A", "A", 3, ca=(0.0, 0.0, 100.0)),
+    ]
+    relative = V4SurfaceHypothesis("H1", {1: 1.0, 2: 1.0}, mean_normal=(0.0, 0.0, 1.0))
+    annotate_hypothesis_geometry(
+        [relative], records,
+        assay_orientation_geometry={
+            "status": "relative_axis_only", "axis_source": "C-terminal anchor surrogate",
+            "anchor_xyz": [0.0, 0.0, 0.0], "extracellular_axis": [0.0, 0.0, 1.0],
+        },
+    )
+    assert relative.membrane_geometry["relative_axis_projection_from_anchor_a"] == 7.5
+    assert relative.membrane_geometry["weighted_plane_distance_a"] is None
+    assert relative.membrane_geometry["weighted_accessibility_proxy"] is None
+    assert relative.membrane_geometry["physical_membrane_plane_inferred"] is False
+
+    plane = V4SurfaceHypothesis("H2", {1: 1.0, 2: 1.0}, mean_normal=(0.0, 0.0, 1.0))
+    annotate_hypothesis_geometry([plane], records, membrane_anchor=(0.0, 0.0, 0.0), membrane_normal=(0.0, 0.0, 1.0))
+    assert plane.membrane_geometry["weighted_plane_distance_a"] == 7.5
+    assert plane.membrane_geometry["membrane_plane_surrogate_available"] is True
+    assert plane.membrane_geometry["physical_membrane_plane_inferred"] is False
+    assert plane.membrane_geometry["weighted_membrane_position_factor_proxy"] is not None
+    assert "not molecular or assay accessibility" in plane.membrane_geometry["accessibility_proxy_interpretation"]
 
 
 def test_v4_formal_candidate_rejects_surface_and_sector_qc_failures():

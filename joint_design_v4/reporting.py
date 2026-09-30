@@ -114,7 +114,8 @@ def write_v4_outputs(
             "model": result.provenance.get("hypothesis_response_model", {}),
             "hypothesis_ids": [item.hypothesis_id for item in result.surface_hypotheses],
             "candidate_responses": {
-                item.candidate_id: item.hypothesis_response for item in result.candidates
+                item.candidate_id: item.hypothesis_perturbation or item.hypothesis_response
+                for item in result.candidates
             },
         },
     )
@@ -122,7 +123,7 @@ def write_v4_outputs(
         output_dir / "probe_hypothesis_matrix_v41.csv",
         [
             {"candidate_id": item.candidate_id, "hypothesis_id": hypothesis.hypothesis_id,
-             "perturbation_proxy": item.hypothesis_response.get(hypothesis.hypothesis_id, 0.0)}
+             "perturbation_proxy": (item.hypothesis_perturbation or item.hypothesis_response).get(hypothesis.hypothesis_id, 0.0)}
             for item in result.candidates for hypothesis in result.surface_hypotheses
         ],
         ["candidate_id", "hypothesis_id", "perturbation_proxy"],
@@ -133,9 +134,18 @@ def write_v4_outputs(
             "schema_version": "4.1",
             "interpretation": "Geometry and chemistry perturbation signatures; separation is not experimental binding evidence.",
             "selected_candidate_ids": result.panel.selected_candidate_ids,
+            "uniform_hypothesis_response": result.panel.mean_hypothesis_response,
+            "prior_weighted_hypothesis_response": result.panel.prior_weighted_hypothesis_response,
             "mean_pairwise_separation": result.panel.mean_pairwise_separation,
             "prior_weighted_mean_pairwise_separation": result.panel.prior_weighted_mean_pairwise_separation,
             "minimum_signature_distance": result.panel.minimum_signature_distance,
+            "marginal_information_gain": result.panel.marginal_information_gain,
+            "objective": {
+                "coverage": "equal blend of uniform and DiscoTope-prior weighted hypothesis coverage",
+                "separation": "equal blend of uniform and prior-weighted pairwise signature separation",
+                "minimum_separation": "additional weight on the closest hypothesis pair",
+                "penalties": "separate stability, glycan, disulfide, interface, uncertainty, and probe-redundancy tie breaks",
+            },
             "unresolved_hypothesis_groups": result.panel.unresolved_hypothesis_groups,
             "uncovered_hypotheses": result.panel.uncovered_hypotheses,
             "hypothesis_signatures": result.panel.hypothesis_signatures,
@@ -252,8 +262,12 @@ def write_v4_outputs(
             {
                 "candidate_id": item.candidate_id,
                 "sector_id": item.sector_id,
+                "anchor_region_id": item.anchor_region_id or item.sector_id,
                 "order": item.order,
                 "mutations": ";".join(option.notation for option in item.mutations),
+                "targeted_hypotheses": ";".join(item.targeted_hypotheses),
+                "hypothesis_perturbation": json.dumps(item.hypothesis_perturbation or item.hypothesis_response, sort_keys=True),
+                "risk_components": json.dumps(item.risk_components, sort_keys=True),
                 "epitope_score": item.epitope_score,
                 "epitope_supported_sites": item.epitope_supported_sites,
                 "recommendation_class": item.recommendation_class,
@@ -268,8 +282,12 @@ def write_v4_outputs(
         [
             "candidate_id",
             "sector_id",
+            "anchor_region_id",
             "order",
             "mutations",
+            "targeted_hypotheses",
+            "hypothesis_perturbation",
+            "risk_components",
             "epitope_score",
             "epitope_supported_sites",
             "recommendation_class",
@@ -337,6 +355,77 @@ def write_v4_outputs(
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(manifest)
     write_json(output_dir / "v4_manifest.json", manifest)
+    v41_manifest = {
+        **manifest,
+        "schema_version": "4.1",
+        "base_schema_version": "4.0",
+        "compatibility_manifest": "v4_manifest.json",
+        "hypothesis_count": len(result.surface_hypotheses),
+        "display_region_count": len(result.sectors),
+        "candidate_order_counts": {
+            str(order): sum(item.order == order for item in result.candidates)
+            for order in sorted({item.order for item in result.candidates})
+        },
+        "primary_candidate_ids": list(result.panel.selected_candidate_ids),
+        "panel_identifiability": _rows(result.panel),
+        "semantic_extensions": [
+            "overlapping_surface_hypotheses",
+            "probe_hypothesis_perturbation_matrix",
+            "identifiability_greedy_panel",
+            "independent_evidence_and_risk_components",
+            "four_site_candidates_exploratory_only",
+        ],
+        "v41_artifacts": [name for name in [
+            "surface_graph_v41.json",
+            "surface_display_regions_v41.json",
+            "epitope_hypotheses_v41.json",
+            "hypothesis_membership_v41.csv",
+            "probe_hypothesis_matrix_v41.csv",
+            "panel_identifiability_v41.json",
+        ] if (output_dir / name).is_file()],
+    }
+    v41_schema_path = Path(__file__).resolve().parents[1] / "schemas" / "joint_v41_manifest.schema.json"
+    v41_schema = json.loads(v41_schema_path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(v41_schema)
+    Draft202012Validator(v41_schema).validate(v41_manifest)
+    write_json(output_dir / "v4_manifest_v41.json", v41_manifest)
+    foldx_status = result.provenance.get("foldx_evidence_status", {})
+    candidates_by_id = {item.candidate_id: item for item in result.candidates}
+    selected_rows = [
+        candidates_by_id[candidate_id]
+        for candidate_id in result.panel.selected_candidate_ids
+        if candidate_id in candidates_by_id
+    ]
+    selected_probe_table = [
+        "| Candidate | Display anchor | Order | Mutations | SPURS multi ΔΔG | FoldX ΔΔG | Risk components |",
+        "|---|---|---:|---|---:|---:|---|",
+        *[
+            "| " + " | ".join([
+                item.candidate_id,
+                item.anchor_region_id or item.sector_id,
+                str(item.order),
+                ", ".join(option.notation for option in item.mutations),
+                str(item.stability.spurs_multi_ddg_kcal_mol if item.stability else None),
+                str(item.stability.foldx_ddg_kcal_mol if item.stability else None),
+                json.dumps(item.risk_components, sort_keys=True),
+            ]) + " |"
+            for item in selected_rows
+        ],
+    ]
+    hypotheses_with_direct_glycan = sum(
+        bool(item.glycan_evidence.get("mutation_prohibition_positions"))
+        for item in result.surface_hypotheses
+    )
+    hypotheses_with_near_glycan = sum(
+        bool(item.glycan_evidence.get("near_resolved_glycan_positions"))
+        for item in result.surface_hypotheses
+    )
+    hypotheses_with_pae = sum(bool(item.structural_uncertainty.get("pae_available")) for item in result.surface_hypotheses)
+    hypotheses_with_tm_axis = sum(bool(item.membrane_geometry.get("membrane_plane_surrogate_available")) for item in result.surface_hypotheses)
+    hypotheses_with_relative_axis = sum(
+        item.membrane_geometry.get("orientation_confidence") == "relative_axis_surrogate_only"
+        for item in result.surface_hypotheses
+    )
     report = [
         "# Joint V4-ML scientific report",
         "",
@@ -347,12 +436,28 @@ def write_v4_outputs(
         f"- Hypothesis selection method: {result.panel.solver_status}",
         f"- Mean and minimum hypothesis signature separation: {result.panel.mean_pairwise_separation}, {result.panel.minimum_signature_distance}",
         f"- DiscoTope-prior weighted mean separation (reported alongside uniform): {result.panel.prior_weighted_mean_pairwise_separation}",
+        f"- Uniform and DiscoTope-prior weighted hypothesis coverage: {result.panel.mean_hypothesis_response}, {result.panel.prior_weighted_hypothesis_response}",
+        f"- Marginal information gain by selected construct: {result.panel.marginal_information_gain}",
         f"- Unresolved hypothesis groups: {len(result.panel.unresolved_hypothesis_groups)}",
+        *[
+            f"  - {', '.join(group)}"
+            for group in result.panel.unresolved_hypothesis_groups
+        ],
         f"- Uncovered hypotheses: {len(result.panel.uncovered_hypotheses)}",
+        f"- Four site exploratory candidates: {sum(item.order >= 4 for item in result.candidates)}; these are excluded from the primary panel",
+        f"- FoldX run successful: {foldx_status.get('run_success')}; candidates scored: {foldx_status.get('scored_candidates')}/{foldx_status.get('total_candidates')}; selected panel complete: {foldx_status.get('selected_panel_complete')}",
         f"- Global surface coverage denominator: {result.panel.coverage_denominator_residues} mapped residues",
         f"- Global union coverage by geodesic scenario: {result.panel.achieved_coverage}",
+        f"- Hypotheses with direct glycosylation/sequon mutation prohibitions: {hypotheses_with_direct_glycan}",
+        f"- Hypotheses near resolved glycans (accessibility uncertainty): {hypotheses_with_near_glycan}",
+        f"- Hypotheses with local PAE: {hypotheses_with_pae}",
+        f"- Hypotheses with a TM-helix plane surrogate / relative anchor axis: {hypotheses_with_tm_axis} / {hypotheses_with_relative_axis}",
         f"- Epitope-prioritized: {len(result.panel.candidates_by_role.get('EPITOPE_PRIORITIZED', []))}",
         f"- Stability fallback: {len(result.panel.candidates_by_role.get('STABILITY_FALLBACK', []))}",
+        "",
+        "## Selected probe evidence",
+        "",
+        *selected_probe_table,
         "",
         "## Interpretation boundaries",
         "",
@@ -361,6 +466,10 @@ def write_v4_outputs(
         "Preview outputs are not formal recommendations.",
         "Hypothesis responses are surface-geodesic and chemistry proxies, not predicted binding changes.",
         "Hypotheses are candidate antibody-compatible footprints, not experimentally established epitopes.",
+        "SASA defines solvent exposure; ProCaliper is an independently audited residue-SASA cross-check in this worker and does not compute finite-probe steric reach.",
+        "Direct glycosylation sites and sequons prohibit mutation; nearby resolved glycans are reported as accessibility uncertainty.",
+        "Membrane-position distances use a mapped transmembrane helix axis as a plane surrogate; they are not assay-accessibility predictions. A C-terminal anchor axis is relative geometry only; intermembrane distance and Fab reach remain unknown.",
+        "Risk components retain stability, glycan, native-interface, disulfide, and structural-uncertainty evidence separately; optimizer penalties are tie-break heuristics, not probabilities.",
         "",
         "## Warnings",
         "",

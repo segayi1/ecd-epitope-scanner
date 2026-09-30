@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ECD Epitope Scanner Joint V4.1 manifest",
+  "type": "object",
+  "required": [
+    "schema_version", "base_schema_version", "compatibility_manifest",
+    "engine", "recommendation_status", "tools", "parameters", "contexts",
+    "provenance", "software", "normalized_structure_sha256", "tool_commands",
+    "worker_runs", "warnings", "errors", "cache_key", "hypothesis_count",
+    "display_region_count", "candidate_order_counts", "primary_candidate_ids",
+    "panel_identifiability", "semantic_extensions", "v41_artifacts"
+  ],
+  "properties": {
+    "schema_version": {"const": "4.1"},
+    "base_schema_version": {"const": "4.0"},
+    "compatibility_manifest": {"const": "v4_manifest.json"},
+    "engine": {"const": "joint_v4_ml"},
+    "recommendation_status": {
+      "enum": ["FORMAL_RECOMMENDATION", "BLOCKED_EXTERNAL_EVIDENCE", "PREVIEW_NOT_FOR_FORMAL_RECOMMENDATION"]
+    },
+    "tools": {"type": "object"},
+    "parameters": {"type": "object"},
+    "contexts": {"type": "object"},
+    "provenance": {"type": "object"},
+    "software": {
+      "type": "object",
+      "required": ["source_code_sha256", "git_commit", "git_dirty"],
+      "properties": {
+        "source_code_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "git_commit": {"type": ["string", "null"]},
+        "git_dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "normalized_structure_sha256": {"type": ["string", "null"]},
+    "tool_commands": {"type": "object"},
+    "worker_runs": {"type": "object"},
+    "cache_key": {"type": "string"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array"},
+    "hypothesis_count": {"type": "integer", "minimum": 0},
+    "display_region_count": {"type": "integer", "minimum": 0},
+    "candidate_order_counts": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "primary_candidate_ids": {"type": "array", "items": {"type": "string"}},
+    "panel_identifiability": {"type": "object"},
+    "semantic_extensions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "v41_artifacts": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

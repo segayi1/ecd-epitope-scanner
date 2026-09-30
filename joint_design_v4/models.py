@@ -166,6 +166,11 @@ class V4Candidate:
     epitope_supported_sites: int = 0
     recommendation_class: str = "STABILITY_FALLBACK"
     hypothesis_response: dict[str, float] = field(default_factory=dict)
+    # Explicit V4.1 names; legacy sector/response fields remain serialized for
+    # consumers of the V4.0 compatibility projection.
+    anchor_region_id: str | None = None
+    hypothesis_perturbation: dict[str, float] = field(default_factory=dict)
+    risk_components: dict[str, float | None] = field(default_factory=dict)
     search_role: str = "PRIMARY_POOL"
     targeted_hypotheses: list[str] = field(default_factory=list)
 
@@ -184,6 +189,7 @@ class V4Sector:
     island_ids: list[str] = field(default_factory=list)
     sector_type: str = "EPITOPE_PRIOR"
     quality_flags: list[str] = field(default_factory=list)
+    semantic_type: str = "display_region"
 
 
 @dataclass
@@ -213,6 +219,7 @@ class V4SurfaceHypothesis:
     membership_fraction: dict[int, float] = field(default_factory=dict)
     discotope_prior: float | None = None
     glycan_fraction: float | None = None
+    glycan_evidence: dict[str, Any] = field(default_factory=dict)
     membrane_geometry: dict[str, Any] = field(default_factory=dict)
     structural_uncertainty: dict[str, Any] = field(default_factory=dict)
 
@@ -236,6 +243,8 @@ class V4Panel:
     uncovered_hypotheses: list[str] = field(default_factory=list)
     hypothesis_signatures: dict[str, list[float]] = field(default_factory=dict)
     prior_weighted_mean_pairwise_separation: float | None = None
+    prior_weighted_hypothesis_response: float | None = None
+    marginal_information_gain: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

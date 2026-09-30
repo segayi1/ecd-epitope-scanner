@@ -988,6 +988,7 @@ def run_pipeline(
             surface_v2_result=v4_surface_result,
             membrane_anchor=membrane_anchor,
             membrane_normal=membrane_normal,
+            assay_orientation_geometry=assay_geometry,
             confidence=confidence,
             assay_format=request.assay_format,
             source_provenance={
@@ -1001,6 +1002,7 @@ def run_pipeline(
         designs = joint_result.legacy_designs
         partition_summary = {
             "engine": "joint_v4_ml", "schema_version": "4.0",
+            "schema_extension_version": "4.1",
             "method": "Joint V4-ML 4.1: Surface V2 overlapping footprint hypotheses with stability-gated probe selection",
             "sector_count": len(joint_result.sectors),
             "primary_construct_count": len(joint_result.panel.selected_candidate_ids),
@@ -1012,6 +1014,7 @@ def run_pipeline(
         }
         design_summary = {
             "engine": "joint_v4_ml", "schema_version": "4.0",
+            "schema_extension_version": "4.1",
             "recommendation_status": joint_result.recommendation_status,
             "tool_inventory": to_dict(joint_result.tool_inventory),
             "candidate_count": len(joint_result.candidates),
@@ -1028,6 +1031,9 @@ def run_pipeline(
                 "hypothesis_source": "surface_v2_footprints",
                 "hypotheses": to_dict(joint_result.surface_hypotheses),
                 "panel_identifiability": {
+                    "uniform_hypothesis_response": joint_result.panel.mean_hypothesis_response,
+                    "prior_weighted_hypothesis_response": joint_result.panel.prior_weighted_hypothesis_response,
+                    "marginal_information_gain": joint_result.panel.marginal_information_gain,
                     "mean_pairwise_separation": joint_result.panel.mean_pairwise_separation,
                     "minimum_signature_distance": joint_result.panel.minimum_signature_distance,
                     "prior_weighted_mean_pairwise_separation": joint_result.panel.prior_weighted_mean_pairwise_separation,
@@ -1104,6 +1110,7 @@ def run_pipeline(
         } for item in stage2_presets]
         joint_v4_payload = {
             "schema_version": "4.0", "recommendation_status": joint_result.recommendation_status,
+            "schema_extension_version": "4.1",
             "tool_inventory": to_dict(joint_result.tool_inventory),
             "surface_evidence": to_dict(joint_result.surface_evidence),
             "epitope_evidence": to_dict(joint_result.epitope_evidence),
@@ -1471,7 +1478,7 @@ def run_pipeline(
             "surface_evidence.csv", "discotope_residues.csv", "single_mutation_options.csv",
             "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
             "selected_panel_v4.json", "surface_hypotheses_v4.json",
-            "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_scientific_report.md",
+            "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_manifest_v41.json", "v4_scientific_report.md",
             "surface_graph_v41.json", "surface_display_regions_v41.json",
             "epitope_hypotheses_v41.json", "hypothesis_membership_v41.csv",
             "probe_hypothesis_matrix_v41.csv", "panel_identifiability_v41.json",

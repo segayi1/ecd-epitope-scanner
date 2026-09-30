@@ -189,6 +189,7 @@ def generate_candidates(
                             if any(item.epitope_supported for item in selected)
                             else "STABILITY_FALLBACK"
                         ),
+                        anchor_region_id=sector.sector_id,
                         search_role="EXPLORATORY" if order >= 4 else "PRIMARY_POOL",
                         targeted_hypotheses=[hypothesis_id] if hypothesis_id else [],
                     )
@@ -244,11 +245,14 @@ def generate_candidates(
             grouped.setdefault((candidate.sector_id, candidate.order), []).append(candidate)
         pooled = []
         for (_sector_id, order), items in sorted(grouped.items()):
-            by_signature: dict[tuple[int, ...], V4Candidate] = {}
+            by_signature: dict[tuple[tuple[int, str], ...], V4Candidate] = {}
             for candidate in sorted(items, key=lambda item: (
                 item.structural_risk, -item.epitope_score, item.candidate_id
             )):
-                signature = tuple(sorted(option.residue.uniprot_pos or -1 for option in candidate.mutations))
+                signature = tuple(sorted(
+                    (option.residue.uniprot_pos or -1, option.mutant_aa)
+                    for option in candidate.mutations
+                ))
                 existing = by_signature.get(signature)
                 if existing is None:
                     by_signature[signature] = candidate
