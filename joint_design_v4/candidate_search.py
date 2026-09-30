@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from itertools import combinations, product
+import hashlib
+import math
 from typing import Any
 
 from .models import V4Candidate, V4MutationOption, V4Sector, V4SurfaceHypothesis
@@ -49,6 +51,7 @@ def generate_candidates(
     graph: dict[int, dict[int, float]],
     parameters: dict[str, Any],
     hypotheses: list[V4SurfaceHypothesis] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> list[V4Candidate]:
     by_position: dict[int, list[V4MutationOption]] = {}
     for option in options:
@@ -96,6 +99,7 @@ def generate_candidates(
     for sector, hypothesis_id in windows:
         positions = [position for position in sector.residue_positions if position in by_position]
         positions.sort(key=lambda p: (
+            not any(option.review_required for option in by_position[p]) if parameters.get("require_review") else False,
             -max(option.accessibility_score for option in by_position[p]),
             -max(option.chemical_disruption_score for option in by_position[p]),
             min(option.spurs_ddg_kcal_mol if option.spurs_ddg_kcal_mol is not None else float("inf") for option in by_position[p]),
@@ -125,15 +129,20 @@ def generate_candidates(
         order_shortlists: list[V4Candidate] = []
         if hypotheses:
             positions = positions[:min(site_cap, int(parameters.get("site_pool_per_hypothesis", 8)))]
+        allowed_positions = set(sector.residue_positions)
+        distance_by_site = {
+            position: _distances(graph, position, allowed_positions)
+            for position in positions
+        }
         for order in orders:
             candidates = []
             if len(positions) < order:
                 continue
             for site_combo in combinations(positions, order):
-                if not _connected(set(site_combo), graph, set(sector.residue_positions)):
+                if not set(site_combo) <= distance_by_site[site_combo[0]].keys():
                     continue
                 distances = [
-                    _distances(graph, left, set(sector.residue_positions)) for left in site_combo
+                    distance_by_site[left] for left in site_combo
                 ]
                 span = max(
                     (
@@ -145,6 +154,10 @@ def generate_candidates(
                 )
                 if span > maximum_span:
                     continue
+                # Coverage depends on sites and geometry, not amino-acid
+                # choices. Reusing it avoids repeating Dijkstra for every
+                # member of the Cartesian mutation menu (up to 81 per set).
+                coverage, covered_positions = _coverage_from_distances(distances, allowed_positions)
                 pools = [
                     sorted(by_position[position], key=lambda item: (
                         -item.chemical_disruption_score,
@@ -155,6 +168,8 @@ def generate_candidates(
                     for position in site_combo
                 ]
                 for selected in product(*pools):
+                    if parameters.get("require_review") and not any(item.review_required for item in selected):
+                        continue
                     if len({item.mutant_aa for item in selected}) == 0:
                         continue
                     risk_values = [
@@ -192,10 +207,12 @@ def generate_candidates(
                         anchor_region_id=sector.sector_id,
                         search_role="EXPLORATORY" if order >= 4 else "PRIMARY_POOL",
                         targeted_hypotheses=[hypothesis_id] if hypothesis_id else [],
+                        qualification="REVIEW_REQUIRED" if any(item.review_required for item in selected) else "FORMAL_POOL",
                     )
-                    candidate.coverage_by_scenario, candidate.covered_positions_by_scenario = _coverage(
-                        candidate, sector, graph
-                    )
+                    candidate.coverage_by_scenario = dict(coverage)
+                    candidate.covered_positions_by_scenario = {
+                        scenario: list(hit) for scenario, hit in covered_positions.items()
+                    }
                     candidates.append(candidate)
             candidates.sort(
                 key=lambda item: (
@@ -240,53 +257,98 @@ def generate_candidates(
             order_shortlists.extend(shortlisted[:order_cap])
         output.extend(order_shortlists)
     if hypotheses:
-        grouped: dict[tuple[str, int], list[V4Candidate]] = {}
-        for candidate in output:
-            grouped.setdefault((candidate.sector_id, candidate.order), []).append(candidate)
-        pooled = []
-        for (_sector_id, order), items in sorted(grouped.items()):
-            by_signature: dict[tuple[tuple[int, str], ...], V4Candidate] = {}
-            for candidate in sorted(items, key=lambda item: (
-                item.structural_risk, -item.epitope_score, item.candidate_id
-            )):
-                signature = tuple(sorted(
-                    (option.residue.uniprot_pos or -1, option.mutant_aa)
-                    for option in candidate.mutations
-                ))
-                existing = by_signature.get(signature)
-                if existing is None:
-                    by_signature[signature] = candidate
-                elif candidate.targeted_hypotheses:
-                    existing.targeted_hypotheses = sorted(set(existing.targeted_hypotheses + candidate.targeted_hypotheses))
-            shortlist_by_order = parameters.get("shortlist_by_order", {})
-            cap = max(1, int(shortlist_by_order.get(str(order), shortlist_by_order.get(order, default_order_cap))))
-            ranked = sorted(by_signature.values(), key=lambda item: (
-                item.structural_risk, -item.epitope_score, item.candidate_id
+        # A construct can arise from overlapping footprints with different
+        # display anchors. Its physical identity is global, not sector-local.
+        unique: dict[tuple[tuple[int, str], ...], V4Candidate] = {}
+        for candidate in sorted(output, key=lambda item: (
+            item.structural_risk, -item.epitope_score, item.candidate_id
+        )):
+            signature = tuple(sorted(
+                (option.residue.uniprot_pos or -1, option.mutant_aa)
+                for option in candidate.mutations
             ))
-            prioritized = [item for item in ranked if item.recommendation_class == "EPITOPE_PRIORITIZED"]
-            fallback = [item for item in ranked if item.recommendation_class == "STABILITY_FALLBACK"]
-            if prioritized and fallback:
-                fcap = min(len(fallback), max(1, round(cap * fallback_candidate_fraction)))
-                selected = prioritized[:max(1, cap - fcap)] + fallback[:fcap]
-                selected_ids = {item.candidate_id for item in selected}
-                selected.extend(item for item in ranked if item.candidate_id not in selected_ids and len(selected) < cap)
+            existing = unique.get(signature)
+            if existing is None:
+                unique[signature] = candidate
             else:
-                selected = ranked[:cap]
-            pooled.extend(selected[:cap])
-        output = pooled
-    return sorted(output, key=lambda item: (item.sector_id, item.order, item.candidate_id))
+                existing.targeted_hypotheses = sorted(set(
+                    existing.targeted_hypotheses + candidate.targeted_hypotheses
+                ))
+        for signature, candidate in unique.items():
+            candidate.candidate_id = "V41_" + hashlib.sha256(repr(signature).encode()).hexdigest()[:16]
+        from .hypotheses import attach_hypothesis_responses
+        attach_hypothesis_responses(list(unique.values()), hypotheses, graph)
+        output = hypothesis_balanced_shortlist(list(unique.values()), hypotheses, parameters, diagnostics)
+    return sorted(output, key=lambda item: (item.order, item.candidate_id))
+
+
+def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostics=None):
+    """Quota is scientific-hypothesis based; display ownership is irrelevant."""
+    output = []
+    ids = [h.hypothesis_id for h in hypotheses]
+    audit = []
+    groups = {(c.qualification, c.order) for c in candidates}
+    qualification = "REVIEW_REQUIRED" if parameters.get("require_review", False) else "FORMAL_POOL"
+    groups.update((qualification, int(order)) for order in parameters.get("orders", [2, 3]))
+    for qualification, order in sorted(groups):
+        ranked = sorted((c for c in candidates if c.order == order and c.qualification == qualification),
+                        key=lambda c: (c.structural_risk, -c.epitope_score, c.candidate_id))
+        quota = 2 if order == 2 else 1 if order == 3 else 0
+        chosen = {}
+        missing = {}
+        for hypothesis_id in ids:
+            available = [c for c in ranked if hypothesis_id in c.targeted_hypotheses]
+            for candidate in available[:quota]:
+                chosen[candidate.candidate_id] = candidate
+            if len(available) < quota:
+                missing[hypothesis_id] = quota - len(available)
+        overrides = parameters.get("global_shortlist_by_order", {})
+        requested = max(1, int(overrides.get(str(order), overrides.get(order, parameters.get("global_shortlist_per_order", 60)))))
+        capacity = max(requested, len(chosen))
+        reserved_count = len(chosen)
+        # Fill by perturbation diversity within a stability-qualified pool.
+        vectors = {c.candidate_id: [c.hypothesis_response.get(hid, 0.0) for hid in ids] for c in ranked}
+        remaining = [c for c in ranked if c.candidate_id not in chosen]
+        def vector_distance(left, right):
+            return math.sqrt(sum((a-b)**2 for a,b in zip(vectors[left], vectors[right])) / max(1, len(ids)))
+        nearest = {c.candidate_id: min((vector_distance(c.candidate_id, other) for other in chosen), default=math.inf) for c in remaining}
+        while remaining and len(chosen) < capacity:
+            def key(candidate):
+                distance = nearest[candidate.candidate_id] if chosen else 0.0
+                return (-distance, candidate.structural_risk, -candidate.epitope_score, candidate.candidate_id)
+            winner = min(remaining, key=key)
+            chosen[winner.candidate_id] = winner
+            remaining.remove(winner)
+            for candidate in remaining:
+                nearest[candidate.candidate_id] = min(nearest[candidate.candidate_id], vector_distance(candidate.candidate_id, winner.candidate_id))
+        output.extend(chosen.values())
+        audit.append({"qualification": qualification, "order": order, "requested_capacity": requested,
+                      "effective_capacity": capacity, "reserved_unique": reserved_count,
+                      "selected": len(chosen), "quota_deficits": missing})
+    if diagnostics is not None:
+        diagnostics.update(global_order_pools=audit, physical_candidates_before_global_shortlist=len(candidates))
+    return output
 
 
 def _coverage(
     candidate: V4Candidate, sector: V4Sector, graph: dict[int, dict[int, float]]
 ) -> tuple[dict[str, float], dict[str, list[int]]]:
     positions = set(sector.residue_positions)
+    distances = [
+        _distances(graph, mutation.residue.uniprot_pos or -1, positions)
+        for mutation in candidate.mutations
+    ]
+    return _coverage_from_distances(distances, positions)
+
+
+def _coverage_from_distances(
+    distances: list[dict[int, float]], positions: set[int],
+) -> tuple[dict[str, float], dict[str, list[int]]]:
     covered: dict[str, float] = {}
     covered_positions: dict[str, list[int]] = {}
     for radius in (0.0, 9.0, 12.0, 15.0):
         hit = set()
-        for mutation in candidate.mutations:
-            distance = _distances(graph, mutation.residue.uniprot_pos or -1, positions)
+        for distance in distances:
             hit |= {position for position, value in distance.items() if value <= radius}
         scenario = f"geodesic_{int(radius)}"
         covered[scenario] = round(len(hit) / max(1, len(positions)), 6)

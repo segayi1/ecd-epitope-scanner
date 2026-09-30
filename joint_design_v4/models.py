@@ -111,8 +111,8 @@ class SingleMutationEvidence:
     hard_exclusions: list[str] = field(default_factory=list)
     soft_warnings: list[str] = field(default_factory=list)
     eligible: bool = False
-    review_required: bool = False
     provenance: dict[str, Any] = field(default_factory=dict)
+    review_required: bool = False
 
 
 @dataclass
@@ -137,7 +137,6 @@ class V4MutationOption:
     spurs_ddg_kcal_mol: float | None
     score: float  # compatibility exposure x chemistry proxy; components are authoritative
     eligible: bool
-    review_required: bool = False
     hard_exclusions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     epitope_prior: float = 0.0
@@ -147,6 +146,7 @@ class V4MutationOption:
     stability_band: str = "NOT_SCORED"
     glycan_risk: list[str] = field(default_factory=list)
     structural_risk_flags: list[str] = field(default_factory=list)
+    review_required: bool = False
 
 
 @dataclass

@@ -117,10 +117,6 @@ class ResidueRecord:
     domain_interface: bool = False
     surface_accessible: bool = False
     folding_screen_pass: bool = False
-    coordinate_eligible: bool = True
-    coordinate_status: str = "NOT_ASSESSED"
-    mutation_qualification: str = "NOT_ASSESSED"
-    review_reasons: list[str] = field(default_factory=list)
     hard_exclusions: list[str] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
@@ -136,6 +132,10 @@ class ResidueRecord:
     # from the canonical UniProt sequence.  These positions remain auditable
     # but are deprioritised for automatic probes.
     engineered_neighborhood: bool = False
+    coordinate_eligible: bool = True
+    coordinate_status: str = "NOT_ASSESSED"
+    mutation_qualification: str = "NOT_ASSESSED"
+    review_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
