@@ -661,13 +661,14 @@ def analyze_residues(
             plddt = _mean_bfactor(residue)
         domain = _domain_for_position(protein, uniprot_pos)
         rsasa = total_sasa / MAX_ASA.get(aa, 200.0)
-        surface = rsasa >= rsasa_threshold and side_sasa >= sidechain_sasa_threshold
+        # Exposure and residue size are separate: Gly has no side-chain heavy
+        # atoms, and an absolute side-chain cutoff biases smaller residues.
+        surface = rsasa >= rsasa_threshold
         hard: list[str] = []
         risks: list[str] = []
+        review: list[str] = []
         if rsasa < rsasa_threshold:
             hard.append("insufficient-relative-SASA")
-        if side_sasa < sidechain_sasa_threshold:
-            hard.append("insufficient-sidechain-SASA")
         if uniprot_pos in disulfide_positions:
             hard.append("disulfide-cysteine")
         if uniprot_pos in glyco_positions:
@@ -675,7 +676,7 @@ def analyze_residues(
         if uniprot_pos in ptm_positions:
             hard.append("annotated-PTM")
         if predicted and (plddt is None or plddt < plddt_threshold):
-            hard.append("low-pLDDT")
+            review.append("low-pLDDT")
         if aa in "GP":
             risks.append("backbone-conformation-sensitive")
         secondary = parsed.secondary_lookup.get(
@@ -721,7 +722,9 @@ def analyze_residues(
             ptm=uniprot_pos in ptm_positions,
             salt_bridge=salt_bridge,
             surface_accessible=surface,
-            folding_screen_pass=surface and not hard,
+            folding_screen_pass=surface and not hard and not review,
+            mutation_qualification=("EXCLUDED" if hard else "REVIEW_REQUIRED" if review else "ELIGIBLE"),
+            review_reasons=review,
             hard_exclusions=hard,
             risk_flags=risks,
             reasons=(
@@ -755,6 +758,7 @@ def analyze_residues(
         "sasa_method": sasa_method,
         "rsasa_threshold": rsasa_threshold,
         "sidechain_sasa_threshold_A2": sidechain_sasa_threshold,
+        "sidechain_sasa_role": "descriptive_only_not_surface_gate",
         "plddt_threshold": plddt_threshold if predicted else None,
         "interface_definition": "any target heavy atom within 5.0 A of a non-target-chain or hetero residue",
         "glycan_shield_definition": "any target heavy atom within 8.0 A of a recognized glycan residue",

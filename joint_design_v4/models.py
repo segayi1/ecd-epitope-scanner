@@ -111,6 +111,7 @@ class SingleMutationEvidence:
     hard_exclusions: list[str] = field(default_factory=list)
     soft_warnings: list[str] = field(default_factory=list)
     eligible: bool = False
+    review_required: bool = False
     provenance: dict[str, Any] = field(default_factory=dict)
 
 
@@ -136,6 +137,7 @@ class V4MutationOption:
     spurs_ddg_kcal_mol: float | None
     score: float  # compatibility exposure x chemistry proxy; components are authoritative
     eligible: bool
+    review_required: bool = False
     hard_exclusions: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     epitope_prior: float = 0.0
@@ -173,6 +175,7 @@ class V4Candidate:
     risk_components: dict[str, float | None] = field(default_factory=dict)
     search_role: str = "PRIMARY_POOL"
     targeted_hypotheses: list[str] = field(default_factory=list)
+    qualification: str = "FORMAL_POOL"
 
 
 @dataclass
@@ -245,6 +248,60 @@ class V4Panel:
     prior_weighted_mean_pairwise_separation: float | None = None
     prior_weighted_hypothesis_response: float | None = None
     marginal_information_gain: dict[str, float] = field(default_factory=dict)
+    budget_decision: PanelBudgetDecision | None = None
+    nearby_hypothesis_pairs: list[dict[str, Any]] = field(default_factory=list)
+    hierarchy_resolution: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FootprintFamily:
+    family_id: str
+    center_vertex_id: int
+    member_footprint_ids: list[str]
+    core_positions: list[int]
+    nominal_positions: list[int]
+    extended_positions: list[int]
+    residue_weights: dict[int, float]
+    membership: dict[int, float]
+    representative_footprint_id: str
+    center_position: int | None = None
+    component_id: int | None = None
+    domains: list[str] = field(default_factory=list)
+    reliability_states: list[str] = field(default_factory=list)
+    mean_normal: tuple[float, float, float] | None = None
+    structural_uncertainty: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class InferenceHypothesis(V4SurfaceHypothesis):
+    family_ids: list[str] = field(default_factory=list)
+    nominal_positions: list[int] = field(default_factory=list)
+    source_footprint_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class SurfaceComplexitySummary:
+    eligible_residues: int
+    eligible_area_a2: float
+    display_regions: int
+    raw_footprints: int
+    footprint_families: int
+    inference_hypotheses: int
+    surface_components: int
+    structural_domains: int
+
+
+@dataclass
+class PanelBudgetDecision:
+    minimum_constructs: int
+    target_constructs: int
+    maximum_constructs: int
+    adaptive_budget: bool
+    selected_constructs: int = 0
+    stop_reason: str = "NO_FEASIBLE_CANDIDATES"
+    budget_curve: list[dict[str, Any]] = field(default_factory=list)
+    minimum_target_met: bool = False
+    normalization: str = "fixed_sqrt_8"
 
 
 @dataclass
@@ -264,3 +321,6 @@ class JointV4Result:
     warnings: list[str] = field(default_factory=list)
     errors: list[dict[str, Any]] = field(default_factory=list)
     provenance: dict[str, Any] = field(default_factory=dict)
+    raw_hypotheses: list[V4SurfaceHypothesis] = field(default_factory=list)
+    footprint_families: list[FootprintFamily] = field(default_factory=list)
+    complexity: SurfaceComplexitySummary | None = None

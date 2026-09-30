@@ -334,6 +334,8 @@ def build_single_evidence(
             if mutant == item.aa:
                 continue
             hard = list(item.hard_exclusions)
+            if not item.coordinate_eligible:
+                hard.append("geometry-ineligible")
             if item.disulfide or item.aa == "C":
                 hard.append("disulfide-cysteine")
             if item.glycosylation_site or item.glycosylation_sequon:
@@ -352,7 +354,8 @@ def build_single_evidence(
                     stability_band=band,
                     chemistry_class=_chemistry(item.aa, mutant),
                     hard_exclusions=sorted(set(hard)),
-                    soft_warnings=sorted(set(surface_warnings)),
+                    soft_warnings=sorted(set(surface_warnings + item.review_reasons)),
+                    review_required=bool(item.review_reasons),
                     eligible=not hard
                     and (
                         band in {"PREFERRED", "ACCEPTABLE"}
@@ -433,6 +436,7 @@ def compressed_options(
                     # proxy. Candidate ranking consumes the component fields.
                     score=round(accessibility * perturbation, 6),
                     eligible=True,
+                    review_required=item.review_required,
                     hard_exclusions=list(item.hard_exclusions),
                     warnings=list(item.soft_warnings),
                     accessibility_score=round(accessibility, 6),

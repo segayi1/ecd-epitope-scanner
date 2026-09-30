@@ -74,7 +74,7 @@ def build_surface_units(
     """
     threshold_eligible = [
         item for item in records
-        if item.ca is not None and item.surface_accessible and item.rsasa >= rsasa_threshold
+        if item.ca is not None and item.coordinate_eligible and item.surface_accessible and item.rsasa >= rsasa_threshold
     ]
     geometry_owner_positions = (
         {int(owner) for owner in surface_geometry.owner_residue}
