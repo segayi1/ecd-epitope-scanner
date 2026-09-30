@@ -29,6 +29,13 @@ JOINT_V4_ML_PARAMETERS = {
     "mode": "strict",
     "max_sectors": 7,
     "max_primary_constructs": 7,
+    "use_hypothesis_hierarchy": True,
+    "hypothesis_hierarchy": {
+        "weighted_jaccard": 0.75, "maximum_center_geodesic_a": 6.0,
+        "maximum_normal_angle_deg": 60.0, "maximum_nominal_geodesic_a": 30.0,
+        "maximum_nominal_ca_a": 24.0,
+        "core_weight": 1.0, "nominal_weight": 0.7, "extended_weight": 0.3,
+    },
     "surface": {
         "rsasa_threshold": RSASA_THRESHOLD,
         "sidechain_sasa_threshold_a2": SIDECHAIN_SASA_THRESHOLD_A2,
@@ -74,8 +81,8 @@ JOINT_V4_ML_PARAMETERS = {
         "neighborhood_radii_a": [9.0, 12.0, 15.0],
     },
     "sectoring": {
-        "maximum_geodesic_diameter_a": 35.0,
-        "maximum_euclidean_diameter_a": 30.0,
+        "maximum_geodesic_diameter_a": 26.0,
+        "maximum_euclidean_diameter_a": 18.0,
         "minimum_sector_area_a2": 50.0,
         "minimum_sector_residues": 4,
     },
@@ -88,6 +95,8 @@ JOINT_V4_ML_PARAMETERS = {
         "shortlist_per_sector": 30,
         "shortlist_per_order": 10,
         "shortlist_by_order": {},
+        "global_shortlist_per_order": 60,
+        "global_shortlist_by_order": {},
         "orders": [2, 3],
         "primary_orders": [2, 3],
         "exploratory_orders": [4],
@@ -124,6 +133,8 @@ JOINT_V4_ML_PARAMETERS = {
         "max_candidates": 42,
     },
     "panel_optimizer": {
+        "minimum_marginal_information_gain": 0.02,
+        "minimum_relative_information_gain": 0.05,
         "solver": "deterministic_greedy",
         "time_limit_seconds": 60,
         "higher_order_max_primary": 2,

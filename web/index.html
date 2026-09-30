@@ -27,6 +27,12 @@
     <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span>
       <select id="design-engine"><option value="surface_v2">Surface V2</option><option value="joint_v3">Joint V3</option><option value="joint_v4_ml">Joint V4-ML</option></select></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
+    <details><summary>构建体预算</summary>
+      <label><input id="adaptive-budget" type="checkbox" checked>自动 4–8</label>
+      <label>最少目标<input id="budget-minimum" type="number" min="1" max="8" value="4" style="width:45px"></label>
+      <label>常见目标<input id="budget-target" type="number" min="1" max="8" value="7" style="width:45px"></label>
+      <label>硬上限<input id="budget-maximum" type="number" min="1" max="8" value="8" style="width:45px"></label>
+    </details>
     <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button>
     <button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
   </form>

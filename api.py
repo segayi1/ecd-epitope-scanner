@@ -8,7 +8,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID
 from .jobs import JobRunner, JobStore
@@ -48,9 +48,26 @@ class JobCreate(BaseModel):
     design_engine: Literal["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"] = "surface_v2"
     ml_mode: Literal["strict", "preview"] = "strict"
     max_sectors: int = 7
-    max_primary_constructs: int = 7
+    max_primary_constructs: int | None = Field(default=None, ge=1, le=8)
+    minimum_constructs: int | None = Field(default=None, ge=1, le=8)
+    target_constructs: int | None = Field(default=None, ge=1, le=8)
+    maximum_constructs: int | None = Field(default=None, ge=1, le=8)
+    adaptive_budget: bool | None = None
+    assay_profile: str | None = DEFAULT_ASSAY_PROFILE_ID
     allow_spurs_only_final: bool = False
     biological_context_mode: str = "provided_structure"
+
+    @model_validator(mode="after")
+    def validate_panel_budget(self):
+        from .joint_design_v4.budget import resolve_budget, optimizer_budget
+        from .assay_profiles import get_assay_profile
+        profile = get_assay_profile(self.assay_profile)
+        budget = resolve_budget(minimum=self.minimum_constructs, target=self.target_constructs,
+                       maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
+                       legacy_max=self.max_primary_constructs,
+                       policy=profile["design_policy"] if profile else None)
+        optimizer_budget(profile, budget)
+        return self
 
 
 class MutationInput(BaseModel):
@@ -157,11 +174,21 @@ async def create_upload_job(
     design_engine: Literal["surface_v2", "joint_v3", "joint_v4_ml", "legacy_v1"] = Form("surface_v2"),
     ml_mode: Literal["strict", "preview"] = Form("strict"),
     max_sectors: int = Form(7),
-    max_primary_constructs: int = Form(7),
+    max_primary_constructs: int | None = Form(None),
+    minimum_constructs: int | None = Form(None),
+    target_constructs: int | None = Form(None),
+    maximum_constructs: int | None = Form(None),
+    adaptive_budget: bool | None = Form(None),
     allow_spurs_only_final: bool = Form(False),
     biological_context_mode: str = Form("provided_structure"),
 ) -> dict[str, Any]:
     suffix = Path(structure.filename or "structure.cif").suffix.lower()
+    try:
+        from .joint_design_v4.budget import resolve_budget
+        resolve_budget(minimum=minimum_constructs, target=target_constructs,
+                       maximum=maximum_constructs, adaptive=adaptive_budget, legacy_max=max_primary_constructs)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     if suffix not in {".cif", ".mmcif", ".pdb", ".ent"}:
         raise HTTPException(422, "Structure must be PDB or mmCIF")
     placeholder = PipelineRequest(
@@ -181,6 +208,8 @@ async def create_upload_job(
         ml_mode=ml_mode,
         max_sectors=max_sectors,
         max_primary_constructs=max_primary_constructs,
+        minimum_constructs=minimum_constructs, target_constructs=target_constructs,
+        maximum_constructs=maximum_constructs, adaptive_budget=adaptive_budget,
         allow_spurs_only_final=allow_spurs_only_final,
         biological_context_mode=biological_context_mode,
     )

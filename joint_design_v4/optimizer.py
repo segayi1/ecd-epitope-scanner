@@ -264,8 +264,23 @@ def select_panel(
     surface_areas: dict[int, float] | None = None,
     hypotheses: list[V4SurfaceHypothesis] | None = None,
     risk_penalty_weights: dict[str, float] | None = None,
+    panel_budget: dict | None = None,
+    stop_parameters: dict | None = None,
 ) -> tuple[V4Panel, list[V4Candidate]]:
-    """Select a panel; use footprint identifiability when available."""
+    return _select_panel(candidates, max_primary, higher_order_max, recommendations_per_sector,
+                         epitope_priority_per_sector, stability_fallback_per_sector,
+                         sectors, surface_areas, hypotheses, risk_penalty_weights,
+                         panel_budget, stop_parameters)
+
+
+def _select_panel(
+    candidates, max_primary=7, higher_order_max=2, recommendations_per_sector=6,
+    epitope_priority_per_sector=3, stability_fallback_per_sector=3,
+    sectors=None, surface_areas=None, hypotheses=None, risk_penalty_weights=None,
+    panel_budget=None, stop_parameters=None,
+):
+    candidates = [c for c in candidates if c.qualification != "REVIEW_REQUIRED" and not any(m.review_required for m in c.mutations)]
+    # Legacy geometry spread and V4.1 objectives share review isolation.
     by_sector: dict[str, list[V4Candidate]] = defaultdict(list)
     for candidate in candidates:
         if candidate.connected:
@@ -313,7 +328,26 @@ def select_panel(
     unresolved_groups: list[list[str]] = []
     uncovered_hypotheses: list[str] = []
     hypothesis_signatures: dict[str, list[float]] = {}
-    if hypotheses:
+    budget_decision = None
+    nearby_pairs = []
+    if panel_budget is not None:
+        from .identifiability import greedy_panel
+        selected, metrics, budget_decision = greedy_panel(
+            candidates, hypotheses or [], panel_budget, max(0, higher_order_max),
+            _risk_penalty, risk_penalty_weights, stop_parameters,
+        )
+        mean_response = metrics["coverage"]
+        prior_weighted_response = metrics["weighted_coverage"]
+        mean_separation = metrics["mean_separation"]
+        minimum_distance = metrics["minimum_distance"]
+        prior_weighted_separation = metrics["weighted_separation"]
+        nearby_pairs = metrics["near_pairs"]
+        indistinguishable = len(nearby_pairs)
+        unresolved_groups = metrics["groups"]
+        uncovered_hypotheses = metrics["uncovered"]
+        hypothesis_signatures = metrics["signatures"]
+        marginal_information_gain = {row["candidate_id"]: row["information_gain"] for row in budget_decision.budget_curve}
+    elif hypotheses:
         (selected, mean_response, prior_weighted_response, mean_separation, indistinguishable,
          minimum_distance, prior_weighted_separation, marginal_information_gain, unresolved_groups, uncovered_hypotheses,
          hypothesis_signatures) = _information_take(
@@ -328,7 +362,7 @@ def select_panel(
         )
     high_order_count = 0
     offset = 0
-    while not hypotheses and len(selected) < max(1, int(max_primary)):
+    while not hypotheses and panel_budget is None and len(selected) < max(1, int(max_primary)):
         added = False
         for sector_id in sorted(sector_series):
             series = sector_series[sector_id]
@@ -411,5 +445,7 @@ def select_panel(
             round(prior_weighted_response, 6) if prior_weighted_response is not None else None
         ),
         marginal_information_gain=marginal_information_gain,
+        budget_decision=budget_decision,
+        nearby_hypothesis_pairs=nearby_pairs,
     )
     return panel, selected

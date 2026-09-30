@@ -356,8 +356,8 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 ## Surface and folding-risk screen
 
 - SASA method: {methods.get('sasa_method', '')}
-- Surface criterion: rSASA >= {methods.get('rsasa_threshold', 0.25)} and side-chain SASA >= {methods.get('sidechain_sasa_threshold_A2', 20)} A2
-- Protected features: disulfide cysteines, annotated glycosylation/PTMs, missing mappings and low-confidence AF3 residues
+- Surface criterion: native total rSASA >= {methods.get('rsasa_threshold', 0.25)}; side-chain SASA is descriptive only. Coordinate eligibility and confidence review are separate from mutation stability.
+- Protected features: disulfide cysteines, annotated glycosylation/PTMs and missing mappings. Geometry-ineligible segments remain excluded; eligible internal low-confidence loops require review and are excluded from the strict formal panel.
 - Native interfaces participate in design but retain a function-risk flag
 
 ## Patch partition and probe design
@@ -491,6 +491,29 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "selected_panel_v4.json",
         "v4_manifest.json",
         "v4_scientific_report.md",
+        "v4_manifest_v41.json",
+        "surface_graph_v4.json",
+        "surface_graph_v41.json",
+        "surface_display_regions_v41.json",
+        "surface_hypotheses_v4.json",
+        "hypothesis_probe_matrix_v4.json",
+        "epitope_hypotheses_v41.json",
+        "hypothesis_membership_v41.csv",
+        "probe_hypothesis_matrix_v41.csv",
+        "panel_identifiability_v41.json",
+        "recommendation_diagnostics_v41.json",
+        "qualification_audit_v411.json",
+        "hypothesis_hierarchy_v411.json",
+        "global_candidate_pool_v411.json",
+        "review_candidates_v411.json",
+        "panel_budget_decision_v411.json",
+        "panel_budget_curve_v411.csv",
+        "raw_hypotheses_v411.json",
+        "raw_surface_footprints_v411.json",
+        "footprint_families_v411.json",
+        "inference_hypotheses_v411.json",
+        "surface_complexity_v411.json",
+        "retrospective_benchmark_contract_v411.json",
     ]
     manifest = {
         "schema_version": "1.0",
@@ -526,3 +549,17 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
             if path.exists():
                 archive.write(path, arcname=name)
     return {name: name for name in export_names + [zip_path.name] if (output_dir / name).exists()}
+
+
+def finalize_scientific_bundle(output_dir: Path) -> None:
+    """Bind checksums and the ZIP to the final analysis written by the pipeline."""
+    manifest_path = output_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for name in manifest["files"]:
+        if Path(name).name != name:
+            raise ValueError(f"Invalid bundle artifact name: {name}")
+        manifest["files"][name] = sha256_file(output_dir / name)
+    write_json(manifest_path, manifest)
+    with zipfile.ZipFile(output_dir / "ecd_epitope_design.zip", "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name in [*manifest["files"], "run_manifest.json"]:
+            archive.write(output_dir / name, arcname=name)

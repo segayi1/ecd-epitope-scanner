@@ -26,7 +26,7 @@ AF3 confidence JSON 仅在其残基/原子数组能够与目标链完成映射�
 
 <div align="center"><i>rSASA</i><sub>i</sub> = <i>SASA</i><sub>i</sub> / <i>ASA</i><sub>max</sub>(<i>aa</i><sub>i</sub>)</div>
 
-残基被标记为表面暴露的条件为 `rSASA ≥ 0.25` 且侧链 SASA `≥20 Å²`。SASA 方法、版本、半径、采样点数、归一化表和阈值均写入运行配置快照、manifest、methods report 和离线报告。
+残基被标记为表面暴露的条件为 native total `rSASA ≥ 0.25`。侧链 SASA 为描述证据，统一 `20 Å²` 条件已移除，避免 Gly 和小残基的面积偏差。坐标可靠性、保护位点与突变稳定性分别审核。SASA 方法、版本、半径、采样点数、归一化表和实际阈值均写入 manifest 与报告；0.15/0.20/0.25 敏感性比较不自动降低默认值。
 
 同时提取以下结构特征：二级结构、环区/转角、凸出度、膜邻近性、结构域边界、糖基化 sequon、已知或预测糖基、二硫键、翻译后修饰、蛋白—蛋白界面标记及预测模型的 pLDDT。Cys、Pro、二硫键残基、糖基化位点和翻译后修饰位点默认进入突变保护集合。实验结构的 B-factor 不被解释为 pLDDT 或无序证据。
 

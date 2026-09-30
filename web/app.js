@@ -302,6 +302,17 @@ function watchJob(jobId) {
   };
 }
 
+function panelBudgetInput() {
+  const minimum = Number($("budget-minimum")?.value || 4);
+  const target = Number($("budget-target")?.value || 7);
+  const maximum = Number($("budget-maximum")?.value || 8);
+  if (![minimum, target, maximum].every(Number.isInteger) || minimum < 1 || minimum > target || target > maximum || maximum > 8) {
+    throw new Error("构建体预算需要满足 1 ≤ 最少目标 ≤ 常见目标 ≤ 硬上限 ≤ 8");
+  }
+  return {minimum_constructs: minimum, target_constructs: target,
+          maximum_constructs: maximum, adaptive_budget: $("adaptive-budget")?.checked ?? true};
+}
+
 async function submitRun(event) {
   event.preventDefault();
   const inputType = document.querySelector('input[name="input-type"]:checked').value;
@@ -320,7 +331,7 @@ async function submitRun(event) {
         design_engine: designEngine,
         ml_mode: $("ml-mode").value,
         max_sectors: 7,
-        max_primary_constructs: 7,
+        ...panelBudgetInput(),
       }),
     });
     state.jobId = job.id;
@@ -348,8 +359,8 @@ async function submitUpload(event) {
   form.append("design_engine", uploadDesignEngine);
   form.append("ml_mode", $("upload-ml-mode").value);
   form.append("max_sectors", "7");
-  form.append("max_primary_constructs", "7");
   try {
+    Object.entries(panelBudgetInput()).forEach(([key, value]) => form.append(key, String(value)));
     setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
     const job = await api("/api/jobs/upload", { method: "POST", body: form });
     state.jobId = job.id;
@@ -745,7 +756,7 @@ function renderPanelScaffold() {
   $("panel").innerHTML = `
   <section data-step-content="1">
     <h2>${h(t("step.surface", "表面可及性"))}</h2>
-    <div class="note">${h(t("surface.note", "表面闸门：rSASA ≥ 0.25 且侧链 SASA ≥ 20 Å²。只有过闸残基进入设计候选。"))}</div>
+    <div class="note">${h(state.result?.methods?.sidechain_sasa_role === "descriptive_only_not_surface_gate" ? t("surface.note.v411", "表面暴露按 total rSASA 判断；侧链 SASA 仅作描述。坐标资格和突变审核独立，灰色不等于埋藏。") : t("surface.note", "此历史运行使用 rSASA 与侧链 SASA 联合门槛。"))}</div>
     <div id="surface-stats" class="statgrid" style="margin-bottom:10px"></div>
     <div id="source-card"></div>
     <div class="filter-row">
@@ -997,7 +1008,9 @@ function criteriaText() {
   if (!state.result) return t("s2.criteriaEmpty", "载入结果后显示本步骤的定量标准。");
   const m = state.result.methods;
   return {
-    surface: t("crit.surface", `rSASA ≥ ${m.rsasa_threshold} 且侧链 SASA ≥ ${m.sidechain_sasa_threshold_A2} Å²；SASA 引擎：${m.sasa_method}。`),
+    surface: m.sidechain_sasa_role === "descriptive_only_not_surface_gate"
+      ? `total rSASA ≥ ${m.rsasa_threshold}; ${t("crit.sidechain.v411", "侧链 SASA 为描述证据")}; SASA: ${m.sasa_method}`
+      : t("crit.surface", `rSASA ≥ ${m.rsasa_threshold} 且侧链 SASA ≥ ${m.sidechain_sasa_threshold_A2} Å²；SASA 引擎：${m.sasa_method}。`),
     folding: t("crit.folding", "在表面标准上排除二硫键 Cys、注释糖基化/PTM 与低置信度位点；表示低预测风险，不是实验确认。"),
     interface: t("crit.interface", "任一目标重原子距非目标链或异质残基 ≤5 Å；功能界面保留风险标记。"),
     regions: t("crit.regions", `${state.result.partitioning.method}；实际 ${state.result.regions.length} 补丁，覆盖 ${fmtPct(state.result.partitioning.coverage)}。`),
@@ -1116,6 +1129,14 @@ function renderStep4() {
 }
 
 function renderStep5() {
+  const budget = state.result.design_summary?.panel_budget_decision;
+  const budgetReasons = {
+    NO_FEASIBLE_NONREDUNDANT_CANDIDATES: "没有更多合格且提供新信息的候选",
+    NO_POSITIVE_NET_INFORMATION_GAIN: "继续增加构建体没有正的净信息增益",
+    INFORMATION_GAIN_BELOW_STOPPING_POLICY: "新增信息不足，按自适应规则停止",
+    MAXIMUM_CONSTRUCT_BUDGET_REACHED: "已达到构建体硬上限",
+  };
+  const budgetText = budget ? `入选 ${budget.selected_constructs} 个；目标 ${budget.minimum_constructs}–${budget.maximum_constructs}，常见目标 ${budget.target_constructs}。${budgetReasons[budget.stop_reason] || budget.stop_reason}${budget.minimum_target_met ? "" : "；合格候选或信息增益不足，未达到最少目标"}` : "";
   const designs = [...state.result.designs].sort((left, right) =>
     (left.region_id ?? 999) - (right.region_id ?? 999) || left.id.localeCompare(right.id));
   const renderCard = (design) => {
@@ -1155,11 +1176,11 @@ function renderStep5() {
     if (!byPatch.has(patch)) byPatch.set(patch, []);
     byPatch.get(patch).push(design);
   });
-  $("design-list").innerHTML = [...byPatch.entries()].map(([patch, series]) => `
+  $("design-list").innerHTML = (budgetText ? `<div class="note">${h(budgetText)}</div>` : "") + ([...byPatch.entries()].map(([patch, series]) => `
     <section class="design-series">
       <h3>${h(t("region.patch", "补丁"))} ${h(patch)} · ${series.length} ${h(t("design.combinations", "个推荐组合"))}</h3>
       ${series.map(renderCard).join("")}
-    </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`;
+    </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`);
   document.querySelectorAll("[data-design-residue]").forEach((el) => {
     el.addEventListener("click", (event) => { event.stopPropagation(); selectResidue(Number(el.dataset.designResidue), true); });
   });
@@ -1310,6 +1331,9 @@ function renderResidueDetail(force = false) {
     <div style="margin:6px 0">${tags.join("")}</div>
     <dl class="kv">
       <dt>rSASA</dt><dd>${fmt(residue.rsasa, 3)}（${h(t("rd.total", "总"))} ${fmt(residue.sasa, 0)} Å² / ${h(t("rd.sidechain", "侧链"))} ${fmt(residue.sidechain_sasa, 0)} Å²）</dd>
+      <dt>表面暴露</dt><dd>${residue.surface_accessible ? "通过" : "未通过"}</dd>
+      <dt>坐标资格</dt><dd>${residue.coordinate_eligible === true ? "可用于几何" : residue.coordinate_eligible === false ? "不用于三维足迹" : "历史运行未记录"} · ${h(residue.coordinate_status || "历史运行未记录")}</dd>
+      <dt>位点初筛</dt><dd>${h(residue.mutation_qualification || "历史运行未记录")} ${h((residue.review_reasons || []).join("；"))}；具体替换仍需独立审核</dd>
       <dt>${h(t("rd.local", "局部"))}</dt><dd>Cα ${h(t("rd.contacts", "接触"))} ${residue.contacts} · ${h(secondaryName(residue.secondary_structure))}${residue.salt_bridge ? ` · ${h(t("rd.saltBridge", "盐桥"))}` : ""}</dd>
       <dt>${h(t("rd.interfaceLabel", "界面"))}</dt><dd>${residue.interface ? `${h(t("iface.with", "与"))} ${h((residue.interface_partners || []).join(", ") || t("rd.nonTarget", "非目标链"))} ${h(t("rd.contact", "接触"))}` : h(t("rd.none", "无"))}</dd>
       <dt>${h(t("insp.region", "分区"))}</dt><dd>${h(designForResidue(residue).text)}</dd>

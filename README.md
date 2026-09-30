@@ -10,8 +10,9 @@
 - UniProt 输入自动下载 canonical 序列、拓扑、结构域、二硫键、糖基化和功能注释，并通过 3D-Beacons/PDBe 搜索实验结构。
 - PDB 候选需要满足：ECD 观察覆盖率 >=95%、最大内部缺口 <=8 aa、与 canonical 序列一致性 >=95%、主要结构域覆盖 >=90%。逐残基编号使用 UniProt、PDB author 和 mmCIF label 映射保存。
 - 没有合格实验结构时，只接受带明确 AF3 来源的公开模型；否则状态为 `WAITING_FOR_AF3_UPLOAD`，网页要求上传官方 AF3 mmCIF 与 confidences JSON。AFDB 不会被伪装为 AF3。
-- 统一用 Bio.PDB Shrake-Rupley 与固定 Tien/DSSP 原子半径计算 rSASA/侧链 SASA；默认候选标准为 `rSASA >=0.25` 且 `side-chain SASA >=20 A2`，不因可选依赖而改变生产结果。
-- 自动排除二硫键 Cys、注释糖基化/PTM、低置信度 AF3 位点、坐标缺失和埋藏位点；功能界面保留在候选中但显示风险标签。
+- 统一用 Bio.PDB Shrake-Rupley 与固定原子半径、Tien 最大 ASA 归一化计算 rSASA；默认表面标准为 `total rSASA >=0.25`，侧链 SASA 仅作描述，不因 Gly 零侧链面积排除表面资格。
+- 表面、三维坐标资格和突变审核分别记录。二硫键、糖基化/PTM、缺失坐标与埋藏位点维持保护政策；低置信度内部环区可产生 `REVIEW_REQUIRED` 候选，不进入严格正式面板。不可靠 AF3 末端仍退出三维几何。
+- 新任务默认 assay profile V3：多尺度 footprint family → inference hypothesis，全局假设均衡候选池，自适应 4–8 构建体，常见目标 7。最少数量不强制填充；预算、停止原因和未解析假设均进入审计。旧 V1/V2 profile 保留原预算。
 - 以 Fab 足迹尺度（测地半径 13 Å，约 15-25 残基，Kringelum 2012）在表面测地图上枚举补丁并允许跨结构域；每个补丁带表位先验（暴露度/外凸度/环区占比/进化可变性/糖屏蔽/膜近端惩罚）并分级 HIGH/MEDIUM/LOW；面板预算随 ECD 大小自适应（~1 补丁/22 残基，上限 7），结构不支持时如实输出更少补丁与原因。
 - 实验形式 `assay_format=cell_surface|purified` 是一等参数：细胞表面实验时膜近端补丁先验降权并标记 IgG 不可及；`purified` 时全部保留。
 - 每个补丁按 WT 残基类型定向选择替换字母表（大侧链→Ala、小侧链→Trp 插入、带电→电荷反转），Stage-1 探针必须含至少一个锚点突变（电荷反转或 W/Y/F/R/K→A）；在 FoldX/proxy 清空的候选菜单上**全枚举** 3-6 点组合（两两间距 ≥5.5 Å、最大展开 ≤22 Å），按**帕累托前沿**（破坏势 vs 稳定性风险）选点：主探针取膝点（单位风险破坏力最大），备选探针取激进端，完整前沿写入 `epitope_mapping_plan.pareto_fronts` 审计；无满足约束的组合则输出 `NO_LOW_RISK_COMBINATION`。

@@ -141,11 +141,26 @@ JURKAT_FAB_K562_ANTIGEN_V2["design_policy"].update({
     "surface_tag_proves_native_fold": False,
 })
 
+JURKAT_FAB_K562_ANTIGEN_V3 = deepcopy(JURKAT_FAB_K562_ANTIGEN_V2)
+JURKAT_FAB_K562_ANTIGEN_V3.update({
+    "id": "jurkat_fab_k562_antigen_v3", "version": 3,
+    "display_name": "Jurkat membrane-Fab x K562 membrane-antigen (adaptive 4-8)",
+})
+JURKAT_FAB_K562_ANTIGEN_V3["design_policy"].update({
+    "stage1_minimum_constructs": 4, "stage1_target_constructs": 7,
+    "stage1_maximum_constructs": 8, "adaptive_budget": True,
+    "selection_basis": "hierarchical_hypothesis_identifiability_with_adaptive_budget",
+    "minimum_is_target_not_forced_fill": True,
+    "minimum_marginal_information_gain": 0.02,
+    "minimum_relative_information_gain": 0.05,
+})
+
 ASSAY_PROFILES = {
     JURKAT_FAB_K562_ANTIGEN_V1["id"]: JURKAT_FAB_K562_ANTIGEN_V1,
     JURKAT_FAB_K562_ANTIGEN_V2["id"]: JURKAT_FAB_K562_ANTIGEN_V2,
+    JURKAT_FAB_K562_ANTIGEN_V3["id"]: JURKAT_FAB_K562_ANTIGEN_V3,
 }
-DEFAULT_ASSAY_PROFILE_ID = JURKAT_FAB_K562_ANTIGEN_V2["id"]
+DEFAULT_ASSAY_PROFILE_ID = JURKAT_FAB_K562_ANTIGEN_V3["id"]
 SUPPORTED_ASSAY_PROFILE_IDS = tuple(ASSAY_PROFILES)
 
 

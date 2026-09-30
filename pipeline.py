@@ -17,7 +17,7 @@ from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 from . import config, models
 from .assay_profiles import get_assay_profile
 from .design import design_regions
-from .exporting import write_scientific_outputs
+from .exporting import finalize_scientific_bundle, write_scientific_outputs
 from .joint_design import run_joint_v3
 from .joint_design_v4 import run_joint_v4_ml
 from .models import ProteinContext, StructureCandidate, to_dict
@@ -84,10 +84,20 @@ class PipelineRequest:
     design_engine: str = "joint_v4_ml"
     ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
     max_sectors: int = 7
-    max_primary_constructs: int = 7
+    max_primary_constructs: int | None = None
+    minimum_constructs: int | None = None
+    target_constructs: int | None = None
+    maximum_constructs: int | None = None
+    adaptive_budget: bool | None = None
     allow_spurs_only_final: bool = False
     biological_context_mode: str = "provided_structure"
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        from .joint_design_v4.budget import resolve_budget
+        resolve_budget(minimum=self.minimum_constructs, target=self.target_constructs,
+                       maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
+                       legacy_max=self.max_primary_constructs)
 
     def as_dict(self) -> dict[str, Any]:
         data = to_dict(self)
@@ -759,6 +769,7 @@ def run_pipeline(
         predicted=predicted,
         confidence=confidence,
         ignored_positions=set(mapping.mismatch_positions),
+        rsasa_threshold=float(request.metadata.get("surface_rsasa_threshold", config.RSASA_THRESHOLD)),
     )
     mismatch_positions = list(getattr(mapping, "mismatch_positions", []) or [])
     mismatch_coordinates = [
@@ -819,6 +830,13 @@ def run_pipeline(
             )
 
     progress("PARTITIONING", 0.62, "Building Fab-footprint surface patches with epitope priors")
+    from .joint_design_v4.budget import resolve_budget, optimizer_budget
+    panel_budget = resolve_budget(
+        minimum=request.minimum_constructs, target=request.target_constructs,
+        maximum=request.maximum_constructs, adaptive=request.adaptive_budget,
+        legacy_max=request.max_primary_constructs,
+        policy=assay_profile["design_policy"] if assay_profile else None,
+    )
     # Region count is a Stage-1 experimental budget, not a geometry limit.
     # Surface V2 enumerates the complete surface first and the design stage
     # chooses a bounded panel afterwards.
@@ -833,6 +851,9 @@ def run_pipeline(
         effective_max = min(7, max(1, request.maximum_regions))
         effective_min = min(max(1, request.minimum_regions), effective_max)
         stage1_target = effective_min
+    effective_min = panel_budget["minimum_constructs"]
+    stage1_target = panel_budget["target_constructs"]
+    effective_max = panel_budget["maximum_constructs"]
     membrane_anchor, membrane_normal = _transmembrane_geometry(mapping, protein)
     assay_geometry = _profile_orientation_geometry(mapping, protein) if assay_profile else None
     patch_engine = str(
@@ -857,6 +878,8 @@ def run_pipeline(
             sequence_scores=sequence_scores, sequence_provenance=sequence_provenance,
         )
         export_reliability(reliability, output_dir)
+        from .joint_design_v4.qualification import apply_coordinate_qualification
+        apply_coordinate_qualification(records, reliability)
         ecd_residues = {
             position: residue
             for position, residue in mapping.uniprot_to_residue.items()
@@ -974,7 +997,10 @@ def run_pipeline(
         v4_params.update({
             "mode": request.ml_mode,
             "max_sectors": request.max_sectors,
-            "max_primary_constructs": min(request.max_primary_constructs, effective_max),
+            "max_primary_constructs": effective_max,
+            "panel_budget": optimizer_budget(assay_profile, panel_budget),
+            "use_hypothesis_hierarchy": assay_profile is None or int(assay_profile.get("version", 1)) >= 3,
+            "surface": {**v4_params.get("surface", {}), "rsasa_threshold": methods["rsasa_threshold"]},
             "allow_spurs_only_final": request.allow_spurs_only_final,
             "use_surface_hypotheses": (
                 assay_profile is None or int(assay_profile.get("version", 1)) >= 2
@@ -1002,9 +1028,18 @@ def run_pipeline(
         designs = joint_result.legacy_designs
         partition_summary = {
             "engine": "joint_v4_ml", "schema_version": "4.0",
+            "partition_mode": "joint_v4_ml",
             "schema_extension_version": "4.1",
             "method": "Joint V4-ML 4.1: Surface V2 overlapping footprint hypotheses with stability-gated probe selection",
             "sector_count": len(joint_result.sectors),
+            "actual_regions": len(regions),
+            "coverage": 1.0 if joint_result.sectors else 0.0,
+            "coverage_basis": "eligible_reliable_surface_graph_nodes",
+            "display_partition_policy": joint_result.provenance["surface_graph"]["display_partition_policy"],
+            "geometry_omitted_positions": (
+                reliability["qc"].get("footprint_excluded_positions", reliability["qc"]["excluded_positions"])
+                if reliability else []
+            ),
             "primary_construct_count": len(joint_result.panel.selected_candidate_ids),
             "recommendation_status": joint_result.recommendation_status,
             "warnings": list(joint_result.warnings),
@@ -1016,9 +1051,13 @@ def run_pipeline(
             "engine": "joint_v4_ml", "schema_version": "4.0",
             "schema_extension_version": "4.1",
             "recommendation_status": joint_result.recommendation_status,
+            "recommendation_diagnostics": joint_result.provenance.get("recommendation_diagnostics", {}),
             "tool_inventory": to_dict(joint_result.tool_inventory),
             "candidate_count": len(joint_result.candidates),
             "selected_candidate_ids": joint_result.panel.selected_candidate_ids,
+            "panel_budget_decision": to_dict(joint_result.panel.budget_decision),
+            "surface_complexity": to_dict(joint_result.complexity),
+            "review_candidate_ids": [c.candidate_id for c in joint_result.candidates if c.qualification == "REVIEW_REQUIRED"],
             "recommended_by_class": {
                 key: len(value)
                 for key, value in joint_result.panel.candidates_by_role.items()
@@ -1117,6 +1156,8 @@ def run_pipeline(
             "sectors": to_dict(joint_result.sectors), "candidates": to_dict(joint_result.candidates),
             "selected_panel": to_dict(joint_result.panel), "warnings": joint_result.warnings,
             "surface_hypotheses": to_dict(joint_result.surface_hypotheses),
+            "errors": joint_result.errors,
+            "recommendation_diagnostics": joint_result.provenance.get("recommendation_diagnostics", {}),
         }
     else:
         regions, partition_summary = partition_surface(
@@ -1145,11 +1186,9 @@ def run_pipeline(
     elif patch_engine == "joint_v4_ml":
         stage1_regions = regions
         partition_summary["stage1_selected_region_ids"] = [item.id for item in regions]
-        partition_summary["stage1_min_constructs"] = min(len(regions), len(designs))
-        partition_summary["stage1_target_constructs"] = len(designs)
-        partition_summary["stage1_max_constructs"] = min(
-            request.max_primary_constructs, effective_max
-        )
+        partition_summary["stage1_min_constructs"] = effective_min
+        partition_summary["stage1_target_constructs"] = stage1_target
+        partition_summary["stage1_max_constructs"] = effective_max
         partition_summary["stage1_selection_basis"] = (
             joint_result.panel.solver_status.lower()
         )
@@ -1267,6 +1306,15 @@ def run_pipeline(
         },
     }
     warnings = list(partition_summary.get("warnings", [])) + list(conservation_warnings)
+    uncertain_geometry = (reliability or {}).get("qc", {}).get("uncertain_terminal_geometry_positions", [])
+    if uncertain_geometry:
+        warnings.append(
+            f"{len(uncertain_geometry)} predicted terminal residues have low-confidence, poorly anchored coordinates; "
+            "their coordinates are omitted from 3D footprints and display partitioning, "
+            "while the input structure and sequence screening are retained. This is not an IDR diagnosis."
+        )
+    if request.metadata.get("validation_purpose") == "geometry_only_replay_no_mutation_recommendation":
+        warnings.append("Geometry-only verification replay: prediction workers are explicitly disabled; no mutation recommendation is evaluated.")
     for reason in selected_candidate.rejection_reasons:
         warnings.append(
             f"PDB admission warning: {reason}. Analysis continued; review mapping coverage and chain provenance."
@@ -1353,8 +1401,9 @@ def run_pipeline(
                 "maximum_internal_gap_aa": config.MAX_INTERNAL_GAP_AA,
                 "minimum_sequence_identity": config.MIN_SEQUENCE_IDENTITY,
                 "minimum_major_domain_coverage": config.MIN_MAJOR_DOMAIN_COVERAGE,
-                "rsasa_threshold": config.RSASA_THRESHOLD,
+                "rsasa_threshold": methods["rsasa_threshold"],
                 "sidechain_sasa_threshold_A2": config.SIDECHAIN_SASA_THRESHOLD_A2,
+                "sidechain_sasa_role": "descriptive_only_not_surface_gate",
                 "minimum_orthologs": config.CONSERVATION_MIN_ORTHOLOGS,
                 "engineered_neighborhood_radius_A": config.ENGINEERED_NEIGHBORHOOD_RADIUS_A,
                 "membrane_accessibility_scale_A": config.MEMBRANE_ACCESSIBILITY_SCALE_A,
@@ -1368,17 +1417,13 @@ def run_pipeline(
                 "minimum": effective_min,
                 "target": stage1_target,
                 "maximum": effective_max,
-                "fixed_by_assay_profile": bool(assay_profile),
-                "policy": (
-                    "fixed six-construct coarse-mapping ceiling; surface regions are enumerated "
-                    "first and selected by geometric spread"
-                    if assay_profile else
-                    "3-7 is applied only when selecting the Stage-1 experimental panel; surface footprints are not capped"
-                ),
+                "adaptive_budget": panel_budget["adaptive_budget"],
+                "fixed_by_assay_profile": bool(assay_profile) and not panel_budget["adaptive_budget"],
+                "policy": "independent construct budget; minimum and target do not authorize forced filling",
             },
             "patch_engine": patch_engine,
             "joint_v3": config.JOINT_V3_PARAMETERS if patch_engine == "joint_v3" else None,
-            "joint_v4_ml": config.JOINT_V4_ML_PARAMETERS if patch_engine == "joint_v4_ml" else None,
+            "joint_v4_ml": read_json(output_dir / "v4_manifest.json")["parameters"] if patch_engine == "joint_v4_ml" else None,
             "surface_v2": config.SURFACE_V2_PARAMETERS,
             "patch_scale": "Overlapping surface-geodesic footprints at fixed 9/12/15 A and adaptive 600 A2 scales",
             "compact_single_domain_surface_face": {
@@ -1482,6 +1527,7 @@ def run_pipeline(
             "surface_graph_v41.json", "surface_display_regions_v41.json",
             "epitope_hypotheses_v41.json", "hypothesis_membership_v41.csv",
             "probe_hypothesis_matrix_v41.csv", "panel_identifiability_v41.json",
+            "recommendation_diagnostics_v41.json",
         ):
             if (output_dir / name).exists():
                 analysis["files"][name] = name
@@ -1507,5 +1553,12 @@ def run_pipeline(
     # complete file map.  Persist the final analysis once more so V3 file
     # provenance and the legacy view agree on disk and in the API response.
     write_json(output_dir / "analysis.json", analysis)
-    progress("COMPLETE", 1.0, "Analysis and epitope-mapping panel design completed")
+    finalize_scientific_bundle(output_dir)
+    final_status = design_summary.get("recommendation_status")
+    completion_message = (
+        "Analysis completed; formal recommendations are blocked. See recommendation diagnostics."
+        if final_status == "BLOCKED_EXTERNAL_EVIDENCE" else
+        "Analysis and epitope-mapping panel design completed"
+    )
+    progress("COMPLETE", 1.0, completion_message)
     return analysis

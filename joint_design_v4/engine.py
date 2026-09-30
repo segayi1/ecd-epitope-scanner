@@ -28,6 +28,7 @@ from ..models import (
 from ..sequences import apply_mutations, coding_fragment
 from ..util import sha256_file, write_json
 from .candidate_search import generate_candidates
+from .diagnostics import recommendation_diagnostics
 from .contexts import (
     context_manifest,
     normalized_prediction_surface_rows,
@@ -45,6 +46,9 @@ from .evidence import (
     surface_evidence,
 )
 from .hypotheses import attach_hypothesis_responses, hypotheses_from_surface_v2
+from .hierarchy import build_hierarchy
+from .qualification import qualification_audit
+from .models import SurfaceComplexitySummary
 from .geometry_evidence import annotate_hypothesis_geometry
 from .models import (
     CombinationStabilityEvidence,
@@ -111,6 +115,13 @@ def _prediction(
     supplied_key: str | None = None,
     mutations: list[list[str]] | None = None,
 ) -> PredictionResult:
+    if mutations:
+        # Worker results have one score per physical combination. Repeated
+        # display memberships must never duplicate inference requests.
+        mutations = [list(signature) for signature in dict.fromkeys(
+            tuple(sorted(str(item).strip().upper() for item in group))
+            for group in mutations
+        )]
     if supplied:
         supplied_keys = (supplied_key,) if supplied_key else (adapter.name,)
         for key in supplied_keys:
@@ -187,11 +198,29 @@ def _foldx_shortlist(
     maximum: int,
     epitope_priority_per_sector: int = 3,
     stability_fallback_per_sector: int = 3,
+    hypotheses=None,
 ) -> list[V4Candidate]:
     """Select a deterministic, sector-balanced FoldX confirmation set."""
     maximum = max(1, int(maximum))
+    if hypotheses:
+        ranked = sorted((c for c in candidates if c.order < 4 and c.search_role != "EXPLORATORY" and c.qualification != "REVIEW_REQUIRED"),
+                        key=lambda c: (c.order > 2, c.structural_risk, -c.epitope_score, c.candidate_id))
+        output, seen = [], set()
+        # Confirmation capacity is a hard worker budget, unlike the expanded
+        # generation shortlist. Reserve across hypotheses before global fill.
+        for offset in range(2):
+            for hypothesis in sorted(hypotheses, key=lambda h: h.hypothesis_id):
+                pool = [c for c in ranked if hypothesis.hypothesis_id in c.targeted_hypotheses and c.candidate_id not in seen]
+                if pool and len(output) < maximum:
+                    winner = pool[0]
+                    output.append(winner)
+                    seen.add(winner.candidate_id)
+        output.extend(c for c in ranked if c.candidate_id not in seen)
+        return output[:maximum]
     by_sector: dict[str, list[V4Candidate]] = {}
     for candidate in candidates:
+        if candidate.order >= 4 or candidate.search_role == "EXPLORATORY":
+            continue
         by_sector.setdefault(candidate.sector_id, []).append(candidate)
     for sector_id, pool in by_sector.items():
         ranked = sorted(
@@ -429,6 +458,8 @@ def _formal_candidate_reasons(
     sector_quality_flags: set[str] | None = None,
 ) -> list[str]:
     reasons = []
+    if candidate.qualification == "REVIEW_REQUIRED" or any(option.review_required for option in candidate.mutations):
+        reasons.append("STRUCTURAL_CONFIDENCE_REVIEW_REQUIRED")
     if not candidate.connected:
         reasons.append("DISCONNECTED_CANDIDATE")
     if candidate.order >= 4:
@@ -476,11 +507,22 @@ def _formal_candidate_reasons(
     return sorted(set(reasons))
 
 
+def _extra_region_color(index: int) -> str:
+    import colorsys
+
+    rgb = colorsys.hsv_to_rgb(((index - 1) * 0.61803398875) % 1.0, 0.65, 0.72)
+    return "#" + "".join(f"{round(channel * 255):02X}" for channel in rgb)
+
+
 def _legacy_regions(sectors: list[V4Sector], records: list[ResidueRecord]) -> list[RegionRecord]:
     by_position = {item.uniprot_pos: item for item in records}
+    for record in records:
+        record.region_id = None
     output = []
     for index, sector in enumerate(sectors, 1):
         present = [by_position[p] for p in sector.residue_positions if p in by_position]
+        for record in present:
+            record.region_id = index
         output.append(
             RegionRecord(
                 id=index,
@@ -494,10 +536,15 @@ def _legacy_regions(sectors: list[V4Sector], records: list[ResidueRecord]) -> li
                 interface_fraction=sum(item.interface for item in present) / max(1, len(present)),
                 pae_median=None,
                 auto_design_allowed=bool(sector.designable_area_a2),
-                rationale="Joint V4 connected sector; epitope tendency is a soft ranking target.",
-                color=["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#6F4E7C"][
-                    (index - 1) % 7
-                ],
+                rationale=(
+                    "Connected, diameter-bounded display region; overlapping hypotheses are separate. "
+                    f"Geodesic diameter {sector.geodesic_diameter_a or 0.0:.1f} A; "
+                    f"CA diameter {sector.euclidean_diameter_a or 0.0:.1f} A."
+                ),
+                color=(
+                    ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#6F4E7C"][index - 1]
+                    if index <= 7 else _extra_region_color(index)
+                ),
                 domain_id=present[0].domain if present else "ECD",
                 epitope_prior=sector.epitope_score,
                 prior_components={"epitope_score": sector.epitope_score},
@@ -508,7 +555,7 @@ def _legacy_regions(sectors: list[V4Sector], records: list[ResidueRecord]) -> li
                 partition_mode="joint_v4_ml",
                 partition_basis="explicit_surface_graph",
                 envelope_residues=list(sector.residue_positions),
-                mutable_residues=list(sector.residue_positions),
+                mutable_residues=[item.uniprot_pos for item in present if not item.hard_exclusions],
                 footprint_residues=list(sector.residue_positions),
                 surface_connectivity="connected",
                 quality_flags=list(sector.quality_flags),
@@ -841,7 +888,7 @@ def run_joint_v4_ml(
     discotope.records = _map_external_rows(discotope.records, records)
     normalized_context_rows = None
     normalized_context_method = None
-    if normalized_path is not None and _complete_success(procaliper):
+    if normalized_path is not None:
         normalized_context_rows, normalized_context_method = normalized_prediction_surface_rows(
             normalized_path, chain, records
         )
@@ -891,9 +938,17 @@ def run_joint_v4_ml(
         epitope,
         graph,
         record_map,
-        min(7, max(1, int(params.get("max_sectors", 7)))),
+        max(1, int(params.get("max_sectors", 7))),
         params.get("sectoring", {}),
     )
+    graph_provenance["display_partition_policy"] = {
+        "version": "connected_bounded_v2",
+        "requested_region_count": max(1, int(params.get("max_sectors", 7))),
+        "realized_region_count": len(sectors),
+        "count_is_soft_target": True,
+        "maximum_geodesic_diameter_a": params.get("sectoring", {}).get("maximum_geodesic_diameter_a", 26.0),
+        "maximum_euclidean_diameter_a": params.get("sectoring", {}).get("maximum_euclidean_diameter_a", 18.0),
+    }
     graph_snapshot_path = output_dir / "surface_graph_v4.json"
     graph_snapshot_sha256 = write_surface_graph_snapshot(
         graph_snapshot_path,
@@ -919,19 +974,35 @@ def run_joint_v4_ml(
             {
                 "schema_version": "4.1",
                 "interpretation": "Display ownership only; scientific footprint memberships may overlap.",
-                "regions": to_dict(surface_v2_result.surface_regions),
+                "regions": to_dict(sectors),
+                "partition_policy": graph_provenance["display_partition_policy"],
+                "surface_v2_regions": to_dict(surface_v2_result.surface_regions),
             },
         )
+    raw_hypotheses, families = [], []
     hypotheses = (
         hypotheses_from_surface_v2(surface_v2_result, records, epitope)
         if bool(params.get("use_surface_hypotheses", True)) else []
     )
+    if surface_v2_result is not None and params.get("use_hypothesis_hierarchy", False):
+        raw_hypotheses, families, hypotheses = build_hierarchy(
+            surface_v2_result, records, epitope, graph, params.get("hypothesis_hierarchy", {}),
+            confidence=confidence, predicted=structure_type in {"alphafold", "predicted"},
+        )
+    candidate_pool_diagnostics = {}
     candidates = generate_candidates(
-        sectors, options, graph, params["candidate_search"],
+        sectors, [option for option in options if not option.review_required], graph, params["candidate_search"],
         hypotheses=hypotheses or None,
+        diagnostics=candidate_pool_diagnostics,
     )
+    review_diagnostics = {}
+    if any(option.review_required for option in options):
+        candidates.extend(generate_candidates(
+            sectors, options, graph, {**params["candidate_search"], "require_review": True},
+            hypotheses=hypotheses or None, diagnostics=review_diagnostics,
+        ))
     annotate_hypothesis_geometry(
-        hypotheses, records,
+        hypotheses + raw_hypotheses, records,
         membrane_anchor=membrane_anchor,
         membrane_normal=membrane_normal,
         assay_orientation_geometry=assay_orientation_geometry,
@@ -967,13 +1038,29 @@ def run_joint_v4_ml(
             [candidate_notation(candidate) for candidate in candidates],
         )
         if candidates
-        else PredictionResult(status="failed")
+        else PredictionResult(status="failed", errors=[{
+            "code": "NO_CANDIDATES_TO_SCORE",
+            "message": "SPURS multi was not run because candidate generation returned no combinations.",
+        }])
     )
+    _annotate_stability(
+        candidates, spurs.records if _complete_success(spurs) else [],
+        multi, PredictionResult(status="failed"),
+        params["spurs_multi"], params["foldx_confirmation"], position_map,
+    )
+    # Confirm combinations that can still enter the formal panel. An unrelated
+    # rejected/exploratory pool must not consume the limited FoldX budget.
+    confirmable = [
+        item for item in candidates
+        if item.order < 4 and item.qualification != "REVIEW_REQUIRED" and item.stability is not None
+        and item.stability.consensus_status == "SPURS_ONLY_REVIEW_REQUIRED"
+    ] if mode == "strict" else [item for item in candidates if item.order < 4]
     foldx_candidates = _foldx_shortlist(
-        candidates,
+        confirmable,
         int(params["foldx_confirmation"].get("max_candidates", 42)),
         int(params["panel_optimizer"].get("epitope_priority_per_sector", 3)),
         int(params["panel_optimizer"].get("stability_fallback_per_sector", 3)),
+        hypotheses=hypotheses,
     )
     foldx = (
         _prediction(
@@ -989,7 +1076,10 @@ def run_joint_v4_ml(
             [candidate_notation(candidate) for candidate in foldx_candidates],
         )
         if foldx_candidates
-        else PredictionResult(status="failed")
+        else PredictionResult(status="failed", errors=[{
+            "code": "NO_CONFIRMABLE_CANDIDATES",
+            "message": "FoldX was not run because no primary candidate passed the SPURS multi confirmation gate.",
+        }])
     )
     _annotate_stability(
         candidates,
@@ -1029,7 +1119,7 @@ def run_joint_v4_ml(
         lower_coverage = max(
             (
                 max(item.coverage_by_scenario.values(), default=0.0)
-                for item in by_sector[candidate.sector_id]
+                for item in (candidates if hypotheses else by_sector[candidate.sector_id])
                 if item.order < candidate.order
             ),
             default=0.0,
@@ -1045,7 +1135,7 @@ def run_joint_v4_ml(
 
             candidate_sites = {item.residue.uniprot_pos for item in candidate.mutations}
             comparable = [
-                item for item in by_sector[candidate.sector_id]
+                item for item in candidates
                 if item.order < candidate.order
                 and {mutation.residue.uniprot_pos for mutation in item.mutations} <= candidate_sites
             ]
@@ -1086,7 +1176,21 @@ def run_joint_v4_ml(
         surface_areas={item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface},
         hypotheses=hypotheses,
         risk_penalty_weights=params["panel_optimizer"].get("risk_penalty_weights", {}),
+        panel_budget=params.get("panel_budget"),
+        stop_parameters=params["panel_optimizer"],
     )
+    if raw_hypotheses:
+        from .identifiability import panel_metrics
+        from dataclasses import replace
+        attach_hypothesis_responses(selected, raw_hypotheses, graph, radius_a=response_radius, decay_length_a=response_decay)
+        raw_metrics = panel_metrics(selected, raw_hypotheses)
+        raw_by_id = {h.hypothesis_id: h for h in raw_hypotheses}
+        family_hypotheses = [replace(raw_by_id[f.representative_footprint_id],
+            hypothesis_id=f.family_id, residue_weights=f.residue_weights) for f in families]
+        attach_hypothesis_responses(selected, family_hypotheses, graph, radius_a=response_radius, decay_length_a=response_decay)
+        panel.hierarchy_resolution = {"raw": raw_metrics, "family": panel_metrics(selected, family_hypotheses),
+            "interpretation": "Unresolved raw/family hypotheses remain audited; connectivity groups are not equivalence classes."}
+        attach_hypothesis_responses(selected, hypotheses, graph, radius_a=response_radius, decay_length_a=response_decay)
     selected_sector_ids = {item.sector_id for item in selected}
     reported_uncovered = {item["sector_id"] for item in panel.uncovered_components}
     for sector in sectors:
@@ -1120,6 +1224,8 @@ def run_joint_v4_ml(
     else:
         recommendation_status = "FORMAL_RECOMMENDATION"
     warnings = ["Joint V4-ML thresholds are uncalibrated engineering heuristics."]
+    if len(hypotheses) > 30:
+        warnings.append("More than 30 inference hypotheses remain after conservative merging; count is diagnostic only and no forced compression is applied.")
     if assay_format == "cell_surface":
         warnings.append(
             "Cell-surface assay accessibility is unassessed: membrane-relative geometry is a structural proxy, while intermembrane distance and receptor/Fab-specific reach remain unknown."
@@ -1165,6 +1271,8 @@ def run_joint_v4_ml(
         warnings.append("Preview output must not be treated as a formal recommendation.")
     if any(sector.sector_type == "COVERAGE_ONLY" for sector in sectors):
         warnings.append("At least one sector has LOW_EPITOPE_PRIOR.")
+    if len(sectors) > max(1, int(params.get("max_sectors", 7))):
+        warnings.append("Display region count was increased to preserve connectivity and diameter constraints; construct budget is unchanged.")
     legacy_regions = _legacy_regions(sectors, records)
     legacy_designs = _legacy_designs(
         selected, sectors, protein, original_cds, recommendation_status
@@ -1182,6 +1290,15 @@ def run_joint_v4_ml(
         sectors=sectors,
         candidates=candidates,
         panel=panel,
+        raw_hypotheses=raw_hypotheses,
+        footprint_families=families,
+        complexity=SurfaceComplexitySummary(
+            eligible_residues=len(graph), eligible_area_a2=sum(areas.values()),
+            display_regions=len(sectors), raw_footprints=len(getattr(surface_v2_result, "raw_footprints", []) or raw_hypotheses),
+            footprint_families=len(families), inference_hypotheses=len(hypotheses),
+            surface_components=len(set(components.values())),
+            structural_domains=len({record_map[p].domain for p in graph}),
+        ),
         surface_hypotheses=hypotheses,
         legacy_regions=legacy_regions,
         legacy_designs=legacy_designs,
@@ -1194,6 +1311,16 @@ def run_joint_v4_ml(
         provenance={
             **dict(source_provenance or {}),
             "surface_graph": graph_provenance,
+            "qualification_audit": qualification_audit(records, float(params["surface"]["rsasa_threshold"])),
+            "hierarchy_raw_footprint_ids": [f.footprint_id for f in getattr(surface_v2_result, "raw_footprints", [])],
+            "global_candidate_pool": candidate_pool_diagnostics,
+            "review_candidate_pool": review_diagnostics,
+            "recommendation_diagnostics": recommendation_diagnostics(
+                candidates, selected,
+                {"procaliper": procaliper, "spurs_single": spurs,
+                 "spurs_multi": multi, "discotope": discotope, "foldx": foldx},
+                mutation_options=single,
+            ),
             "foldx_evidence_status": {
                 "run_success": foldx_run_success,
                 "scored_candidates": foldx_candidate_coverage,
@@ -1212,6 +1339,7 @@ def run_joint_v4_ml(
         },
     )
     contexts = context_manifest(protein, records, chain)
+    write_json(output_dir / "raw_surface_footprints_v411.json", to_dict(getattr(surface_v2_result, "raw_footprints", [])))
     contexts["prediction_context"]["normalized_path"] = (
         normalized_path.name if normalized_path else None
     )

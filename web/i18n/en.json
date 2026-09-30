@@ -320,5 +320,7 @@
   "ui.upload": "Upload structure",
   "custom.saved": " saved and added to the export files.",
   "custom.savedToast": "Custom construct saved",
-  "surface.note": "Surface gate: rSASA >= 0.25 AND side-chain SASA >= 20 A2. Only gated residues enter the design pool."
+  "surface.note": "Historical surface gate: rSASA >= 0.25 AND side-chain SASA >= 20 A2.",
+  "surface.note.v411": "Exposure uses total rSASA; side-chain SASA is descriptive. Coordinate and mutation qualification are separate. Gray does not mean buried.",
+  "crit.sidechain.v411": "side-chain SASA is descriptive evidence"
 }

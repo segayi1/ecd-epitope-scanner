@@ -82,6 +82,37 @@ def write_v4_outputs(
     write_json(output_dir / "probe_sectors_v4.json", _rows(result.sectors))
     write_json(output_dir / "panel_candidates.json", _rows(result.candidates))
     write_json(output_dir / "selected_panel_v4.json", _rows(result.panel))
+    extension_names = [
+        "qualification_audit_v411.json", "hypothesis_hierarchy_v411.json",
+        "global_candidate_pool_v411.json", "review_candidates_v411.json",
+        "panel_budget_decision_v411.json", "panel_budget_curve_v411.csv",
+        "raw_hypotheses_v411.json", "footprint_families_v411.json",
+        "inference_hypotheses_v411.json", "surface_complexity_v411.json",
+        "retrospective_benchmark_contract_v411.json",
+        "raw_surface_footprints_v411.json",
+    ]
+    write_json(output_dir / extension_names[0], result.provenance.get("qualification_audit", {}))
+    write_json(output_dir / extension_names[1], {
+        "interpretation": "Raw -> family -> inference; engineering membership weights are not probabilities.",
+        "parameters": parameters.get("hypothesis_hierarchy", {}),
+        "families": _rows(result.footprint_families),
+        "inference_hypotheses": _rows(result.surface_hypotheses),
+        "raw_to_family": {fid: f.family_id for f in result.footprint_families for fid in f.member_footprint_ids},
+        "unassigned_raw_footprint_ids": sorted(set(result.provenance.get("hierarchy_raw_footprint_ids", [])) - {fid for f in result.footprint_families for fid in f.member_footprint_ids}),
+        "family_to_inference": {fid: h.hypothesis_id for h in result.surface_hypotheses for fid in getattr(h, "family_ids", [])},
+        "resolution_by_level": result.panel.hierarchy_resolution,
+    })
+    write_json(output_dir / extension_names[2], {"formal": result.provenance.get("global_candidate_pool", {}), "review": result.provenance.get("review_candidate_pool", {})})
+    write_json(output_dir / extension_names[3], _rows([c for c in result.candidates if c.qualification == "REVIEW_REQUIRED"]))
+    write_json(output_dir / extension_names[4], _rows(result.panel.budget_decision))
+    _write_csv(output_dir / extension_names[5], result.panel.budget_decision.budget_curve if result.panel.budget_decision else [],
+               ["construct_count", "candidate_id", "objective", "net_gain", "information_gain", "relative_information_gain", "coverage_gain", "mean_separation_gain", "minimum_separation_gain", "unresolved_pair_reduction", "risk_delta", "redundancy_delta"])
+    write_json(output_dir / extension_names[6], _rows(result.raw_hypotheses))
+    write_json(output_dir / extension_names[7], _rows(result.footprint_families))
+    write_json(output_dir / extension_names[8], _rows(result.surface_hypotheses))
+    write_json(output_dir / extension_names[9], _rows(result.complexity))
+    from .benchmark import benchmark_contract
+    write_json(output_dir / extension_names[10], benchmark_contract())
     write_json(output_dir / "surface_hypotheses_v4.json", _rows(result.surface_hypotheses))
     write_json(
         output_dir / "epitope_hypotheses_v41.json",
@@ -355,6 +386,8 @@ def write_v4_outputs(
     Draft202012Validator.check_schema(schema)
     Draft202012Validator(schema).validate(manifest)
     write_json(output_dir / "v4_manifest.json", manifest)
+    diagnostics = result.provenance.get("recommendation_diagnostics", {})
+    write_json(output_dir / "recommendation_diagnostics_v41.json", diagnostics)
     v41_manifest = {
         **manifest,
         "schema_version": "4.1",
@@ -369,6 +402,10 @@ def write_v4_outputs(
         "primary_candidate_ids": list(result.panel.selected_candidate_ids),
         "panel_identifiability": _rows(result.panel),
         "semantic_extensions": [
+            "independent_exposure_coordinate_mutation_qualification",
+            "footprint_family_inference_hierarchy",
+            "global_hypothesis_balanced_candidate_pool",
+            "adaptive_budget_v3_profile",
             "overlapping_surface_hypotheses",
             "probe_hypothesis_perturbation_matrix",
             "identifiability_greedy_panel",
@@ -376,12 +413,14 @@ def write_v4_outputs(
             "four_site_candidates_exploratory_only",
         ],
         "v41_artifacts": [name for name in [
+            *extension_names,
             "surface_graph_v41.json",
             "surface_display_regions_v41.json",
             "epitope_hypotheses_v41.json",
             "hypothesis_membership_v41.csv",
             "probe_hypothesis_matrix_v41.csv",
             "panel_identifiability_v41.json",
+            "recommendation_diagnostics_v41.json",
         ] if (output_dir / name).is_file()],
     }
     v41_schema_path = Path(__file__).resolve().parents[1] / "schemas" / "joint_v41_manifest.schema.json"
@@ -432,6 +471,10 @@ def write_v4_outputs(
         f"- Recommendation status: `{result.recommendation_status}`",
         f"- Sectors: {len(result.sectors)}; candidates: {len(result.candidates)}",
         f"- Selected panel: {len(result.panel.selected_candidate_ids)} combinations",
+        f"- Budget decision: {_rows(result.panel.budget_decision)}",
+        f"- Surface complexity: {_rows(result.complexity)}",
+        "- Near-distance connected groups are pending-resolution summaries, not pairwise equivalence classes.",
+        "- Exposure uses native total rSASA. Side-chain SASA is descriptive; confidence review is distinct from folding damage.",
         f"- Overlapping surface hypotheses: {len(result.surface_hypotheses)}",
         f"- Hypothesis selection method: {result.panel.solver_status}",
         f"- Mean and minimum hypothesis signature separation: {result.panel.mean_pairwise_separation}, {result.panel.minimum_signature_distance}",
@@ -458,6 +501,23 @@ def write_v4_outputs(
         "## Selected probe evidence",
         "",
         *selected_probe_table,
+        "",
+        "## Recommendation diagnostics",
+        "",
+        f"- Outcome: {diagnostics.get('outcome', 'UNASSESSED')}",
+        f"- Unique combinations / candidate records: {diagnostics.get('unique_combination_count')} / {diagnostics.get('candidate_count')}",
+        f"- Formal eligible candidates: {diagnostics.get('formal_eligible_candidate_count')}",
+        f"- Formal exclusion counts: {json.dumps(diagnostics.get('formal_exclusion_counts', {}), sort_keys=True)}",
+        *[
+            f"- {name}: {error.get('code')}: {error.get('message')}"
+            for name, errors in diagnostics.get("worker_failures", {}).items()
+            for error in errors
+        ],
+        *[
+            f"- {name} was not run: {error.get('message')}"
+            for name, errors in diagnostics.get("workers_not_run", {}).items()
+            for error in errors
+        ],
         "",
         "## Interpretation boundaries",
         "",
