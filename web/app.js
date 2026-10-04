@@ -302,12 +302,14 @@ function watchJob(jobId) {
   };
 }
 
-function panelBudgetInput() {
+function panelBudgetInput(strategy = $("surface-strategy")?.value, optimizationProfile = $("optimization-profile")?.value) {
   const minimum = Number($("budget-minimum")?.value || 4);
   const target = Number($("budget-target")?.value || 7);
   const maximum = Number($("budget-maximum")?.value || 8);
-  if (![minimum, target, maximum].every(Number.isInteger) || minimum < 1 || minimum > target || target > maximum || maximum > 8) {
-    throw new Error("构建体预算需要满足 1 ≤ 最少目标 ≤ 常见目标 ≤ 硬上限 ≤ 8");
+  if (["coverage_scan_v2_preview", "coverage_scan_v3_preview"].includes(optimizationProfile)) strategy = "surface_perturbation_v1_preview";
+  const ceiling = strategy === "surface_perturbation_v1_preview" ? 12 : 8;
+  if (![minimum, target, maximum].every(Number.isInteger) || minimum < 1 || minimum > target || target > maximum || maximum > ceiling) {
+    throw new Error(`构建体预算需要满足 1 ≤ 最少目标 ≤ 常见目标 ≤ 硬上限 ≤ ${ceiling}`);
   }
   return {minimum_constructs: minimum, target_constructs: target,
           maximum_constructs: maximum, adaptive_budget: $("adaptive-budget")?.checked ?? true};
@@ -316,7 +318,7 @@ function panelBudgetInput() {
 async function submitRun(event) {
   event.preventDefault();
   const inputType = document.querySelector('input[name="input-type"]:checked').value;
-  const designEngine = $("design-engine").value;
+  const designEngine = "joint_v4_ml";
   try {
     setJob("QUEUED", t("msg.submitting", "提交作业…"), 0.02);
     const job = await api("/api/jobs", {
@@ -330,6 +332,8 @@ async function submitRun(event) {
         allow_partial: false,
         design_engine: designEngine,
         ml_mode: $("ml-mode").value,
+        surface_strategy: $("surface-strategy").value,
+        optimization_profile: $("optimization-profile").value,
         max_sectors: 7,
         ...panelBudgetInput(),
       }),
@@ -355,12 +359,13 @@ async function submitUpload(event) {
   if ($("upload-sequence").value.trim()) form.append("sequence", $("upload-sequence").value.trim());
   if ($("upload-ecd-start").value) form.append("ecd_start", $("upload-ecd-start").value);
   if ($("upload-ecd-end").value) form.append("ecd_end", $("upload-ecd-end").value);
-  const uploadDesignEngine = $("upload-design-engine").value;
-  form.append("design_engine", uploadDesignEngine);
+  form.append("design_engine", "joint_v4_ml");
   form.append("ml_mode", $("upload-ml-mode").value);
+  form.append("surface_strategy", $("upload-surface-strategy").value);
+  form.append("optimization_profile", $("upload-optimization-profile").value);
   form.append("max_sectors", "7");
   try {
-    Object.entries(panelBudgetInput()).forEach(([key, value]) => form.append(key, String(value)));
+    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key, value]) => form.append(key, String(value)));
     setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
     const job = await api("/api/jobs/upload", { method: "POST", body: form });
     state.jobId = job.id;
@@ -1222,6 +1227,7 @@ function renderStep7() {
   const partition = result.partitioning || {};
   const request = result.request || {};
   const v4 = result.joint_v4_ml || {};
+  const physical = result.design_summary?.surface_perturbation || v4.surface_perturbation;
   const files = Object.keys(result.files || {});
   const row = (label, value) => `<dt>${h(label)}</dt><dd>${h(value ?? "—")}</dd>`;
   $("task-overview").innerHTML = `<div class="card task-overview-card">
@@ -1239,10 +1245,34 @@ function renderStep7() {
     ${row(t("overview.structureFile", "结构文件名"), source.identifier || selection.selected_identifier || "—")}
     ${row(t("overview.summary", "结果摘要"), `${summary.mapped_ecd_residues ?? "—"} ECD residues · ${partition.actual_regions ?? result.regions.length} patches · ${result.designs.length} constructs`)}
     ${v4.recommendation_status ? row("Joint V4-ML 状态", v4.recommendation_status) : ""}
+    ${physical ? row("真实表面扰动预览", `${physical.status} · ${physical.actual_constructs} verified constructs`) : ""}
+    ${physical?.panel_contract ? row("组合面板目标 / 搜索状态", `${physical.goal_status} / ${physical.search_status}；每项2–3点，hard/all目标80%`) : ""}
     ${v4.sectors ? row("V4 补丁 / 推荐组合", `${v4.sectors.length} / ${(v4.selected_panel?.selected_candidate_ids || []).length}`) : ""}
     ${row(t("overview.coverage", "表面覆盖率"), partition.coverage != null ? fmtPct(partition.coverage) : "—")}
     ${row(t("overview.files", "导出文件"), files.length ? `${files.length} files: ${files.join(", ")}` : "—")}
-    </dl></div>`;
+    </dl>${physical ? physicalCoverageTable(physical) : ""}</div>`;
+}
+
+function physicalCoverageTable(physical) {
+  const local = physical.verified_local_constructs || [];
+  const localTable = local.length ? `<p>已核查的局部构建体：${h(local.length)} 个。局部计算资格与完整面板收敛分别报告；突变按 UniProt 编号显示。</p>
+    <div class="table-wrap"><table><thead><tr><th>突变 / 面板</th><th>配对模型重复</th><th>SPURS ΔΔG</th><th>FoldX ΔΔG</th><th>直接改变面积 Å²</th><th>逐位直接变化 Å²（同组4/5）</th><th>扫描中心面积 Å²</th></tr></thead><tbody>
+    ${local.map((c) => `<tr><td>${h((c.mutation_notations || []).join(" + "))}${(physical.selected_candidate_ids || []).includes(c.candidate_id) ? " · 目标面板" : " · 局部候选"}</td><td>${h(c.model_repeats)}</td>
+      <td>${h(fmt(c.spurs_ddg_kcal_mol))}</td><td>${h(fmt(c.foldx_ddg_kcal_mol))}</td>
+      <td>${h(fmt(c.actual_changed_area_a2))}</td><td>${c.site_evidence?.sites?.length ? c.site_evidence.sites.map((s) => `${h(s.notation)}: ${h(fmt(s.verified_direct_area_a2))}`).join("; ") : "未知"}</td><td>${h(fmt(c.hard_scan_center_area_a2))}</td></tr>`).join("")}
+    </tbody></table></div>` : "";
+  const rows = physical.coverage_curve || [];
+  const info = physical.panel_information;
+  const information = info ? `<p>直接物理改变：${h(fmtPct(info.C_physical_lower_bound))}；12 Å 表面测地扫描机会：${h(fmtPct(info.C_screen_lower_bound))}；二重覆盖：${h(fmtPct(info.double_covered_fraction))}；删除任一构建体后的最差覆盖：${h(fmtPct(info.worst_single_construct_loss_coverage))}。</p><p>几何可区分位置对（至少1个明确相反位）：${h(fmtPct(info.geometric_pair_distinction?.["1"]))}。未知保持未知；几何码不代表实测抗体响应码。</p>` : "";
+  if (!rows.length) return localTable + "<p>真实组合覆盖曲线尚不可用。</p>";
+  const percent = (value) => value == null ? "未知" : fmtPct(value);
+  return information + localTable + `<p>同一真实验证集合的嵌套前缀；扫描机会不等同于抗体检出率。电势未知不会填成零。</p>
+    <div class="table-wrap"><table><thead><tr><th>K / 实际构建数</th><th>Hard / All</th><th>Hard / Designable</th><th>Extended / All</th><th>Extended / Designable</th><th>最大连通盲区 Å²</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${h(r.K)} / ${h(r.actual_constructs)}</td>
+      <td>${h(percent(r.C_hard_all))}</td><td>${h(percent(r.C_hard_designable))}</td>
+      <td>${h(percent(r.C_extended_all))}</td><td>${h(percent(r.C_extended_designable))}</td>
+      <td>${h(r.largest_blind_patch_a2 == null ? "未知" : Number(r.largest_blind_patch_a2).toFixed(1))}</td></tr>`).join("")}
+    </tbody></table></div>`;
 }
 
 /* ---------------- residues ---------------- */

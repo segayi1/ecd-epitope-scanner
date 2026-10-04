@@ -336,6 +336,16 @@ function renderPanel(){
   else if (state.step===5) h += stepDesign();
   else if (state.step===6) h += stepCustom();
   else h += stepOverview();
+  var physical=(D.design_summary||{}).surface_perturbation || ((D.joint_v4_ml||{}).provenance||{}).surface_perturbation;
+  if (physical && physical.panel_information) {
+    var info=physical.panel_information;
+    var pct=function(x){return x==null?'未知':(100*x).toFixed(2)+'%';};
+    h += '<div class="box" id="physical-v3-information"><h3>真实物理证据 / 扫描机会</h3>'
+      +'<p>正式目标：'+esc(physical.hard_target_status)+' · '+esc(physical.actual_constructs)+' 构建体</p>'
+      +'<p>直接物理改变：'+pct(info.C_physical_lower_bound)+'；12 Å 表面测地扫描机会：'+pct(info.C_screen_lower_bound)+'</p>'
+      +'<p>二重覆盖：'+pct(info.double_covered_fraction)+'；单构建失效最差覆盖：'+pct(info.worst_single_construct_loss_coverage)+'</p>'
+      +'<p>几何可区分位置对：'+pct((info.geometric_pair_distinction||{})["1"])+'。未知不按零；几何码不是实测抗体响应码。</p></div>';
+  }
   h += '<div class="note">'+esc(t("note.disclaimer"))+'</div>';
   el("panel").innerHTML = h;
   wirePanel();

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PD-1 抗体结合表面 | ECD Epitope Workbench</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#f3f6f7;color:#26333a;font:15px/1.5 system-ui,"Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:18px;padding:14px 24px;background:#fff;border-bottom:1px solid #d9e1e2}header a{color:#1565c0;text-decoration:none}
+  main{max-width:1350px;margin:auto;padding:20px}h1{font-size:22px;margin:0 0 6px}p{margin:5px 0 14px;color:#52636d}
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px}.viewer{height:min(73vh,790px);min-height:480px;background:#fff;border:1px solid #d9e1e2;border-radius:12px;position:relative}
+  #mol{position:absolute;inset:0}.panel{background:#fff;border:1px solid #d9e1e2;border-radius:12px;padding:18px}.panel h2{font-size:17px;margin:0 0 12px}
+  .item{display:block;padding:10px 0;border-bottom:1px solid #e7eded;cursor:pointer}.item input{margin-right:7px}.swatch{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px}.item small{display:block;margin:4px 0 0 26px;color:#63747e}
+  select{display:block;width:100%;padding:8px;margin:8px 0 2px;border:1px solid #b9c9ce;border-radius:6px;background:white;color:#26333a}.detail{font-size:13px;color:#52636d;min-height:42px;margin-top:8px}
+  .gradient-key{display:flex;align-items:center;gap:4px;margin-top:10px;font-size:12px;color:#52636d}.gradient-key i{display:block;flex:1;height:12px;border-radius:2px}.gradient-key span{white-space:nowrap}
+  button{border:1px solid #b9c9ce;background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer;margin-top:14px}.note{font-size:13px;color:#667780;margin-top:17px}#status{position:absolute;left:16px;bottom:15px;background:#ffffffdd;padding:5px 9px;border-radius:6px}
+  @media(max-width:760px){.layout{grid-template-columns:1fr}.viewer{height:60vh;min-height:360px}}
+</style>
+</head>
+<body>
+<header><a href="/">← ECD Epitope Workbench</a><strong>PD-1 抗体结合表面</strong></header>
+<main>
+<h1>PD-1 表面的三种抗体结合方向</h1>
+<p>实验晶体结构按 PD-1 对齐；拖动旋转，滚轮缩放，右键平移。选择单个抗体可看到它在 PD-1 上的接触表位。</p>
+<div class="layout">
+  <div class="viewer"><div id="mol"></div><div id="status">正在加载结构…</div></div>
+  <aside class="panel">
+    <h2>分子表面</h2>
+    <label class="item"><input type="checkbox" data-key="pd1" checked><span class="swatch" style="background:#8eacb7"></span><b>人 PD-1</b><small>参考结构：5WT9，链 G；始终居中</small></label>
+    <label class="item"><input type="checkbox" data-key="nivo" checked><span class="swatch" style="background:#d7adae"></span><b>纳武利尤单抗</b><small>Nivolumab · 5WT9 · N 端环</small></label>
+    <label class="item"><input type="checkbox" data-key="pembro" checked><span class="swatch" style="background:#a6c6d8"></span><b>帕博利珠单抗</b><small>Pembrolizumab · 5GGS · C′D 环</small></label>
+    <label class="item"><input type="checkbox" data-key="clone19" checked><span class="swatch" style="background:#d8c5a3"></span><b>Clone 19</b><small>研究用激动性抗体 · 9HK1 · 膜近端背面</small></label>
+    <label for="focus" style="display:block;margin-top:16px"><b>表位聚焦</b></label>
+    <select id="focus"><option value="all">显示全部抗体</option><option value="nivo">纳武利尤单抗 · N 端环</option><option value="pembro">帕博利珠单抗 · C′D 环</option><option value="clone19">Clone 19 · 膜近端背面</option></select>
+    <div id="epitope-detail" class="detail">整体模式显示所有已勾选抗体的表位；聚焦模式只显示所选抗体。</div>
+    <div id="gradient-key" class="gradient-key"><span>周边 8 Å</span><i style="background:#ffe9a8"></i><i style="background:#f8c5aa"></i><i style="background:#ee9589"></i><i style="background:#d85e68"></i><span>直接接触</span></div>
+    <button id="reset">复位视角</button>
+    <div class="note">彩色部分均为 Fab 的重链与轻链，不包含完整 Fc。叠加表示不同实验中的结合方向，不表示可以同时结合。Clone 19 是研究用激动性抗体，与前两种临床阻断抗体的作用方式不同。<br><br>结构：<a href="https://www.rcsb.org/structure/5WT9">5WT9</a> · <a href="https://www.rcsb.org/structure/5GGS">5GGS</a> · <a href="https://www.rcsb.org/structure/9HK1">9HK1</a></div>
+  </aside>
+</div>
+</main>
+<script src="/assets/vendor/3Dmol-min.js"></script>
+<script>
+(async () => {
+  const status = document.getElementById('status');
+  try {
+    const response = await fetch('/assets/pd1_antibodies.pdb');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const [pdb, contacts] = await Promise.all([response.text(),fetch('/assets/pd1_antibody_contacts.json').then(r => {
+      if (!r.ok) throw new Error(`表位数据 HTTP ${r.status}`);
+      return r.json();
+    })]);
+    const viewer = $3Dmol.createViewer(document.getElementById('mol'), {backgroundColor:'#ffffff', antialias:true});
+    viewer.addModel(pdb, 'pdb');
+    viewer.setStyle({}, {});
+    const layers = {
+      pd1:{chain:'P',color:'#8eacb7',opacity:1},
+      nivo:{chain:['A','B'],color:'#c9878d',opacity:0.70},
+      pembro:{chain:['C','D'],color:'#79a9c3',opacity:0.70},
+      clone19:{chain:['E','F'],color:'#c3a06a',opacity:0.70}
+    };
+    const notes = {
+      nivo:'N 端环占主要部分；与 PD-L1 结合面的重叠较少。',
+      pembro:'主要识别 C′D 环及邻近 IgV 表面；与纳武利尤单抗表位部分重叠。',
+      clone19:'识别膜近端背面；结合方向与前两种抗体明显不同。'
+    };
+    let drawNumber = 0;
+    async function draw() {
+      const current = ++drawNumber;
+      viewer.removeAllSurfaces();
+      const focus = document.getElementById('focus').value;
+      const tasks = [];
+      const activeKeys = focus === 'all'
+        ? Object.keys(layers).filter(key => key !== 'pd1' && document.querySelector(`[data-key="${key}"]`).checked)
+        : [focus];
+      const distances = {};
+      for (const key of activeKeys) {
+        for (const [position, distance] of Object.entries(contacts[key]?.distance_by_residue_A || {})) {
+          distances[position] = Math.min(distances[position] ?? Infinity, distance);
+        }
+      }
+      const site = Object.entries(distances).filter(([,distance]) => distance <= 4.5).map(([position]) => Number(position));
+      const region = Object.keys(distances).map(Number);
+      const bins = [
+        {limit:3.2,color:'#d85e68',positions:[]},
+        {limit:4.5,color:'#ee9589',positions:[]},
+        {limit:6.0,color:'#f8c5aa',positions:[]},
+        {limit:8.0,color:'#ffe9a8',positions:[]}
+      ];
+      for (const [position, distance] of Object.entries(distances)) {
+        const bin = bins.find(item => distance <= item.limit);
+        if (bin) bin.positions.push(Number(position));
+      }
+      for (const [key, layer] of Object.entries(layers)) {
+        if (!document.querySelector(`[data-key="${key}"]`).checked) continue;
+        if (key !== 'pd1' && focus !== 'all' && key !== focus) continue;
+        if (key === 'pd1' && region.length) {
+          tasks.push(viewer.addSurface($3Dmol.SurfaceType.MS,
+            {color:layer.color,opacity:layer.opacity,smoothness:3},
+            {chain:'P',not:{resi:region}}, {chain:'P'}));
+          for (const bin of bins) if (bin.positions.length) {
+            tasks.push(viewer.addSurface($3Dmol.SurfaceType.MS,
+              {color:bin.color,opacity:1,smoothness:3},
+              {chain:'P',resi:bin.positions}, {chain:'P'}));
+          }
+          continue;
+        }
+        for (const chain of (Array.isArray(layer.chain) ? layer.chain : [layer.chain]))
+          tasks.push(viewer.addSurface($3Dmol.SurfaceType.MS,
+            {color:layer.color,opacity:focus === key ? 0.50 : layer.opacity,smoothness:3}, {chain}));
+      }
+      document.getElementById('gradient-key').hidden = !region.length;
+      if (focus !== 'all' && document.querySelector('[data-key="pd1"]').checked) {
+        document.getElementById('epitope-detail').textContent =
+          `${notes[focus]} 红色梯度标记 ${site.length} 个直接接触残基（≤4.5 Å），浅粉延伸至 8 Å。`;
+      } else if (focus === 'all' && activeKeys.length) {
+        document.getElementById('epitope-detail').textContent =
+          `叠加显示 ${activeKeys.length} 种抗体的表位并集；红色标记 ${site.length} 个直接接触残基，黄色延伸至 8 Å。`;
+      } else document.getElementById('epitope-detail').textContent =
+        '勾选抗体后显示它们的表位并集；也可选择单种抗体聚焦。';
+      viewer.render();
+      status.textContent = '正在计算分子表面…';
+      await Promise.all(tasks);
+      if (current === drawNumber) {viewer.render(); status.textContent = '分子表面 · 结构已对齐';}
+    }
+    document.querySelectorAll('[data-key]').forEach(el => el.addEventListener('change',draw));
+    const centerView = () => {viewer.zoomTo(); viewer.center({chain:'P'}); viewer.zoom(1.25); viewer.render();};
+    document.getElementById('reset').addEventListener('click',centerView);
+    centerView();
+    const frontView = viewer.getView();
+    document.getElementById('focus').addEventListener('change',() => {
+      viewer.setView(frontView);
+      if (document.getElementById('focus').value === 'clone19') viewer.rotate(180,'y');
+      viewer.render();
+      draw();
+    });
+    await draw();
+  } catch (error) { status.textContent = `加载失败：${error.message}`; }
+})();
+</script>
+</body>
+</html>

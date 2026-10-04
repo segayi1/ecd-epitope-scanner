@@ -27,7 +27,8 @@ def test_mutant_combination_uses_surface_showcase_contract():
     assert "WT 位点" in app
     assert "plugin.applyVisualStyles(plugin.assemblyRef, visualStyle)" in renderer
     assert "visual.update(\n      { visualStyle" not in renderer
-    assert 'max_primary_constructs: 7' in app
+    assert '...panelBudgetInput()' in app
+    assert 'strategy === "surface_perturbation_v1_preview" ? 12 : 8' in app
     assert 'class="design-series"' in app
 
 

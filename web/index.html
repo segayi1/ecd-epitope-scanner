@@ -24,19 +24,23 @@
       <input id="identifier" value="Q9NZQ7" autocomplete="off" required></label>
     <label class="fld fld-sm"><span data-i18n="form.chain">链</span>
       <input id="chain" maxlength="4" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
-    <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span>
-      <select id="design-engine"><option value="surface_v2">Surface V2</option><option value="joint_v3">Joint V3</option><option value="joint_v4_ml">Joint V4-ML</option></select></label>
+    <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
+    <label class="fld fld-sm"><span>表面策略</span><select id="surface-strategy"><option value="legacy">现有V4</option><option value="surface_perturbation_v1_preview">真实扰动预览</option></select></label>
+    <label class="fld fld-sm"><span>优化配置</span><select id="optimization-profile"><option value="legacy">兼容配置</option><option value="coverage_scan_v2_preview">覆盖优先预览v2</option><option value="coverage_scan_v3_preview">覆盖与信息预览v3</option></select></label>
     <details><summary>构建体预算</summary>
       <label><input id="adaptive-budget" type="checkbox" checked>自动 4–8</label>
       <label>最少目标<input id="budget-minimum" type="number" min="1" max="8" value="4" style="width:45px"></label>
       <label>常见目标<input id="budget-target" type="number" min="1" max="8" value="7" style="width:45px"></label>
-      <label>硬上限<input id="budget-maximum" type="number" min="1" max="8" value="8" style="width:45px"></label>
+      <label>硬上限<input id="budget-maximum" type="number" min="1" max="12" value="8" style="width:45px"></label>
     </details>
     <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button>
     <button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
   </form>
   <div class="app-actions">
+    <a class="btn" href="/assets/surface_partitions.html">PD-L1 / CTLA-4 分区表面</a>
+    <a class="btn" href="/pd1-antibodies">PD-1 抗体表面</a>
+    <a class="btn" href="/experiments">实验项目</a>
     <button id="btn-lang" class="btn" type="button">EN</button>
     <button id="btn-export-offline" class="btn" type="button" disabled data-i18n="form.exportOffline" data-i18n-title="form.exportOfflineTitle" title="导出单文件离线报告（含结构）">导出离线 HTML</button>
   </div>
@@ -128,9 +132,10 @@
       <label class="fld"><span data-i18n="upload.accession">UniProt accession</span><input id="upload-accession" data-i18n-placeholder="upload.accessionHint" placeholder="推荐填写"></label>
       <label class="fld"><span data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
     </div>
-    <label class="fld"><span data-i18n="form.designEngine">设计引擎</span>
-      <select id="upload-design-engine"><option value="surface_v2">Surface V2</option><option value="joint_v3">Joint V3</option><option value="joint_v4_ml">Joint V4-ML</option></select></label>
+    <label class="fld"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="upload-ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
+    <label class="fld fld-sm"><span>表面策略</span><select id="upload-surface-strategy"><option value="legacy">现有V4</option><option value="surface_perturbation_v1_preview">真实扰动预览</option></select></label>
+    <label class="fld fld-sm"><span>优化配置</span><select id="upload-optimization-profile"><option value="legacy">兼容配置</option><option value="coverage_scan_v2_preview">覆盖优先预览v2</option><option value="coverage_scan_v3_preview">覆盖与信息预览v3</option></select></label>
     <details>
       <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
       <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>

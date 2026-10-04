@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>实验项目 · ECD Epitope Workbench</title>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; color: #172b39; background: #f5f8fa; max-width: 1040px; margin: auto; padding: 24px; }
+    a { color: #075f8d; } header { display: flex; align-items: center; justify-content: space-between; }
+    main { display: grid; gap: 18px; } section, article { background: white; padding: 20px; border: 1px solid #d8e2e8; border-radius: 10px; }
+    form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; } label { display: grid; gap: 5px; flex: 1 1 250px; }
+    input, select, button { font: inherit; padding: 9px; border-radius: 5px; border: 1px solid #a9bbc5; }
+    input[type="checkbox"] { width: 18px; height: 18px; padding: 0; }
+    fieldset { min-width: 0; margin: 8px 0; border: 1px solid #c6d4dc; border-radius: 6px; }
+    legend { padding: 0 6px; font-weight: 600; }
+    button { background: #075f8d; color: white; cursor: pointer; } button:disabled { opacity: .55; cursor: wait; }
+    .muted { color: #5d707c; font-size: .9em; } .error { color: #a22626; } .hash { font: 12px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
+    dt { font-weight: 600; } dd { margin: 0 0 10px; } ul { padding-left: 20px; }
+    table { border-collapse: collapse; width: 100%; } th, td { text-align: left; border-bottom: 1px solid #d8e2e8; padding: 8px; }
+    .flowjo-percentage-qc-form { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr); gap: 4px; min-width: 230px; }
+    .flowjo-percentage-qc-form input { min-width: 0; width: auto; padding: 5px; font-size: 12px; }
+    .flowjo-percentage-qc-form select, .flowjo-percentage-qc-form button { padding: 5px; font-size: 12px; }
+    .flowjo-percentage-qc-reviewer-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 8px 0; }
+    .flowjo-percentage-qc-reviewer-tools label { flex: 1 1 260px; }
+    .flowjo-qc-worksheet-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 12px; }
+    .flowjo-qc-worksheet-tools input[type="file"] { max-width: min(100%, 360px); }
+    .flowjo-qc-worksheet-tools .muted { flex-basis: 100%; }
+    table[aria-label="每批四条件对照窗口"], table[aria-label="跨批次效应汇总"] { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
+    figure { margin: 12px 0; padding: 12px; background: #fbfcfd; border: 1px solid #d8e2e8; border-radius: 8px; }
+    figcaption { margin-bottom: 8px; font-weight: 600; }
+    svg[aria-label="逐孔阳性比例图"] { display: block; width: 100%; min-width: 620px; height: auto; }
+    #project-content section:has(> figure) { overflow-x: auto; }
+    .structure-effect-view { height: 520px; min-height: 360px; position: relative; background: #f4f0e7; border: 1px solid #d8e2e8; border-radius: 8px; overflow: hidden; }
+    .structure-effect-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+    .structure-evidence-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+    .structure-evidence-summary article { display: grid; gap: 5px; padding: 12px; margin: 0; }
+    .structure-evidence-summary span { font-weight: 600; }
+    .structure-evidence-summary small { color: #5d707c; overflow-wrap: anywhere; }
+    .antibody-mutation-tracks { display: grid; gap: 10px; overflow: hidden; }
+    .antibody-mutation-tracks h4, .antibody-mutation-tracks h5 { margin: 4px 0; }
+    .antibody-mutation-track-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: center; gap: 12px; }
+    .sequence-track-scroll { overflow-x: auto; padding: 12px 0 20px; }
+    .sequence-track-lane { height: 6px; position: relative; border-radius: 4px; background: #d8e2e8; }
+    .sequence-track-tick { position: absolute; top: 10px; transform: translateX(-50%); color: #5d707c; font: 11px/1 ui-monospace, monospace; }
+    .antibody-track-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; padding: 0; border: 2px solid white; border-radius: 50%; background: #c3443d; box-shadow: 0 0 0 1px #8e2f2b; }
+    .antibody-track-marker:focus-visible { outline: 3px solid #075f8d; outline-offset: 2px; }
+    @media (max-width: 700px) { .antibody-mutation-track-row { grid-template-columns: 1fr; gap: 4px; } }
+    .structure-effect-detail { min-height: 2em; }
+  </style>
+</head>
+<body>
+  <header><h1>实验项目</h1><a href="/">返回结构设计</a></header>
+  <main>
+    <section>
+      <h2>从已完成的 v4 作业创建</h2>
+      <p class="muted">创建时复制抗原序列、结构、残基映射、分区和表面图。来源缺文件或哈希不符时会拒绝创建。</p>
+      <form id="create-form">
+        <label>来源作业 ID <input id="source-job" required maxlength="64" autocomplete="off"></label>
+        <label>项目名称 <input id="project-name" required maxlength="120" autocomplete="off"></label>
+        <button id="create-button" type="submit">创建冻结项目</button>
+      </form>
+      <p id="create-message" role="status"></p>
+    </section>
+    <section><h2>已有项目</h2><div id="project-list" aria-live="polite">加载中…</div></section>
+    <section id="project-detail" hidden><h2>项目详情</h2><div id="project-content"></div></section>
+  </main>
+  <script src="/assets/vendor/3Dmol-min.js"></script>
+  <script src="/assets/experiments.js" defer></script>
+</body>
+</html>
