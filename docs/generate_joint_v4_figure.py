@@ -3,9 +3,8 @@
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from matplotlib import font_manager
-
+from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 OUT = Path(__file__).resolve().parent / "figures"
 OUT.mkdir(parents=True, exist_ok=True)

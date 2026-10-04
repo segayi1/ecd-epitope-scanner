@@ -1,0 +1,13 @@
+{
+  "scope": "review-only evidence; no production tests or algorithm changes",
+  "checks": "PASS",
+  "files": {
+    "docs\\workflow_efficiency_audit_20261003.md": "9a22cb13f9d13a98ce833513b8709b95634e4babbacdc7484eb47f7fa9a33dc6",
+    "docs\\workflow_efficiency_audit_20261003\\analysis.json": "50db594a3abd88818da5fab9fa61eff0945b711cb803320e857d6fb5ff15928f",
+    "docs\\workflow_efficiency_audit_20261003\\archive_inventory.json": "5be6bea1b2f3d0945784d33fc35f338c36d0d110eaa491d157aa4760ef80cef4",
+    "docs\\workflow_efficiency_audit_20261003\\campaign_snapshot.json": "da7443cbda64c47144faad8d65b388ea609bc1f260d65d47f5de5f4b63f1bd15",
+    "docs\\workflow_efficiency_audit_20261003\\disk_inventory.json": "901ed8eac465d8a566ef00580e22b6daa8528d78d07f0ce7c0cb6df465546153",
+    "docs\\workflow_efficiency_audit_20261003\\analyze_evidence.py": "7f62f31f56b6b289c2c63ca1e91c90293963d5609076dcfa3a0b9548b780a778",
+    "docs\\workflow_efficiency_audit_20261003\\collect_evidence.py": "eb65214399f5d0f56398bb4da8ac2cc806ab136db6e1bc6ddbe88e2ffa3c06cd"
+  }
+}

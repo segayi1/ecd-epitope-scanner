@@ -1,6 +1,8 @@
-# Joint V3 后端设计引擎
+# Joint V3 历史设计引擎
 
-Joint V3 是一个可选的后端设计引擎，现有 Surface V2 仍是默认引擎。启用方式：
+> 仅用于解释历史结果。当前 CLI/API 不再接受 Joint V3 新作业；新分析统一使用 Joint V4-ML。
+
+Joint V3 曾是一个可选的后端设计引擎。以下为历史调用示例，当前入口已停用：
 
 ```powershell
 ecd-epitope-scanner analyze --structure <structure.pdb> --sequence <sequence.fasta> `

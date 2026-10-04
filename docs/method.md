@@ -1,5 +1,7 @@
 # ECD Epitope Workbench：论文级方法学（Methods）
 
+> 本文包含历史 `surface_v2` / Joint V3 方法说明。当前新作业固定使用 `joint_v4_ml`，旧引擎不再开放新作业入口。
+
 ## 1. 研究目的与总体设计
 
 本研究建立一个面向膜蛋白胞外结构域（extracellular domain, ECD）构象表位定位的计算—实验设计工作台。系统的输入为目标蛋白序列、ECD 边界、可用的编码序列（CDS）及结构/置信度证据；输出为一组可直接用于结合实验的 ECD 或全长突变构建体。每个构建体被视为测量表位位置的实验仪器：其突变应在尽量不破坏整体折叠、表达和膜定位的前提下，对局部抗体足迹产生足够扰动。
@@ -76,7 +78,7 @@ ESM-1v 为可选 zero-shot 证据，仅在显式提供 `ECD_ESM_MODEL` 且 torch
 
 ## 6. Surface V2/legacy 突变菜单与单点筛选
 
-本节描述默认 `surface_v2`/legacy 工作流。Joint V3 使用独立的突变选项和组合搜索规则，见第 7.1 节；两套引擎的结果不能仅凭字段名称互相解释。
+本节描述历史 `surface_v2`/legacy 工作流。Joint V3 的历史突变选项和组合搜索规则见第 7.1 节；这些算法不作为当前新作业入口。
 
 系统在允许的表面位点上枚举氨基酸替换。默认定向菜单为：体积较大或芳香/带正电残基（W/Y/F/R/K/M/I/L）优先替换为 Ala；小体积或极性残基（G/A/S/T/D/N）优先替换为 Trp；带电残基可进行电荷反转。每个位点最多保留 2 个候选。锚点突变定义为电荷反转，或 W/Y/F→A；每个主构建尽量包含至少一个锚点。
 
@@ -132,7 +134,7 @@ V3 的稳定性证据分为 `RULE_ONLY`、`EXTERNAL_SINGLE` 和 `EXTERNAL_COMBIN
 
 V4 的完整独立方法学见 [`method_joint_v4.md`](method_joint_v4.md)；本节保留与通用 Methods 的接口和解释边界摘要。
 
-Joint V4-ML 是独立于默认 Surface V2 和 Joint V3 的 opt-in 后端。它把 ProCaliper 的表面可及性、DiscoTope-3.0 的表位倾向、SPURS single/multi 的稳定性证据和 FoldX 的组合复核作为四条可审计证据线；这些分数只用于候选筛选和实验面板排序，不被解释为抗体结合概率或真实接触预测。V4 不捆绑外部模型权重、二进制或许可证。
+Joint V4-ML 是当前新作业使用的后端。它把 ProCaliper 的表面可及性、DiscoTope-3.0 的表位倾向、SPURS single/multi 的稳定性证据和 FoldX 的组合复核作为四条可审计证据线；这些分数只用于候选筛选和实验面板排序，不被解释为抗体结合概率或真实接触预测。V4 不捆绑外部模型权重、二进制或许可证。
 
 #### 预测上下文与位置映射
 

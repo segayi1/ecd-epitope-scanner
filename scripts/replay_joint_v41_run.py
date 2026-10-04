@@ -48,6 +48,10 @@ def main() -> None:
     parser.add_argument("--profile-v3", action="store_true", help="Explicitly replay frozen inputs under the new adaptive V3 design policy")
     parser.add_argument("--surface-rsasa-threshold", type=float, choices=(0.15, 0.20, 0.25))
     parser.add_argument("--geometry-only", action="store_true", help="Recompute real geometry and exports with all prediction workers explicitly disabled; no mutation recommendation")
+    parser.add_argument("--optimization-profile", choices=["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"], default="legacy")
+    parser.add_argument("--candidate-ids", nargs="+")
+    parser.add_argument("--calibration-repeat-schedule", nargs="+", type=int)
+    parser.add_argument("--export-mode", choices=["checkpoint", "deliverable"], default="deliverable")
     args = parser.parse_args()
     source = args.source_run.resolve()
     output = args.output_dir.resolve()
@@ -60,6 +64,8 @@ def main() -> None:
     request_data = json.loads((source / "request.json").read_text(encoding="utf-8"))
     protein = analysis["protein"]
     request_data = replay_request_data(source, output, analysis, request_data)
+    request_data.update(optimization_profile=args.optimization_profile, candidate_ids=args.candidate_ids,
+        calibration_repeat_schedule=args.calibration_repeat_schedule, export_mode=args.export_mode)
     if args.profile_v3:
         request_data.update(assay_profile="jurkat_fab_k562_antigen_v3", max_primary_constructs=None,
                             minimum_constructs=4, target_constructs=7, maximum_constructs=8, adaptive_budget=True)

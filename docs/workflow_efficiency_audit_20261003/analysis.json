@@ -1,0 +1,548 @@
+{
+  "scope": "saved artifacts and synthetic pure-function diagnostics; no production/solver runs",
+  "phases": {
+    "CTLA4/calibration": {
+      "status": "CALIBRATION_INSUFFICIENT",
+      "actual_constructs": 0,
+      "goal_status": "NOT_EVALUATED",
+      "elapsed_seconds": 13415.929413658141,
+      "tool_calls": {
+        "nanoshaper": 231,
+        "apbs": 0,
+        "pdb2pqr": 0,
+        "cache_hits": 464
+      },
+      "nested_timing_do_not_sum": {
+        "sha256sum": {
+          "calls": 1,
+          "seconds": 0.1471508000004178
+        },
+        "paired_surface_field": {
+          "calls": 298,
+          "seconds": 2079.054926300005
+        },
+        "/home/segayi1/ecd_surface_tools/nanoshaper/build/NanoShaper": {
+          "calls": 231,
+          "seconds": 89.38157630000387
+        },
+        "triangle_sdf": {
+          "calls": 554,
+          "seconds": 1396.0664760000109
+        }
+      },
+      "scopes": 0,
+      "complete_scopes": 0,
+      "union_full_but_incomplete_scopes": 0,
+      "site_evidence_complete": 8,
+      "calibration_trajectories": [
+        {
+          "candidate": "V41_bade8b1a02e0b080",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_e91b95591dfe199a",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_2e3208540fb5424a",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_dce8a2cd5c8ea14d",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_30e744dd2eeb9933",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_2dc2b28353f9346e",
+          "runs": 5,
+          "complete": true
+        },
+        {
+          "candidate": "V41_6a02f39a8b057a86",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_38b60f87be087a6f",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_88a0eee4871a4d1d",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_a8d47cc4b79336ab",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_79176536511061a6",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_7f4c4446abe2b4db",
+          "runs": 20,
+          "complete": false
+        }
+      ],
+      "budget": {
+        "limit_seconds": 14400.0,
+        "elapsed_seconds": 14400.280560016632,
+        "active": false,
+        "checkpoint_wall_time": 1791033835.5576189
+      }
+    },
+    "CTLA4/production": {
+      "status": "CALIBRATION_EXPANSION_REQUIRED",
+      "actual_constructs": 2,
+      "goal_status": "INSUFFICIENT_VERIFIED_CONSTRUCTS",
+      "elapsed_seconds": 3979.671793529511,
+      "tool_calls": {
+        "nanoshaper": 0,
+        "apbs": 0,
+        "pdb2pqr": 0,
+        "cache_hits": 1
+      },
+      "nested_timing_do_not_sum": {
+        "sha256sum": {
+          "calls": 1,
+          "seconds": 0.17102950000116834
+        },
+        "paired_surface_field": {
+          "calls": 173,
+          "seconds": 1.740845399988757
+        }
+      },
+      "scopes": 83,
+      "complete_scopes": 3,
+      "union_full_but_incomplete_scopes": 34,
+      "site_evidence_complete": 11,
+      "calibration_trajectories": [],
+      "budget": {
+        "limit_seconds": 7200.0,
+        "elapsed_seconds": 4024.412205869674,
+        "active": false,
+        "checkpoint_wall_time": 1791034540.7422564
+      }
+    },
+    "PDL1/calibration": {
+      "status": "CALIBRATION_INSUFFICIENT",
+      "actual_constructs": 0,
+      "goal_status": "NOT_EVALUATED",
+      "elapsed_seconds": 13302.885714021686,
+      "tool_calls": {
+        "nanoshaper": 293,
+        "apbs": 0,
+        "pdb2pqr": 0,
+        "cache_hits": 324
+      },
+      "nested_timing_do_not_sum": {
+        "sha256sum": {
+          "calls": 1,
+          "seconds": 0.1443659999999909
+        },
+        "paired_surface_field": {
+          "calls": 295,
+          "seconds": 2932.533600699997
+        },
+        "/home/segayi1/ecd_surface_tools/nanoshaper/build/NanoShaper": {
+          "calls": 293,
+          "seconds": 157.56423330000143
+        },
+        "triangle_sdf": {
+          "calls": 682,
+          "seconds": 1856.949583399992
+        }
+      },
+      "scopes": 0,
+      "complete_scopes": 0,
+      "union_full_but_incomplete_scopes": 0,
+      "site_evidence_complete": 10,
+      "calibration_trajectories": [
+        {
+          "candidate": "V41_5c249b4b358911d3",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_4ce058de050a0b0e",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_36a6feb9c0773782",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_a663c69bff21b49e",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_1208b39aef343159",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_b812e14ffc5f04dd",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_1300b62636d66dac",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_1897384ca952b3ff",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_1e4eae2ab998dd85",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_1fe45ae3eb779722",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_5d75270e29cfc531",
+          "runs": 20,
+          "complete": false
+        },
+        {
+          "candidate": "V41_ca9c9fa6d726537f",
+          "runs": 20,
+          "complete": false
+        }
+      ],
+      "budget": {
+        "limit_seconds": 14400.0,
+        "elapsed_seconds": 14400.339465585712,
+        "active": false,
+        "checkpoint_wall_time": 1791031612.4113045
+      }
+    },
+    "PDL1/production": {
+      "status": "CALIBRATION_EXPANSION_REQUIRED",
+      "actual_constructs": 0,
+      "goal_status": "INSUFFICIENT_VERIFIED_CONSTRUCTS",
+      "elapsed_seconds": 1195.2164896221166,
+      "tool_calls": {
+        "nanoshaper": 20,
+        "apbs": 0,
+        "pdb2pqr": 0,
+        "cache_hits": 33
+      },
+      "nested_timing_do_not_sum": {
+        "sha256sum": {
+          "calls": 1,
+          "seconds": 0.14790910000010626
+        },
+        "paired_surface_field": {
+          "calls": 123,
+          "seconds": 212.91628250000122
+        },
+        "/home/segayi1/ecd_surface_tools/nanoshaper/build/NanoShaper": {
+          "calls": 20,
+          "seconds": 9.911036499997863
+        },
+        "triangle_sdf": {
+          "calls": 42,
+          "seconds": 113.23236059998635
+        }
+      },
+      "scopes": 73,
+      "complete_scopes": 0,
+      "union_full_but_incomplete_scopes": 25,
+      "site_evidence_complete": 8,
+      "calibration_trajectories": [],
+      "budget": {
+        "limit_seconds": 7200.0,
+        "elapsed_seconds": 1585.0266077556626,
+        "active": false,
+        "checkpoint_wall_time": 1791031946.3831751
+      }
+    }
+  },
+  "ctla4_pool": {
+    "count": 264,
+    "orders": {
+      "2": 204,
+      "3": 60
+    },
+    "formal_eligible": 82,
+    "exclusions_nonexclusive": {
+      "COMBINATION_REJECT": 65,
+      "SPURS_ONLY_REVIEW_REQUIRED": 104,
+      "MODEL_DISAGREEMENT": 12,
+      "HIGHER_ORDER_REQUIRES_FOLDX": 52
+    }
+  },
+  "hierarchy": {
+    "raw": {
+      "hypotheses": 508,
+      "pairs": 128778,
+      "near_pairs": 127391
+    },
+    "family": {
+      "hypotheses": 127,
+      "pairs": 8001,
+      "near_pairs": 7959
+    },
+    "identical_compact_payload_bytes": 18850558,
+    "selected_panel_and_hierarchy_payload_equal": true
+  },
+  "physical_cache_extensions": {
+    ".xyzr": [
+      286602552,
+      4022
+    ],
+    ".json": [
+      8683423,
+      19071
+    ],
+    ".xyz": [
+      296519629,
+      4021
+    ],
+    ".txt": [
+      4568913298,
+      12063
+    ],
+    ".log": [
+      17007775,
+      4242
+    ],
+    ".prm": [
+      1769680,
+      4022
+    ],
+    ".off": [
+      20169180787,
+      4021
+    ],
+    ".npz": [
+      2303992493,
+      14851
+    ],
+    ".in": [
+      42961,
+      103
+    ],
+    ".pqr": [
+      32705399,
+      222
+    ],
+    ".mc": [
+      757198,
+      102
+    ],
+    ".dx": [
+      10675388117,
+      102
+    ]
+  },
+  "physical_cache_txt": [
+    [
+      "triangleAreas.txt",
+      [
+        4530735252,
+        4021
+      ]
+    ],
+    [
+      "exposedIndices.txt",
+      [
+        38178046,
+        4021
+      ]
+    ],
+    [
+      "stderror.txt",
+      [
+        0,
+        4021
+      ]
+    ]
+  ],
+  "ctla4_cross_phase_arrays": {
+    "sha256_verified_identical_files": 856,
+    "duplicate_bytes": 258955415,
+    "same_underlying_file_count": 0,
+    "same_size_changed": []
+  },
+  "deterministic_unknown_repeat_repro": [
+    {
+      "models": 5,
+      "valid_mask": [
+        true,
+        false
+      ],
+      "complete": false
+    },
+    {
+      "models": 10,
+      "valid_mask": [
+        true,
+        false
+      ],
+      "complete": false
+    },
+    {
+      "models": 20,
+      "valid_mask": [
+        true,
+        false
+      ],
+      "complete": false
+    }
+  ],
+  "iid_illustration_not_actual_null_statistics": {
+    "5": 0.18549375000000012,
+    "10": 0.3697505902753909,
+    "20": 0.6226463974646927
+  },
+  "draft_matrix_fields": [
+    "hard",
+    "candidate_ids",
+    "area",
+    "designable"
+  ],
+  "independent_saved_draft_coverage": {
+    "constructs": 2,
+    "candidate_ids": [
+      "V41_2dc2b28353f9346e",
+      "V41_41898524d8f06c86"
+    ],
+    "C_hard_all": 0.3634884474911809,
+    "area_a2": 6874.363277945836
+  },
+  "source_sha256": {
+    "pipeline.py": "cc65ae4f7e0451ffdb85a4e5b283ed65f115203bccd9f6bc08b3a215eec82a13",
+    "models.py": "9cd97c1e2f1f7e9c9aebcc30a8df8793de6e56afd79dfd468506488834e32a68",
+    "exporting.py": "e76f78f51cd951aa0e857a97ca73e69fd5de5ce69166b1389eeb5caf2c152aae",
+    "scripts/benchmark_surface_perturbation.py": "dc4d0a65d3ffd2bc6580e98216131ca04a5477f348a697a7f2abd877c5683acc",
+    "surface_perturbation/engine.py": "00f7804d13b2d1e8fcdb7c1fc9c651846a2b7ab0ebfd8436ea0d3471c805f778",
+    "surface_perturbation/tools.py": "16293c4184a6696d32f628f41b6b99a3c90214f15fe68ced76cf3c31b1ab1fa3",
+    "surface_perturbation/geometry.py": "b719b3eb605285e08c067a108954508939f650bb7085711b32c8cec178e0445b",
+    "surface_perturbation/query_cache.py": "151923ee02d5c0e9c39b6bde971bbffb75baa16499055cccaae2a3cc04e84ce5",
+    "surface_perturbation/fields.py": "4b8099314e5375fd829ef2d5a37507e0c8bc4abd7c6335cf60d7c62e0d6f2325",
+    "surface_perturbation/calibration.py": "a1dc0d59b0dc45f86dee5fa5f836698fefa5dd5edb074b9a0ab98368b2764c99",
+    "surface_perturbation/calibration_scope.py": "33ff104852e465d4893c21c028b6b742a6c3dd9c9461006d8cd4589aa2a6bf33",
+    "surface_perturbation/null_store.py": "03fe98ade946d0518eeb44f495f35e78640049dd2663e3d160b58fc3abcaa2b4",
+    "surface_perturbation/export.py": "d5a32a026ace9191da4a9a7ce1b7eb088f63e54cac720997c7908a19bacb8b88",
+    "surface_perturbation/combo_contract.py": "1df9edc1cc0f043515a8e74826a20ccb529b208590762365c2ddc06f00926fce",
+    "joint_design_v4/reporting.py": "e38e482558c34c0d45433bea4f5b1a6168660174cb9367bdf9e0b573e0b7df98",
+    "joint_design_v4/identifiability.py": "48daa740972f3bf81ee0b87969e003f60cdb6364a5c642f78e4a9a21ff084a66",
+    "integrations/workers/foldx_worker.py": "3d1ed5ea48edb2e2633b9e6628739bc320c1e199f879e9ba5f8445dbe850b007",
+    "integrations/workers/spurs_gpu_worker.py": "9a98cbaf3d41b21eb9253b68478d33606658b063091cc2eacf2c191226e93186"
+  },
+  "current_vs_executed_source": {
+    "pipeline.py": {
+      "current": "cc65ae4f7e0451ffdb85a4e5b283ed65f115203bccd9f6bc08b3a215eec82a13",
+      "executed": "cc65ae4f7e0451ffdb85a4e5b283ed65f115203bccd9f6bc08b3a215eec82a13",
+      "equal": true
+    },
+    "models.py": {
+      "current": "9cd97c1e2f1f7e9c9aebcc30a8df8793de6e56afd79dfd468506488834e32a68",
+      "executed": "9cd97c1e2f1f7e9c9aebcc30a8df8793de6e56afd79dfd468506488834e32a68",
+      "equal": true
+    },
+    "exporting.py": {
+      "current": "e76f78f51cd951aa0e857a97ca73e69fd5de5ce69166b1389eeb5caf2c152aae",
+      "executed": "e76f78f51cd951aa0e857a97ca73e69fd5de5ce69166b1389eeb5caf2c152aae",
+      "equal": true
+    },
+    "scripts/benchmark_surface_perturbation.py": {
+      "current": "dc4d0a65d3ffd2bc6580e98216131ca04a5477f348a697a7f2abd877c5683acc",
+      "executed": "dc4d0a65d3ffd2bc6580e98216131ca04a5477f348a697a7f2abd877c5683acc",
+      "equal": true
+    },
+    "surface_perturbation/engine.py": {
+      "current": "00f7804d13b2d1e8fcdb7c1fc9c651846a2b7ab0ebfd8436ea0d3471c805f778",
+      "executed": "00f7804d13b2d1e8fcdb7c1fc9c651846a2b7ab0ebfd8436ea0d3471c805f778",
+      "equal": true
+    },
+    "surface_perturbation/tools.py": {
+      "current": "16293c4184a6696d32f628f41b6b99a3c90214f15fe68ced76cf3c31b1ab1fa3",
+      "executed": "16293c4184a6696d32f628f41b6b99a3c90214f15fe68ced76cf3c31b1ab1fa3",
+      "equal": true
+    },
+    "surface_perturbation/geometry.py": {
+      "current": "b719b3eb605285e08c067a108954508939f650bb7085711b32c8cec178e0445b",
+      "executed": "b719b3eb605285e08c067a108954508939f650bb7085711b32c8cec178e0445b",
+      "equal": true
+    },
+    "surface_perturbation/query_cache.py": {
+      "current": "151923ee02d5c0e9c39b6bde971bbffb75baa16499055cccaae2a3cc04e84ce5",
+      "executed": "151923ee02d5c0e9c39b6bde971bbffb75baa16499055cccaae2a3cc04e84ce5",
+      "equal": true
+    },
+    "surface_perturbation/fields.py": {
+      "current": "4b8099314e5375fd829ef2d5a37507e0c8bc4abd7c6335cf60d7c62e0d6f2325",
+      "executed": "4b8099314e5375fd829ef2d5a37507e0c8bc4abd7c6335cf60d7c62e0d6f2325",
+      "equal": true
+    },
+    "surface_perturbation/calibration.py": {
+      "current": "a1dc0d59b0dc45f86dee5fa5f836698fefa5dd5edb074b9a0ab98368b2764c99",
+      "executed": "a1dc0d59b0dc45f86dee5fa5f836698fefa5dd5edb074b9a0ab98368b2764c99",
+      "equal": true
+    },
+    "surface_perturbation/calibration_scope.py": {
+      "current": "33ff104852e465d4893c21c028b6b742a6c3dd9c9461006d8cd4589aa2a6bf33",
+      "executed": "33ff104852e465d4893c21c028b6b742a6c3dd9c9461006d8cd4589aa2a6bf33",
+      "equal": true
+    },
+    "surface_perturbation/null_store.py": {
+      "current": "03fe98ade946d0518eeb44f495f35e78640049dd2663e3d160b58fc3abcaa2b4",
+      "executed": "03fe98ade946d0518eeb44f495f35e78640049dd2663e3d160b58fc3abcaa2b4",
+      "equal": true
+    },
+    "surface_perturbation/export.py": {
+      "current": "d5a32a026ace9191da4a9a7ce1b7eb088f63e54cac720997c7908a19bacb8b88",
+      "executed": "d5a32a026ace9191da4a9a7ce1b7eb088f63e54cac720997c7908a19bacb8b88",
+      "equal": true
+    },
+    "surface_perturbation/combo_contract.py": {
+      "current": "1df9edc1cc0f043515a8e74826a20ccb529b208590762365c2ddc06f00926fce",
+      "executed": "1df9edc1cc0f043515a8e74826a20ccb529b208590762365c2ddc06f00926fce",
+      "equal": true
+    },
+    "joint_design_v4/reporting.py": {
+      "current": "e38e482558c34c0d45433bea4f5b1a6168660174cb9367bdf9e0b573e0b7df98",
+      "executed": "e38e482558c34c0d45433bea4f5b1a6168660174cb9367bdf9e0b573e0b7df98",
+      "equal": true
+    },
+    "joint_design_v4/identifiability.py": {
+      "current": "48daa740972f3bf81ee0b87969e003f60cdb6364a5c642f78e4a9a21ff084a66",
+      "executed": "48daa740972f3bf81ee0b87969e003f60cdb6364a5c642f78e4a9a21ff084a66",
+      "equal": true
+    },
+    "integrations/workers/foldx_worker.py": {
+      "current": "3d1ed5ea48edb2e2633b9e6628739bc320c1e199f879e9ba5f8445dbe850b007",
+      "executed": "3d1ed5ea48edb2e2633b9e6628739bc320c1e199f879e9ba5f8445dbe850b007",
+      "equal": true
+    },
+    "integrations/workers/spurs_gpu_worker.py": {
+      "current": "9a98cbaf3d41b21eb9253b68478d33606658b063091cc2eacf2c191226e93186",
+      "executed": "9a98cbaf3d41b21eb9253b68478d33606658b063091cc2eacf2c191226e93186",
+      "equal": true
+    }
+  }
+}

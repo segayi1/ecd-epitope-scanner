@@ -1,0 +1,133 @@
+{
+  "observed_at_utc": "2026-10-02T16:22:29.232273+00:00",
+  "cases": {
+    "CTLA4": {
+      "calibration": {
+        "status": "CALIBRATION_INSUFFICIENT",
+        "physical_status": "CALIBRATION_INSUFFICIENT",
+        "summary_is_current": true,
+        "accepted_panel": false,
+        "elapsed_seconds": 8946.90537568283,
+        "limit_seconds": 14400.0,
+        "driver_reason": null,
+        "summary_sha256": "43c3593a5390feb3fdc8be2042cf9f186cf7429ddc954f9e7937cdd84b40e3b0",
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": 0,
+        "apbs_evidence": null,
+        "coverage": null
+      },
+      "production": {
+        "status": "CALIBRATION_EXPANSION_REQUIRED",
+        "physical_status": "CALIBRATION_EXPANSION_REQUIRED",
+        "summary_is_current": true,
+        "accepted_panel": false,
+        "elapsed_seconds": 973.0116184120197,
+        "limit_seconds": 7200.0,
+        "driver_reason": null,
+        "summary_sha256": "ce6f0701cfbd450956b5babfd2e2996a3b5db529e534fad2c9e5fd90ee45a815",
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": 23,
+        "apbs_evidence": null,
+        "coverage": null
+      }
+    },
+    "PD1": {
+      "calibration": {
+        "status": "RUNNING_NOT_ACCEPTED",
+        "physical_status": null,
+        "summary_is_current": false,
+        "accepted_panel": false,
+        "elapsed_seconds": 5863.9712355098745,
+        "limit_seconds": 14400.0,
+        "driver_reason": null,
+        "summary_sha256": "4acc1aa87787c7645937e026f21773f46c5f4efa679e30119b1f181143f6b7b7",
+        "historical_summary_retained": true,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": null,
+        "apbs_evidence": null,
+        "coverage": null
+      },
+      "production": {
+        "status": "CALIBRATION_EXPANSION_REQUIRED",
+        "physical_status": "CALIBRATION_EXPANSION_REQUIRED",
+        "summary_is_current": true,
+        "accepted_panel": false,
+        "elapsed_seconds": 774.7040000000015,
+        "limit_seconds": 7200.0,
+        "driver_reason": null,
+        "summary_sha256": "ca041ec2f94088e42cc3842bf160f44d662bb32daf1b0f988d0f51586cc3e685",
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": 34,
+        "apbs_evidence": null,
+        "coverage": null
+      }
+    },
+    "PDL1": {
+      "calibration": {
+        "status": "RUNNING_NOT_ACCEPTED",
+        "physical_status": null,
+        "summary_is_current": false,
+        "accepted_panel": false,
+        "elapsed_seconds": 11390.201202598568,
+        "limit_seconds": 14400.0,
+        "driver_reason": null,
+        "summary_sha256": "016c0e5098e2c77463b452f2d75de5c70ec902dab2e2773126d4b92ac924771e",
+        "historical_summary_retained": true,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": null,
+        "apbs_evidence": null,
+        "coverage": null
+      },
+      "production": {
+        "status": "CALIBRATION_EXPANSION_REQUIRED",
+        "physical_status": "CALIBRATION_EXPANSION_REQUIRED",
+        "summary_is_current": true,
+        "accepted_panel": false,
+        "elapsed_seconds": 1243.7499999999982,
+        "limit_seconds": 7200.0,
+        "driver_reason": null,
+        "summary_sha256": "a33c0294d8ee38b297f05132e95dc3d77c8132bf0408e957001213df08e7c349",
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": 35,
+        "apbs_evidence": null,
+        "coverage": null
+      }
+    },
+    "B7-H6": {
+      "calibration": {
+        "status": "NOT_STARTED",
+        "physical_status": null,
+        "summary_is_current": false,
+        "accepted_panel": false,
+        "elapsed_seconds": null,
+        "limit_seconds": null,
+        "driver_reason": null,
+        "summary_sha256": null,
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": null,
+        "apbs_evidence": null,
+        "coverage": null
+      },
+      "production": {
+        "status": "NOT_STARTED",
+        "physical_status": null,
+        "summary_is_current": false,
+        "accepted_panel": false,
+        "elapsed_seconds": null,
+        "limit_seconds": null,
+        "driver_reason": null,
+        "summary_sha256": null,
+        "historical_summary_retained": false,
+        "actual_constructs": null,
+        "calibration_expansion_candidate_count": null,
+        "apbs_evidence": null,
+        "coverage": null
+      }
+    }
+  }
+}

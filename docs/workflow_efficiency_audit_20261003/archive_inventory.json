@@ -1,0 +1,4829 @@
+{
+  "calibration/surface_perturbation_evidence.zip": {
+    "bytes": 504940415,
+    "members": 6883,
+    "uncompressed_bytes": 626962792,
+    "groups": {
+      "V41_004f6c3271e8150c_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_004f6c3271e8150c_coverage.npz": [
+        3012,
+        2098,
+        1
+      ],
+      "V41_004f6c3271e8150c_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_004f6c3271e8150c_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_004f6c3271e8150c_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_010578b05b8e5f34_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_010578b05b8e5f34_coverage.npz": [
+        2682,
+        1759,
+        1
+      ],
+      "V41_010578b05b8e5f34_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_010578b05b8e5f34_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_010578b05b8e5f34_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_01780aec586ce5d5_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_01780aec586ce5d5_coverage.npz": [
+        2397,
+        1452,
+        1
+      ],
+      "V41_01780aec586ce5d5_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_01780aec586ce5d5_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_01780aec586ce5d5_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_coverage.npz": [
+        3328,
+        2417,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_field_audit.json": [
+        2914,
+        787,
+        1
+      ],
+      "V41_052ff3f68a659a45_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_052ff3f68a659a45_coverage.npz": [
+        2096,
+        1010,
+        1
+      ],
+      "V41_052ff3f68a659a45_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_052ff3f68a659a45_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_052ff3f68a659a45_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_062f0d3369806d90_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_062f0d3369806d90_coverage.npz": [
+        3018,
+        2107,
+        1
+      ],
+      "V41_062f0d3369806d90_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_062f0d3369806d90_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_062f0d3369806d90_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_coverage.npz": [
+        3257,
+        2344,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_coverage.npz": [
+        3116,
+        2202,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_13d2f5510461c6bd_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_13d2f5510461c6bd_coverage.npz": [
+        1895,
+        793,
+        1
+      ],
+      "V41_13d2f5510461c6bd_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_13d2f5510461c6bd_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_13d2f5510461c6bd_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_185bd214ea3b8662_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_185bd214ea3b8662_coverage.npz": [
+        2195,
+        1240,
+        1
+      ],
+      "V41_185bd214ea3b8662_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_185bd214ea3b8662_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_185bd214ea3b8662_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_19bd86db33650a98_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_19bd86db33650a98_coverage.npz": [
+        1938,
+        840,
+        1
+      ],
+      "V41_19bd86db33650a98_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_19bd86db33650a98_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_19bd86db33650a98_field_audit.json": [
+        2399,
+        705,
+        1
+      ],
+      "V41_1f1f89af467d97fe_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_1f1f89af467d97fe_coverage.npz": [
+        1900,
+        798,
+        1
+      ],
+      "V41_1f1f89af467d97fe_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_1f1f89af467d97fe_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_1f1f89af467d97fe_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_216dcdd5963cb509_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_216dcdd5963cb509_coverage.npz": [
+        3009,
+        2097,
+        1
+      ],
+      "V41_216dcdd5963cb509_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_216dcdd5963cb509_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_216dcdd5963cb509_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_22374cac6b2e77b5_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_22374cac6b2e77b5_coverage.npz": [
+        2968,
+        2055,
+        1
+      ],
+      "V41_22374cac6b2e77b5_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_22374cac6b2e77b5_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_22374cac6b2e77b5_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_26d50d9a051f4827_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_26d50d9a051f4827_coverage.npz": [
+        2499,
+        1560,
+        1
+      ],
+      "V41_26d50d9a051f4827_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_26d50d9a051f4827_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_26d50d9a051f4827_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_26df17c858ea6846_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_26df17c858ea6846_coverage.npz": [
+        2616,
+        1690,
+        1
+      ],
+      "V41_26df17c858ea6846_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_26df17c858ea6846_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_26df17c858ea6846_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_27a33bfc343b8e12_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_27a33bfc343b8e12_coverage.npz": [
+        2767,
+        1852,
+        1
+      ],
+      "V41_27a33bfc343b8e12_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_27a33bfc343b8e12_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_27a33bfc343b8e12_field_audit.json": [
+        2914,
+        787,
+        1
+      ],
+      "V41_29225bb307684393_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_29225bb307684393_coverage.npz": [
+        2439,
+        1496,
+        1
+      ],
+      "V41_29225bb307684393_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_29225bb307684393_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_29225bb307684393_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_coverage.npz": [
+        2021,
+        932,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_2b112d725399e075_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2b112d725399e075_coverage.npz": [
+        2825,
+        1909,
+        1
+      ],
+      "V41_2b112d725399e075_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2b112d725399e075_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2b112d725399e075_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_coverage.npz": [
+        2962,
+        2050,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_2dc2b28353f9346e_channel_resolution.npz": [
+        11442,
+        930,
+        1
+      ],
+      "V41_2dc2b28353f9346e_coverage.npz": [
+        5307,
+        4779,
+        1
+      ],
+      "V41_2dc2b28353f9346e_direct_site_evidence.npz": [
+        519,
+        475,
+        1
+      ],
+      "V41_2dc2b28353f9346e_direction_evidence.npz": [
+        76937,
+        62577,
+        1
+      ],
+      "V41_2dc2b28353f9346e_field_audit.json": [
+        3022,
+        821,
+        1
+      ],
+      "V41_2e3208540fb5424a_channel_resolution.npz": [
+        9101,
+        3994,
+        1
+      ],
+      "V41_2e3208540fb5424a_coverage.npz": [
+        4466,
+        3588,
+        1
+      ],
+      "V41_2e3208540fb5424a_direct_site_evidence.npz": [
+        475,
+        431,
+        1
+      ],
+      "V41_2e3208540fb5424a_direction_evidence.npz": [
+        140827,
+        108761,
+        1
+      ],
+      "V41_2e3208540fb5424a_field_audit.json": [
+        3143,
+        852,
+        1
+      ],
+      "V41_2e58aa3b738e2148_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2e58aa3b738e2148_coverage.npz": [
+        2921,
+        2007,
+        1
+      ],
+      "V41_2e58aa3b738e2148_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2e58aa3b738e2148_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2e58aa3b738e2148_field_audit.json": [
+        2914,
+        782,
+        1
+      ],
+      "V41_30e744dd2eeb9933_channel_resolution.npz": [
+        13155,
+        4603,
+        1
+      ],
+      "V41_30e744dd2eeb9933_coverage.npz": [
+        7470,
+        6032,
+        1
+      ],
+      "V41_30e744dd2eeb9933_direct_site_evidence.npz": [
+        540,
+        499,
+        1
+      ],
+      "V41_30e744dd2eeb9933_direction_evidence.npz": [
+        240163,
+        195602,
+        1
+      ],
+      "V41_30e744dd2eeb9933_field_audit.json": [
+        3159,
+        863,
+        1
+      ],
+      "V41_33fda28052264d50_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_33fda28052264d50_coverage.npz": [
+        2752,
+        1832,
+        1
+      ],
+      "V41_33fda28052264d50_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_33fda28052264d50_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_33fda28052264d50_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_36543152830525d9_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_36543152830525d9_coverage.npz": [
+        2001,
+        911,
+        1
+      ],
+      "V41_36543152830525d9_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_36543152830525d9_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_36543152830525d9_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_38b60f87be087a6f_channel_resolution.npz": [
+        6315,
+        1630,
+        1
+      ],
+      "V41_38b60f87be087a6f_coverage.npz": [
+        4387,
+        3234,
+        1
+      ],
+      "V41_38b60f87be087a6f_direct_site_evidence.npz": [
+        269,
+        198,
+        1
+      ],
+      "V41_38b60f87be087a6f_direction_evidence.npz": [
+        293292,
+        264042,
+        1
+      ],
+      "V41_38b60f87be087a6f_field_audit.json": [
+        3090,
+        827,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_coverage.npz": [
+        2510,
+        1576,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_40d6e3b73024df81_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_40d6e3b73024df81_coverage.npz": [
+        2736,
+        1820,
+        1
+      ],
+      "V41_40d6e3b73024df81_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_40d6e3b73024df81_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_40d6e3b73024df81_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_41898524d8f06c86_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_41898524d8f06c86_coverage.npz": [
+        2173,
+        1205,
+        1
+      ],
+      "V41_41898524d8f06c86_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_41898524d8f06c86_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_41898524d8f06c86_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_428420ab9ab97768_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_428420ab9ab97768_coverage.npz": [
+        1854,
+        752,
+        1
+      ],
+      "V41_428420ab9ab97768_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_428420ab9ab97768_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_428420ab9ab97768_field_audit.json": [
+        2914,
+        782,
+        1
+      ],
+      "V41_458352f6bce08ce7_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_458352f6bce08ce7_coverage.npz": [
+        2980,
+        2069,
+        1
+      ],
+      "V41_458352f6bce08ce7_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_458352f6bce08ce7_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_458352f6bce08ce7_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_4b848cdbd195520a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4b848cdbd195520a_coverage.npz": [
+        2758,
+        1833,
+        1
+      ],
+      "V41_4b848cdbd195520a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4b848cdbd195520a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4b848cdbd195520a_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_coverage.npz": [
+        2379,
+        1440,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_coverage.npz": [
+        2784,
+        1870,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_4ed6aea336711894_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4ed6aea336711894_coverage.npz": [
+        1877,
+        777,
+        1
+      ],
+      "V41_4ed6aea336711894_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4ed6aea336711894_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4ed6aea336711894_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_5199affb6061087f_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5199affb6061087f_coverage.npz": [
+        3073,
+        2158,
+        1
+      ],
+      "V41_5199affb6061087f_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5199affb6061087f_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5199affb6061087f_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_51cf855a7077e329_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_51cf855a7077e329_coverage.npz": [
+        2902,
+        1989,
+        1
+      ],
+      "V41_51cf855a7077e329_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_51cf855a7077e329_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_51cf855a7077e329_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_5249dccf78536f1e_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5249dccf78536f1e_coverage.npz": [
+        2191,
+        1234,
+        1
+      ],
+      "V41_5249dccf78536f1e_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5249dccf78536f1e_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5249dccf78536f1e_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_5392058c9c5833cd_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5392058c9c5833cd_coverage.npz": [
+        2008,
+        917,
+        1
+      ],
+      "V41_5392058c9c5833cd_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5392058c9c5833cd_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5392058c9c5833cd_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_54e928a26d11be80_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_54e928a26d11be80_coverage.npz": [
+        2641,
+        1719,
+        1
+      ],
+      "V41_54e928a26d11be80_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_54e928a26d11be80_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_54e928a26d11be80_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_5a0276348e213981_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5a0276348e213981_coverage.npz": [
+        2472,
+        1526,
+        1
+      ],
+      "V41_5a0276348e213981_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5a0276348e213981_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5a0276348e213981_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_5af20d39abba49cb_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5af20d39abba49cb_coverage.npz": [
+        3131,
+        2214,
+        1
+      ],
+      "V41_5af20d39abba49cb_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5af20d39abba49cb_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5af20d39abba49cb_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_coverage.npz": [
+        2514,
+        1582,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_coverage.npz": [
+        2962,
+        2044,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_67c6667a20f0557c_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_67c6667a20f0557c_coverage.npz": [
+        2134,
+        1173,
+        1
+      ],
+      "V41_67c6667a20f0557c_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_67c6667a20f0557c_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_67c6667a20f0557c_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_6a02f39a8b057a86_channel_resolution.npz": [
+        6577,
+        2460,
+        1
+      ],
+      "V41_6a02f39a8b057a86_coverage.npz": [
+        6189,
+        5348,
+        1
+      ],
+      "V41_6a02f39a8b057a86_direct_site_evidence.npz": [
+        269,
+        198,
+        1
+      ],
+      "V41_6a02f39a8b057a86_direction_evidence.npz": [
+        342332,
+        318189,
+        1
+      ],
+      "V41_6a02f39a8b057a86_field_audit.json": [
+        3107,
+        857,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_coverage.npz": [
+        2468,
+        1529,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_752a1dfa1561a439_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_752a1dfa1561a439_coverage.npz": [
+        2699,
+        1779,
+        1
+      ],
+      "V41_752a1dfa1561a439_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_752a1dfa1561a439_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_752a1dfa1561a439_field_audit.json": [
+        2914,
+        782,
+        1
+      ],
+      "V41_7566b4fd740df1bb_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7566b4fd740df1bb_coverage.npz": [
+        2804,
+        1888,
+        1
+      ],
+      "V41_7566b4fd740df1bb_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7566b4fd740df1bb_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7566b4fd740df1bb_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_79176536511061a6_channel_resolution.npz": [
+        6796,
+        667,
+        1
+      ],
+      "V41_79176536511061a6_coverage.npz": [
+        6817,
+        5802,
+        1
+      ],
+      "V41_79176536511061a6_direct_site_evidence.npz": [
+        277,
+        209,
+        1
+      ],
+      "V41_79176536511061a6_direction_evidence.npz": [
+        303623,
+        259284,
+        1
+      ],
+      "V41_79176536511061a6_field_audit.json": [
+        3129,
+        842,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_coverage.npz": [
+        4530,
+        3138,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_direct_site_evidence.npz": [
+        269,
+        198,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_direction_evidence.npz": [
+        261771,
+        230882,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_field_audit.json": [
+        3067,
+        798,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_coverage.npz": [
+        2576,
+        1648,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_coverage.npz": [
+        1949,
+        849,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_channel_resolution.npz": [
+        15509,
+        7500,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_coverage.npz": [
+        11037,
+        8236,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_direct_site_evidence.npz": [
+        715,
+        680,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_direction_evidence.npz": [
+        364066,
+        316821,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_field_audit.json": [
+        3143,
+        855,
+        1
+      ],
+      "V41_9ce3800ed16f0708_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_9ce3800ed16f0708_coverage.npz": [
+        2000,
+        910,
+        1
+      ],
+      "V41_9ce3800ed16f0708_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_9ce3800ed16f0708_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_9ce3800ed16f0708_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_coverage.npz": [
+        2690,
+        1763,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_channel_resolution.npz": [
+        10814,
+        5576,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_coverage.npz": [
+        5981,
+        5090,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_direct_site_evidence.npz": [
+        478,
+        430,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_direction_evidence.npz": [
+        406953,
+        380255,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_field_audit.json": [
+        3141,
+        859,
+        1
+      ],
+      "V41_ac3328bc2f66741d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_ac3328bc2f66741d_coverage.npz": [
+        3077,
+        2160,
+        1
+      ],
+      "V41_ac3328bc2f66741d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_ac3328bc2f66741d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_ac3328bc2f66741d_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_ad2658bd08c44a94_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_ad2658bd08c44a94_coverage.npz": [
+        1977,
+        886,
+        1
+      ],
+      "V41_ad2658bd08c44a94_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_ad2658bd08c44a94_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_ad2658bd08c44a94_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_coverage.npz": [
+        2616,
+        1683,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_coverage.npz": [
+        2922,
+        2010,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_b4dba1789a31259d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b4dba1789a31259d_coverage.npz": [
+        2795,
+        1876,
+        1
+      ],
+      "V41_b4dba1789a31259d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b4dba1789a31259d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b4dba1789a31259d_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_bade8b1a02e0b080_channel_resolution.npz": [
+        12055,
+        6033,
+        1
+      ],
+      "V41_bade8b1a02e0b080_coverage.npz": [
+        6121,
+        4972,
+        1
+      ],
+      "V41_bade8b1a02e0b080_direct_site_evidence.npz": [
+        577,
+        534,
+        1
+      ],
+      "V41_bade8b1a02e0b080_direction_evidence.npz": [
+        260689,
+        214499,
+        1
+      ],
+      "V41_bade8b1a02e0b080_field_audit.json": [
+        3143,
+        859,
+        1
+      ],
+      "V41_d309112066251727_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d309112066251727_coverage.npz": [
+        1984,
+        891,
+        1
+      ],
+      "V41_d309112066251727_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d309112066251727_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d309112066251727_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_coverage.npz": [
+        2568,
+        1643,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_d62aabb7327ae670_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d62aabb7327ae670_coverage.npz": [
+        2788,
+        1870,
+        1
+      ],
+      "V41_d62aabb7327ae670_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d62aabb7327ae670_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d62aabb7327ae670_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_d7a8f25be25ee809_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d7a8f25be25ee809_coverage.npz": [
+        1968,
+        874,
+        1
+      ],
+      "V41_d7a8f25be25ee809_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d7a8f25be25ee809_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d7a8f25be25ee809_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_channel_resolution.npz": [
+        11648,
+        6220,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_coverage.npz": [
+        5838,
+        5048,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_direct_site_evidence.npz": [
+        463,
+        419,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_direction_evidence.npz": [
+        239267,
+        198150,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_field_audit.json": [
+        3142,
+        863,
+        1
+      ],
+      "V41_dd5443b2c33e864a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_dd5443b2c33e864a_coverage.npz": [
+        2510,
+        1572,
+        1
+      ],
+      "V41_dd5443b2c33e864a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_dd5443b2c33e864a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_dd5443b2c33e864a_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_coverage.npz": [
+        2010,
+        917,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_e91b95591dfe199a_channel_resolution.npz": [
+        11896,
+        6017,
+        1
+      ],
+      "V41_e91b95591dfe199a_coverage.npz": [
+        6762,
+        5802,
+        1
+      ],
+      "V41_e91b95591dfe199a_direct_site_evidence.npz": [
+        531,
+        488,
+        1
+      ],
+      "V41_e91b95591dfe199a_direction_evidence.npz": [
+        232507,
+        187284,
+        1
+      ],
+      "V41_e91b95591dfe199a_field_audit.json": [
+        3143,
+        863,
+        1
+      ],
+      "V41_f8c2178345a56a31_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_f8c2178345a56a31_coverage.npz": [
+        2905,
+        1995,
+        1
+      ],
+      "V41_f8c2178345a56a31_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_f8c2178345a56a31_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_f8c2178345a56a31_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "calibration": [
+        68035319,
+        52876391,
+        138
+      ],
+      "canonical_reference.npz": [
+        419853,
+        417935,
+        1
+      ],
+      "fields": [
+        429442507,
+        414290922,
+        2806
+      ],
+      "models": [
+        113977848,
+        28101998,
+        3552
+      ],
+      "native_WT_SES_mesh.npz": [
+        3181494,
+        3173407,
+        1
+      ],
+      "paired_manifest.json": [
+        1149851,
+        67697,
+        1
+      ],
+      "reference_contract.json": [
+        1303,
+        594,
+        1
+      ],
+      "reference_graph.npz": [
+        341304,
+        339505,
+        1
+      ],
+      "source": [
+        4334005,
+        907765,
+        6
+      ],
+      "surface_perturbation_candidate_routes.json": [
+        71110,
+        2828,
+        1
+      ],
+      "surface_perturbation_local_constructs.csv": [
+        171,
+        120,
+        1
+      ],
+      "surface_perturbation_local_constructs.json": [
+        155,
+        127,
+        1
+      ],
+      "surface_perturbation_preview.json": [
+        277434,
+        26382,
+        1
+      ],
+      "portable_pairs.json": [
+        731201,
+        65272,
+        1
+      ],
+      "evidence_manifest.json": [
+        919858,
+        246859,
+        1
+      ]
+    },
+    "note": "central-directory metadata only; no CRC integrity assertion"
+  },
+  "calibration/ecd_epitope_design.zip": {
+    "bytes": 515017434,
+    "members": 69,
+    "uncompressed_bytes": 740264551,
+    "groups": {
+      "analysis.json": [
+        79338603,
+        2163423,
+        1
+      ],
+      "mapping.csv": [
+        2305,
+        978,
+        1
+      ],
+      "residues.csv": [
+        30261,
+        5003,
+        1
+      ],
+      "regions.json": [
+        19096,
+        1746,
+        1
+      ],
+      "designs.json": [
+        2,
+        4,
+        1
+      ],
+      "offline_report.html": [
+        37810338,
+        2121035,
+        1
+      ],
+      "designs.csv": [
+        185,
+        121,
+        1
+      ],
+      "panel_coverage_matrix.csv": [
+        42,
+        41,
+        1
+      ],
+      "sequences.fasta": [
+        153,
+        124,
+        1
+      ],
+      "coding_sequences.fasta": [
+        463,
+        240,
+        1
+      ],
+      "sequences.gb": [
+        807,
+        420,
+        1
+      ],
+      "methods_report.md": [
+        4830,
+        2164,
+        1
+      ],
+      "structure.cif": [
+        4181249,
+        871586,
+        1
+      ],
+      "ecd_structure.cif": [
+        68428,
+        16108,
+        1
+      ],
+      "residue_reliability.csv": [
+        20253,
+        993,
+        1
+      ],
+      "structural_segments.csv": [
+        261,
+        200,
+        1
+      ],
+      "surface_mask.csv": [
+        4051,
+        445,
+        1
+      ],
+      "idr_candidates.csv": [
+        58,
+        49,
+        1
+      ],
+      "reliability_qc.json": [
+        1403,
+        616,
+        1
+      ],
+      "tool_inventory.json": [
+        2204,
+        521,
+        1
+      ],
+      "structure_contexts.json": [
+        341,
+        196,
+        1
+      ],
+      "residue_mapping.csv": [
+        2457,
+        1141,
+        1
+      ],
+      "prediction_context.pdb": [
+        76433,
+        16210,
+        1
+      ],
+      "surface_evidence.csv": [
+        42475,
+        10550,
+        1
+      ],
+      "sasa_comparison.csv": [
+        20262,
+        5750,
+        1
+      ],
+      "spurs_single_matrix.csv.gz": [
+        31568,
+        31568,
+        1
+      ],
+      "single_mutation_options.csv": [
+        431722,
+        39194,
+        1
+      ],
+      "discotope_residues.csv": [
+        23963,
+        3184,
+        1
+      ],
+      "epitope_islands.json": [
+        627,
+        171,
+        1
+      ],
+      "probe_sectors_v4.json": [
+        6374,
+        906,
+        1
+      ],
+      "candidate_combinations.csv.gz": [
+        111935,
+        111935,
+        1
+      ],
+      "combination_stability.csv": [
+        39568,
+        12260,
+        1
+      ],
+      "panel_candidates.json": [
+        2866747,
+        218443,
+        1
+      ],
+      "selected_panel_v4.json": [
+        31281651,
+        821580,
+        1
+      ],
+      "v4_manifest.json": [
+        437030,
+        44142,
+        1
+      ],
+      "v4_scientific_report.md": [
+        5030,
+        2342,
+        1
+      ],
+      "v4_manifest_v41.json": [
+        34459768,
+        852375,
+        1
+      ],
+      "surface_graph_v4.json": [
+        29801,
+        5219,
+        1
+      ],
+      "surface_graph_v41.json": [
+        27881,
+        5211,
+        1
+      ],
+      "surface_display_regions_v41.json": [
+        25207,
+        3433,
+        1
+      ],
+      "surface_hypotheses_v4.json": [
+        415115,
+        37412,
+        1
+      ],
+      "hypothesis_probe_matrix_v4.json": [
+        818907,
+        100460,
+        1
+      ],
+      "epitope_hypotheses_v41.json": [
+        447453,
+        37813,
+        1
+      ],
+      "hypothesis_membership_v41.csv": [
+        37837,
+        8943,
+        1
+      ],
+      "probe_hypothesis_matrix_v41.csv": [
+        1169650,
+        155275,
+        1
+      ],
+      "panel_identifiability_v41.json": [
+        942,
+        421,
+        1
+      ],
+      "recommendation_diagnostics_v41.json": [
+        506,
+        294,
+        1
+      ],
+      "qualification_audit_v411.json": [
+        58054,
+        3392,
+        1
+      ],
+      "hypothesis_hierarchy_v411.json": [
+        31942549,
+        886436,
+        1
+      ],
+      "global_candidate_pool_v411.json": [
+        609,
+        230,
+        1
+      ],
+      "review_candidates_v411.json": [
+        2,
+        4,
+        1
+      ],
+      "panel_budget_decision_v411.json": [
+        4,
+        6,
+        1
+      ],
+      "panel_budget_curve_v411.csv": [
+        205,
+        119,
+        1
+      ],
+      "raw_hypotheses_v411.json": [
+        1765812,
+        161218,
+        1
+      ],
+      "raw_surface_footprints_v411.json": [
+        2021986,
+        302751,
+        1
+      ],
+      "footprint_families_v411.json": [
+        176415,
+        22571,
+        1
+      ],
+      "inference_hypotheses_v411.json": [
+        415115,
+        37412,
+        1
+      ],
+      "surface_complexity_v411.json": [
+        243,
+        158,
+        1
+      ],
+      "retrospective_benchmark_contract_v411.json": [
+        1073,
+        498,
+        1
+      ],
+      "surface_perturbation_preview.json": [
+        277434,
+        26382,
+        1
+      ],
+      "surface_perturbation_local_constructs.json": [
+        155,
+        127,
+        1
+      ],
+      "raw_null_import_manifest.json": [
+        43772,
+        5130,
+        1
+      ],
+      "surface_perturbation_local_constructs.csv": [
+        171,
+        120,
+        1
+      ],
+      "surface_perturbation_evidence.zip": [
+        504940415,
+        504940415,
+        1
+      ],
+      "frozen_input_manifest.json": [
+        827,
+        449,
+        1
+      ],
+      "launch_source_manifest.json": [
+        29245,
+        13230,
+        1
+      ],
+      "native_input.cif": [
+        4181249,
+        871586,
+        1
+      ],
+      "structure_for_energy.pdb": [
+        76455,
+        16229,
+        1
+      ],
+      "run_manifest.json": [
+        36519,
+        8190,
+        1
+      ]
+    },
+    "note": "central-directory metadata only; no CRC integrity assertion"
+  },
+  "production/surface_perturbation_evidence.zip": {
+    "bytes": 359680140,
+    "members": 5989,
+    "uncompressed_bytes": 478247750,
+    "groups": {
+      "V41_004f6c3271e8150c_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_004f6c3271e8150c_coverage.npz": [
+        3012,
+        2098,
+        1
+      ],
+      "V41_004f6c3271e8150c_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_004f6c3271e8150c_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_004f6c3271e8150c_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_010578b05b8e5f34_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_010578b05b8e5f34_coverage.npz": [
+        2682,
+        1759,
+        1
+      ],
+      "V41_010578b05b8e5f34_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_010578b05b8e5f34_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_010578b05b8e5f34_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_01780aec586ce5d5_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_01780aec586ce5d5_coverage.npz": [
+        2397,
+        1452,
+        1
+      ],
+      "V41_01780aec586ce5d5_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_01780aec586ce5d5_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_01780aec586ce5d5_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_channel_resolution.npz": [
+        7172,
+        1255,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_coverage.npz": [
+        5390,
+        4530,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_direct_site_evidence.npz": [
+        280,
+        198,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_direction_evidence.npz": [
+        455783,
+        413001,
+        1
+      ],
+      "V41_03b42ee2e48aaa1a_field_audit.json": [
+        2993,
+        832,
+        1
+      ],
+      "V41_052ff3f68a659a45_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_052ff3f68a659a45_coverage.npz": [
+        2096,
+        1010,
+        1
+      ],
+      "V41_052ff3f68a659a45_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_052ff3f68a659a45_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_052ff3f68a659a45_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_062f0d3369806d90_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_062f0d3369806d90_coverage.npz": [
+        4309,
+        3505,
+        1
+      ],
+      "V41_062f0d3369806d90_direct_site_evidence.npz": [
+        280,
+        198,
+        1
+      ],
+      "V41_062f0d3369806d90_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_062f0d3369806d90_field_audit.json": [
+        2431,
+        713,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_channel_resolution.npz": [
+        7612,
+        2845,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_coverage.npz": [
+        5122,
+        4331,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_direct_site_evidence.npz": [
+        280,
+        198,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_direction_evidence.npz": [
+        546448,
+        522731,
+        1
+      ],
+      "V41_07371ce7aa4cbe69_field_audit.json": [
+        2993,
+        842,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_channel_resolution.npz": [
+        12355,
+        4271,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_coverage.npz": [
+        5910,
+        5291,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_direct_site_evidence.npz": [
+        565,
+        527,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_direction_evidence.npz": [
+        153851,
+        67144,
+        1
+      ],
+      "V41_08f9a7f9f19f4a50_field_audit.json": [
+        3022,
+        845,
+        1
+      ],
+      "V41_13d2f5510461c6bd_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_13d2f5510461c6bd_coverage.npz": [
+        1895,
+        793,
+        1
+      ],
+      "V41_13d2f5510461c6bd_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_13d2f5510461c6bd_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_13d2f5510461c6bd_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_185bd214ea3b8662_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_185bd214ea3b8662_coverage.npz": [
+        2195,
+        1240,
+        1
+      ],
+      "V41_185bd214ea3b8662_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_185bd214ea3b8662_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_185bd214ea3b8662_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_19bd86db33650a98_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_19bd86db33650a98_coverage.npz": [
+        1938,
+        840,
+        1
+      ],
+      "V41_19bd86db33650a98_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_19bd86db33650a98_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_19bd86db33650a98_field_audit.json": [
+        2399,
+        705,
+        1
+      ],
+      "V41_1f1f89af467d97fe_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_1f1f89af467d97fe_coverage.npz": [
+        1900,
+        798,
+        1
+      ],
+      "V41_1f1f89af467d97fe_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_1f1f89af467d97fe_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_1f1f89af467d97fe_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_216dcdd5963cb509_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_216dcdd5963cb509_coverage.npz": [
+        3009,
+        2097,
+        1
+      ],
+      "V41_216dcdd5963cb509_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_216dcdd5963cb509_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_216dcdd5963cb509_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_22374cac6b2e77b5_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_22374cac6b2e77b5_coverage.npz": [
+        2968,
+        2055,
+        1
+      ],
+      "V41_22374cac6b2e77b5_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_22374cac6b2e77b5_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_22374cac6b2e77b5_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_26d50d9a051f4827_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_26d50d9a051f4827_coverage.npz": [
+        2499,
+        1560,
+        1
+      ],
+      "V41_26d50d9a051f4827_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_26d50d9a051f4827_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_26d50d9a051f4827_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_26df17c858ea6846_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_26df17c858ea6846_coverage.npz": [
+        2616,
+        1690,
+        1
+      ],
+      "V41_26df17c858ea6846_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_26df17c858ea6846_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_26df17c858ea6846_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_27a33bfc343b8e12_channel_resolution.npz": [
+        5973,
+        784,
+        1
+      ],
+      "V41_27a33bfc343b8e12_coverage.npz": [
+        3376,
+        2596,
+        1
+      ],
+      "V41_27a33bfc343b8e12_direct_site_evidence.npz": [
+        269,
+        198,
+        1
+      ],
+      "V41_27a33bfc343b8e12_direction_evidence.npz": [
+        206288,
+        152910,
+        1
+      ],
+      "V41_27a33bfc343b8e12_field_audit.json": [
+        2968,
+        826,
+        1
+      ],
+      "V41_29225bb307684393_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_29225bb307684393_coverage.npz": [
+        2439,
+        1496,
+        1
+      ],
+      "V41_29225bb307684393_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_29225bb307684393_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_29225bb307684393_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_coverage.npz": [
+        2021,
+        932,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2a57a8c1e9f87add_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_2b112d725399e075_channel_resolution.npz": [
+        12040,
+        5184,
+        1
+      ],
+      "V41_2b112d725399e075_coverage.npz": [
+        5081,
+        4480,
+        1
+      ],
+      "V41_2b112d725399e075_direct_site_evidence.npz": [
+        529,
+        486,
+        1
+      ],
+      "V41_2b112d725399e075_direction_evidence.npz": [
+        249664,
+        187121,
+        1
+      ],
+      "V41_2b112d725399e075_field_audit.json": [
+        3023,
+        844,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_coverage.npz": [
+        2962,
+        2050,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2cdbe7cc64d5b47f_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_2dc2b28353f9346e_channel_resolution.npz": [
+        11442,
+        930,
+        1
+      ],
+      "V41_2dc2b28353f9346e_coverage.npz": [
+        5307,
+        4779,
+        1
+      ],
+      "V41_2dc2b28353f9346e_direct_site_evidence.npz": [
+        519,
+        475,
+        1
+      ],
+      "V41_2dc2b28353f9346e_direction_evidence.npz": [
+        76937,
+        62577,
+        1
+      ],
+      "V41_2dc2b28353f9346e_field_audit.json": [
+        3022,
+        821,
+        1
+      ],
+      "V41_2e3208540fb5424a_channel_resolution.npz": [
+        9101,
+        3992,
+        1
+      ],
+      "V41_2e3208540fb5424a_coverage.npz": [
+        3538,
+        2986,
+        1
+      ],
+      "V41_2e3208540fb5424a_direct_site_evidence.npz": [
+        479,
+        435,
+        1
+      ],
+      "V41_2e3208540fb5424a_direction_evidence.npz": [
+        140974,
+        106466,
+        1
+      ],
+      "V41_2e3208540fb5424a_field_audit.json": [
+        3022,
+        846,
+        1
+      ],
+      "V41_2e58aa3b738e2148_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_2e58aa3b738e2148_coverage.npz": [
+        2921,
+        2007,
+        1
+      ],
+      "V41_2e58aa3b738e2148_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_2e58aa3b738e2148_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_2e58aa3b738e2148_field_audit.json": [
+        2914,
+        782,
+        1
+      ],
+      "V41_30e744dd2eeb9933_channel_resolution.npz": [
+        13123,
+        4526,
+        1
+      ],
+      "V41_30e744dd2eeb9933_coverage.npz": [
+        5334,
+        4808,
+        1
+      ],
+      "V41_30e744dd2eeb9933_direct_site_evidence.npz": [
+        489,
+        444,
+        1
+      ],
+      "V41_30e744dd2eeb9933_direction_evidence.npz": [
+        242254,
+        195797,
+        1
+      ],
+      "V41_30e744dd2eeb9933_field_audit.json": [
+        3025,
+        843,
+        1
+      ],
+      "V41_33fda28052264d50_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_33fda28052264d50_coverage.npz": [
+        2752,
+        1832,
+        1
+      ],
+      "V41_33fda28052264d50_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_33fda28052264d50_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_33fda28052264d50_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_36543152830525d9_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_36543152830525d9_coverage.npz": [
+        2001,
+        911,
+        1
+      ],
+      "V41_36543152830525d9_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_36543152830525d9_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_36543152830525d9_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_38b60f87be087a6f_channel_resolution.npz": [
+        10484,
+        5257,
+        1
+      ],
+      "V41_38b60f87be087a6f_coverage.npz": [
+        4001,
+        3453,
+        1
+      ],
+      "V41_38b60f87be087a6f_direct_site_evidence.npz": [
+        531,
+        485,
+        1
+      ],
+      "V41_38b60f87be087a6f_direction_evidence.npz": [
+        300657,
+        270357,
+        1
+      ],
+      "V41_38b60f87be087a6f_field_audit.json": [
+        3021,
+        854,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_coverage.npz": [
+        2510,
+        1576,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_3d48d78cc88fb3a2_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_40d6e3b73024df81_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_40d6e3b73024df81_coverage.npz": [
+        2736,
+        1820,
+        1
+      ],
+      "V41_40d6e3b73024df81_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_40d6e3b73024df81_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_40d6e3b73024df81_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_41898524d8f06c86_channel_resolution.npz": [
+        10039,
+        850,
+        1
+      ],
+      "V41_41898524d8f06c86_coverage.npz": [
+        3492,
+        2939,
+        1
+      ],
+      "V41_41898524d8f06c86_direct_site_evidence.npz": [
+        508,
+        459,
+        1
+      ],
+      "V41_41898524d8f06c86_direction_evidence.npz": [
+        79948,
+        43868,
+        1
+      ],
+      "V41_41898524d8f06c86_field_audit.json": [
+        3022,
+        825,
+        1
+      ],
+      "V41_428420ab9ab97768_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_428420ab9ab97768_coverage.npz": [
+        1854,
+        752,
+        1
+      ],
+      "V41_428420ab9ab97768_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_428420ab9ab97768_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_428420ab9ab97768_field_audit.json": [
+        2914,
+        782,
+        1
+      ],
+      "V41_458352f6bce08ce7_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_458352f6bce08ce7_coverage.npz": [
+        2980,
+        2069,
+        1
+      ],
+      "V41_458352f6bce08ce7_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_458352f6bce08ce7_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_458352f6bce08ce7_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_4b848cdbd195520a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4b848cdbd195520a_coverage.npz": [
+        2758,
+        1833,
+        1
+      ],
+      "V41_4b848cdbd195520a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4b848cdbd195520a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4b848cdbd195520a_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_coverage.npz": [
+        2379,
+        1440,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4dd24dbe8650b11a_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_coverage.npz": [
+        2784,
+        1870,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4e2d3875b295b5a6_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_4ed6aea336711894_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_4ed6aea336711894_coverage.npz": [
+        1877,
+        777,
+        1
+      ],
+      "V41_4ed6aea336711894_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_4ed6aea336711894_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_4ed6aea336711894_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_5199affb6061087f_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5199affb6061087f_coverage.npz": [
+        3073,
+        2158,
+        1
+      ],
+      "V41_5199affb6061087f_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5199affb6061087f_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5199affb6061087f_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_51cf855a7077e329_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_51cf855a7077e329_coverage.npz": [
+        2902,
+        1989,
+        1
+      ],
+      "V41_51cf855a7077e329_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_51cf855a7077e329_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_51cf855a7077e329_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_5249dccf78536f1e_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5249dccf78536f1e_coverage.npz": [
+        2191,
+        1234,
+        1
+      ],
+      "V41_5249dccf78536f1e_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5249dccf78536f1e_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5249dccf78536f1e_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_5392058c9c5833cd_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5392058c9c5833cd_coverage.npz": [
+        2008,
+        917,
+        1
+      ],
+      "V41_5392058c9c5833cd_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5392058c9c5833cd_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5392058c9c5833cd_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_54e928a26d11be80_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_54e928a26d11be80_coverage.npz": [
+        2641,
+        1719,
+        1
+      ],
+      "V41_54e928a26d11be80_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_54e928a26d11be80_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_54e928a26d11be80_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_5a0276348e213981_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5a0276348e213981_coverage.npz": [
+        2472,
+        1526,
+        1
+      ],
+      "V41_5a0276348e213981_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5a0276348e213981_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5a0276348e213981_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_5af20d39abba49cb_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5af20d39abba49cb_coverage.npz": [
+        3131,
+        2214,
+        1
+      ],
+      "V41_5af20d39abba49cb_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5af20d39abba49cb_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5af20d39abba49cb_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_coverage.npz": [
+        2514,
+        1582,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_5b7bbb4c20f441a2_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_channel_resolution.npz": [
+        12956,
+        6283,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_coverage.npz": [
+        5764,
+        5230,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_direct_site_evidence.npz": [
+        525,
+        481,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_direction_evidence.npz": [
+        232244,
+        205941,
+        1
+      ],
+      "V41_5fcaf8057e1b6f08_field_audit.json": [
+        3022,
+        856,
+        1
+      ],
+      "V41_67c6667a20f0557c_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_67c6667a20f0557c_coverage.npz": [
+        2134,
+        1173,
+        1
+      ],
+      "V41_67c6667a20f0557c_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_67c6667a20f0557c_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_67c6667a20f0557c_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_6a02f39a8b057a86_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_6a02f39a8b057a86_coverage.npz": [
+        2591,
+        1666,
+        1
+      ],
+      "V41_6a02f39a8b057a86_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_6a02f39a8b057a86_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_6a02f39a8b057a86_field_audit.json": [
+        2914,
+        785,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_coverage.npz": [
+        2468,
+        1529,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_6a5d2b4cf20cee7b_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_72d59f0f0ad7789b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_72d59f0f0ad7789b_coverage.npz": [
+        2135,
+        1176,
+        1
+      ],
+      "V41_72d59f0f0ad7789b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_72d59f0f0ad7789b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_72d59f0f0ad7789b_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_73967cddb7d90e0d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_73967cddb7d90e0d_coverage.npz": [
+        2454,
+        1515,
+        1
+      ],
+      "V41_73967cddb7d90e0d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_73967cddb7d90e0d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_73967cddb7d90e0d_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_752a1dfa1561a439_channel_resolution.npz": [
+        12792,
+        7020,
+        1
+      ],
+      "V41_752a1dfa1561a439_coverage.npz": [
+        5145,
+        4628,
+        1
+      ],
+      "V41_752a1dfa1561a439_direct_site_evidence.npz": [
+        539,
+        494,
+        1
+      ],
+      "V41_752a1dfa1561a439_direction_evidence.npz": [
+        317613,
+        280112,
+        1
+      ],
+      "V41_752a1dfa1561a439_field_audit.json": [
+        3023,
+        855,
+        1
+      ],
+      "V41_7566b4fd740df1bb_channel_resolution.npz": [
+        6106,
+        631,
+        1
+      ],
+      "V41_7566b4fd740df1bb_coverage.npz": [
+        3884,
+        3377,
+        1
+      ],
+      "V41_7566b4fd740df1bb_direct_site_evidence.npz": [
+        287,
+        224,
+        1
+      ],
+      "V41_7566b4fd740df1bb_direction_evidence.npz": [
+        108650,
+        77302,
+        1
+      ],
+      "V41_7566b4fd740df1bb_field_audit.json": [
+        2983,
+        834,
+        1
+      ],
+      "V41_79176536511061a6_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_79176536511061a6_coverage.npz": [
+        3118,
+        2202,
+        1
+      ],
+      "V41_79176536511061a6_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_79176536511061a6_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_79176536511061a6_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_79f778e665212d33_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_79f778e665212d33_coverage.npz": [
+        2590,
+        1782,
+        1
+      ],
+      "V41_79f778e665212d33_direct_site_evidence.npz": [
+        269,
+        198,
+        1
+      ],
+      "V41_79f778e665212d33_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_79f778e665212d33_field_audit.json": [
+        2431,
+        712,
+        1
+      ],
+      "V41_7e9a41be901c236d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7e9a41be901c236d_coverage.npz": [
+        2669,
+        1743,
+        1
+      ],
+      "V41_7e9a41be901c236d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7e9a41be901c236d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7e9a41be901c236d_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_7ef3dd641821af90_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7ef3dd641821af90_coverage.npz": [
+        2757,
+        1841,
+        1
+      ],
+      "V41_7ef3dd641821af90_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7ef3dd641821af90_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7ef3dd641821af90_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_coverage.npz": [
+        1965,
+        872,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7f4c4446abe2b4db_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_channel_resolution.npz": [
+        12453,
+        6296,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_coverage.npz": [
+        4842,
+        4256,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_direct_site_evidence.npz": [
+        626,
+        584,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_direction_evidence.npz": [
+        245908,
+        209692,
+        1
+      ],
+      "V41_7f534bd61af1ea9b_field_audit.json": [
+        3021,
+        851,
+        1
+      ],
+      "V41_7fff7838ae4fc609_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_7fff7838ae4fc609_coverage.npz": [
+        1959,
+        868,
+        1
+      ],
+      "V41_7fff7838ae4fc609_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_7fff7838ae4fc609_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_7fff7838ae4fc609_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_8072371cf4c256ff_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_8072371cf4c256ff_coverage.npz": [
+        1867,
+        765,
+        1
+      ],
+      "V41_8072371cf4c256ff_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_8072371cf4c256ff_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_8072371cf4c256ff_field_audit.json": [
+        2399,
+        709,
+        1
+      ],
+      "V41_808ccde7dc59efe1_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_808ccde7dc59efe1_coverage.npz": [
+        2865,
+        1951,
+        1
+      ],
+      "V41_808ccde7dc59efe1_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_808ccde7dc59efe1_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_808ccde7dc59efe1_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_8675b33d27380728_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_8675b33d27380728_coverage.npz": [
+        2769,
+        1857,
+        1
+      ],
+      "V41_8675b33d27380728_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_8675b33d27380728_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_8675b33d27380728_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_coverage.npz": [
+        1949,
+        849,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_8759dce40ed4aa3b_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_coverage.npz": [
+        3223,
+        2313,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_88a0eee4871a4d1d_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_9ce3800ed16f0708_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_9ce3800ed16f0708_coverage.npz": [
+        2000,
+        910,
+        1
+      ],
+      "V41_9ce3800ed16f0708_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_9ce3800ed16f0708_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_9ce3800ed16f0708_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_coverage.npz": [
+        2690,
+        1763,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_a4cb3c1c1eb09bb3_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_coverage.npz": [
+        2487,
+        1553,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_a8d47cc4b79336ab_field_audit.json": [
+        2914,
+        786,
+        1
+      ],
+      "V41_ac3328bc2f66741d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_ac3328bc2f66741d_coverage.npz": [
+        3077,
+        2160,
+        1
+      ],
+      "V41_ac3328bc2f66741d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_ac3328bc2f66741d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_ac3328bc2f66741d_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_ad2658bd08c44a94_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_ad2658bd08c44a94_coverage.npz": [
+        1977,
+        886,
+        1
+      ],
+      "V41_ad2658bd08c44a94_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_ad2658bd08c44a94_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_ad2658bd08c44a94_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_coverage.npz": [
+        2616,
+        1683,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b213a1c55ec7fa6d_field_audit.json": [
+        2399,
+        707,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_coverage.npz": [
+        2922,
+        2010,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b4401bdf2b9bd0ea_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_b4dba1789a31259d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_b4dba1789a31259d_coverage.npz": [
+        2795,
+        1876,
+        1
+      ],
+      "V41_b4dba1789a31259d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_b4dba1789a31259d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_b4dba1789a31259d_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_bade8b1a02e0b080_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_bade8b1a02e0b080_coverage.npz": [
+        2433,
+        1486,
+        1
+      ],
+      "V41_bade8b1a02e0b080_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_bade8b1a02e0b080_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_bade8b1a02e0b080_field_audit.json": [
+        2914,
+        781,
+        1
+      ],
+      "V41_d309112066251727_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d309112066251727_coverage.npz": [
+        1984,
+        891,
+        1
+      ],
+      "V41_d309112066251727_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d309112066251727_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d309112066251727_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_channel_resolution.npz": [
+        11929,
+        5632,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_coverage.npz": [
+        4793,
+        4267,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_direct_site_evidence.npz": [
+        562,
+        519,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_direction_evidence.npz": [
+        283871,
+        253515,
+        1
+      ],
+      "V41_d5bb8a2b181af17d_field_audit.json": [
+        3022,
+        848,
+        1
+      ],
+      "V41_d62aabb7327ae670_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d62aabb7327ae670_coverage.npz": [
+        2788,
+        1870,
+        1
+      ],
+      "V41_d62aabb7327ae670_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d62aabb7327ae670_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d62aabb7327ae670_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "V41_d7a8f25be25ee809_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_d7a8f25be25ee809_coverage.npz": [
+        1968,
+        874,
+        1
+      ],
+      "V41_d7a8f25be25ee809_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_d7a8f25be25ee809_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_d7a8f25be25ee809_field_audit.json": [
+        2399,
+        710,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_coverage.npz": [
+        2470,
+        1533,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_dce8a2cd5c8ea14d_field_audit.json": [
+        2914,
+        784,
+        1
+      ],
+      "V41_dd5443b2c33e864a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_dd5443b2c33e864a_coverage.npz": [
+        2510,
+        1572,
+        1
+      ],
+      "V41_dd5443b2c33e864a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_dd5443b2c33e864a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_dd5443b2c33e864a_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_coverage.npz": [
+        2010,
+        917,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_e2ffc397d7dc4073_field_audit.json": [
+        2399,
+        708,
+        1
+      ],
+      "V41_e91b95591dfe199a_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_e91b95591dfe199a_coverage.npz": [
+        2556,
+        1625,
+        1
+      ],
+      "V41_e91b95591dfe199a_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_e91b95591dfe199a_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_e91b95591dfe199a_field_audit.json": [
+        2914,
+        783,
+        1
+      ],
+      "V41_f8c2178345a56a31_channel_resolution.npz": [
+        5508,
+        602,
+        1
+      ],
+      "V41_f8c2178345a56a31_coverage.npz": [
+        2905,
+        1995,
+        1
+      ],
+      "V41_f8c2178345a56a31_direct_site_evidence.npz": [
+        224,
+        165,
+        1
+      ],
+      "V41_f8c2178345a56a31_direction_evidence.npz": [
+        22,
+        8,
+        1
+      ],
+      "V41_f8c2178345a56a31_field_audit.json": [
+        2399,
+        706,
+        1
+      ],
+      "blindspot_calibration_requests.json": [
+        21612,
+        3084,
+        1
+      ],
+      "calibration": [
+        69066941,
+        53804842,
+        140
+      ],
+      "canonical_reference.npz": [
+        419853,
+        417935,
+        1
+      ],
+      "coverage_matrix.npz": [
+        81327,
+        80943,
+        1
+      ],
+      "fields": [
+        277600308,
+        267444429,
+        1818
+      ],
+      "hard_scan_upper_bounds.npz": [
+        38466,
+        33553,
+        1
+      ],
+      "independent_K_verified_pool.npz": [
+        79245,
+        79206,
+        1
+      ],
+      "models": [
+        115263536,
+        28411755,
+        3594
+      ],
+      "native_WT_SES_mesh.npz": [
+        3181494,
+        3173407,
+        1
+      ],
+      "paired_manifest.json": [
+        1163961,
+        71437,
+        1
+      ],
+      "reference_contract.json": [
+        1303,
+        594,
+        1
+      ],
+      "reference_graph.npz": [
+        341304,
+        339505,
+        1
+      ],
+      "source": [
+        4290231,
+        902635,
+        5
+      ],
+      "surface_perturbation_candidate_routes.json": [
+        71110,
+        2830,
+        1
+      ],
+      "surface_perturbation_local_constructs.csv": [
+        503,
+        337,
+        1
+      ],
+      "surface_perturbation_local_constructs.json": [
+        12561,
+        2263,
+        1
+      ],
+      "surface_perturbation_preview.json": [
+        349721,
+        28521,
+        1
+      ],
+      "verified_hard_draft_matrix.npz": [
+        80861,
+        80762,
+        1
+      ],
+      "verified_hard_draft_panel.json": [
+        6356,
+        591,
+        1
+      ],
+      "portable_pairs.json": [
+        740176,
+        69265,
+        1
+      ],
+      "evidence_manifest.json": [
+        777468,
+        191081,
+        1
+      ]
+    },
+    "note": "central-directory metadata only; no CRC integrity assertion"
+  },
+  "production/ecd_epitope_design.zip": {
+    "bytes": 382176993,
+    "members": 69,
+    "uncompressed_bytes": 621226527,
+    "groups": {
+      "analysis.json": [
+        86768180,
+        5821874,
+        1
+      ],
+      "mapping.csv": [
+        2305,
+        978,
+        1
+      ],
+      "residues.csv": [
+        30261,
+        5003,
+        1
+      ],
+      "regions.json": [
+        19096,
+        1746,
+        1
+      ],
+      "designs.json": [
+        38399,
+        3348,
+        1
+      ],
+      "offline_report.html": [
+        45356464,
+        5279190,
+        1
+      ],
+      "designs.csv": [
+        3420,
+        861,
+        1
+      ],
+      "panel_coverage_matrix.csv": [
+        82,
+        48,
+        1
+      ],
+      "sequences.fasta": [
+        1551,
+        293,
+        1
+      ],
+      "coding_sequences.fasta": [
+        3813,
+        624,
+        1
+      ],
+      "sequences.gb": [
+        8555,
+        1048,
+        1
+      ],
+      "full_length_protein_sequences.fasta": [
+        2242,
+        339,
+        1
+      ],
+      "methods_report.md": [
+        5151,
+        2310,
+        1
+      ],
+      "structure.cif": [
+        4181249,
+        871586,
+        1
+      ],
+      "ecd_structure.cif": [
+        68428,
+        16108,
+        1
+      ],
+      "residue_reliability.csv": [
+        20253,
+        993,
+        1
+      ],
+      "structural_segments.csv": [
+        261,
+        200,
+        1
+      ],
+      "surface_mask.csv": [
+        4051,
+        445,
+        1
+      ],
+      "idr_candidates.csv": [
+        58,
+        49,
+        1
+      ],
+      "reliability_qc.json": [
+        1403,
+        616,
+        1
+      ],
+      "tool_inventory.json": [
+        2204,
+        521,
+        1
+      ],
+      "structure_contexts.json": [
+        341,
+        196,
+        1
+      ],
+      "residue_mapping.csv": [
+        2457,
+        1141,
+        1
+      ],
+      "prediction_context.pdb": [
+        76433,
+        16210,
+        1
+      ],
+      "surface_evidence.csv": [
+        42475,
+        10550,
+        1
+      ],
+      "sasa_comparison.csv": [
+        20262,
+        5750,
+        1
+      ],
+      "spurs_single_matrix.csv.gz": [
+        31568,
+        31568,
+        1
+      ],
+      "single_mutation_options.csv": [
+        431722,
+        39194,
+        1
+      ],
+      "discotope_residues.csv": [
+        23963,
+        3184,
+        1
+      ],
+      "epitope_islands.json": [
+        627,
+        171,
+        1
+      ],
+      "probe_sectors_v4.json": [
+        6374,
+        906,
+        1
+      ],
+      "candidate_combinations.csv.gz": [
+        112204,
+        112204,
+        1
+      ],
+      "combination_stability.csv": [
+        39829,
+        12485,
+        1
+      ],
+      "panel_candidates.json": [
+        2866488,
+        218958,
+        1
+      ],
+      "selected_panel_v4.json": [
+        34949978,
+        2684185,
+        1
+      ],
+      "v4_manifest.json": [
+        510437,
+        45854,
+        1
+      ],
+      "v4_scientific_report.md": [
+        11702,
+        2962,
+        1
+      ],
+      "v4_manifest_v41.json": [
+        38190899,
+        2723399,
+        1
+      ],
+      "surface_graph_v4.json": [
+        29801,
+        5219,
+        1
+      ],
+      "surface_graph_v41.json": [
+        27881,
+        5211,
+        1
+      ],
+      "surface_display_regions_v41.json": [
+        25207,
+        3433,
+        1
+      ],
+      "surface_hypotheses_v4.json": [
+        415115,
+        37412,
+        1
+      ],
+      "hypothesis_probe_matrix_v4.json": [
+        818907,
+        100460,
+        1
+      ],
+      "epitope_hypotheses_v41.json": [
+        447453,
+        37813,
+        1
+      ],
+      "hypothesis_membership_v41.csv": [
+        37837,
+        8943,
+        1
+      ],
+      "probe_hypothesis_matrix_v41.csv": [
+        1169650,
+        155275,
+        1
+      ],
+      "panel_identifiability_v41.json": [
+        1003,
+        466,
+        1
+      ],
+      "recommendation_diagnostics_v41.json": [
+        481,
+        276,
+        1
+      ],
+      "qualification_audit_v411.json": [
+        58054,
+        3392,
+        1
+      ],
+      "hypothesis_hierarchy_v411.json": [
+        35610823,
+        2747482,
+        1
+      ],
+      "global_candidate_pool_v411.json": [
+        609,
+        230,
+        1
+      ],
+      "review_candidates_v411.json": [
+        2,
+        4,
+        1
+      ],
+      "panel_budget_decision_v411.json": [
+        4,
+        6,
+        1
+      ],
+      "panel_budget_curve_v411.csv": [
+        205,
+        119,
+        1
+      ],
+      "raw_hypotheses_v411.json": [
+        1765812,
+        161218,
+        1
+      ],
+      "raw_surface_footprints_v411.json": [
+        2021986,
+        302751,
+        1
+      ],
+      "footprint_families_v411.json": [
+        176415,
+        22571,
+        1
+      ],
+      "inference_hypotheses_v411.json": [
+        415115,
+        37412,
+        1
+      ],
+      "surface_complexity_v411.json": [
+        243,
+        158,
+        1
+      ],
+      "retrospective_benchmark_contract_v411.json": [
+        1073,
+        498,
+        1
+      ],
+      "surface_perturbation_preview.json": [
+        349721,
+        28521,
+        1
+      ],
+      "surface_perturbation_local_constructs.json": [
+        12561,
+        2263,
+        1
+      ],
+      "surface_perturbation_local_constructs.csv": [
+        503,
+        337,
+        1
+      ],
+      "surface_perturbation_evidence.zip": [
+        359680140,
+        359680140,
+        1
+      ],
+      "frozen_input_manifest.json": [
+        826,
+        449,
+        1
+      ],
+      "launch_source_manifest.json": [
+        29244,
+        13230,
+        1
+      ],
+      "native_input.cif": [
+        4181249,
+        871586,
+        1
+      ],
+      "structure_for_energy.pdb": [
+        76455,
+        16229,
+        1
+      ],
+      "run_manifest.json": [
+        36967,
+        8244,
+        1
+      ]
+    },
+    "note": "central-directory metadata only; no CRC integrity assertion"
+  }
+}

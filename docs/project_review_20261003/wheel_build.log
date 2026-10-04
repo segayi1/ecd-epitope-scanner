@@ -1,0 +1,12 @@
+Processing c:\users\�B��\appdata\local\temp\ecd_full_review_20261003__z8bxhci\ecd_epitope_scanner
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: ecd-epitope-scanner
+  Building wheel for ecd-epitope-scanner (pyproject.toml): started
+  Building wheel for ecd-epitope-scanner (pyproject.toml): finished with status 'done'
+  Created wheel for ecd-epitope-scanner: filename=ecd_epitope_scanner-1.0.0-py3-none-any.whl size=378006 sha256=bcc9a44d68b65e5a2c3672047dd70ba8c2b25cb3f810f7327b8d161a2e08db0e
+  Stored in directory: C:\Users\�B��\AppData\Local\Temp\pip-ephem-wheel-cache-oepx2olr\wheels\0a\2e\1b\90e72395efc85a4d6141cac3e96242cb1ea426bfa510fa4c9a
+Successfully built ecd-epitope-scanner
+
+[notice] A new release of pip is available: 24.0 -> 26.2.1
+[notice] To update, run: E:\user\New project\ecd_epitope_scanner\.venv\Scripts\python.exe -m pip install --upgrade pip

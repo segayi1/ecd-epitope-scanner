@@ -1,4 +1,6 @@
-# Surface partition V2 修改日志
+# Surface partition V2 历史修改日志
+
+> 当前新作业固定使用 Joint V4-ML。本文记录历史分区开发；旧引擎回退选项已从新作业入口移除。
 
 ## 2026-09-16：有限 SurfaceRegion 聚合与唯一显示颜色
 
@@ -24,7 +26,7 @@
 - 已实现几何 QC、area-weighted Jaccard 去重、footprint adjacency、抗链式合并的 SurfaceRegion grouping，以及旧 `RegionRecord` adapter。
 - `3–7` 仅用于 Stage-1 兼容面板选择；完整 footprints/SurfaceRegions 均保留并导出。
 - 新增 surface vertices/edges、raw/deduplicated footprints、membership、adjacency、regions 和 QC 输出；在线页面可选择并聚焦任一 footprint。
-- 可通过 `ECD_PATCH_ENGINE=legacy_v1` 或请求 metadata 的 `patch_engine` 回退旧引擎。
+- 历史版本曾通过 `ECD_PATCH_ENGINE=legacy_v1` 或请求 metadata 的 `patch_engine` 回退旧引擎；当前版本不再接受这些入口。
 - MolecularMesh backend 已保留接口；当前默认实现为无需外部表面二进制的 `sr_pointcloud`。
 
 ## 回退基线

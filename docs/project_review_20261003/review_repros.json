@@ -1,0 +1,78 @@
+{
+  "ambiguous_mapping": {
+    "optimal_count": 2,
+    "returned": [
+      {
+        "0": 11,
+        "1": 12,
+        "2": 13,
+        "3": 14,
+        "4": 15,
+        "5": 16,
+        "6": 17,
+        "7": 18,
+        "8": 19,
+        "9": 20
+      },
+      1.0,
+      0,
+      []
+    ],
+    "optimal_coordinates": [
+      [
+        [
+          0,
+          10,
+          20
+        ],
+        [
+          0,
+          0,
+          10
+        ]
+      ],
+      [
+        [
+          0,
+          10,
+          20
+        ],
+        [
+          0,
+          10,
+          10
+        ]
+      ]
+    ]
+  },
+  "hetero_context": {
+    "parsed_atoms": 2,
+    "retained_atom_keys": [
+      [
+        "A",
+        1,
+        "",
+        "CA"
+      ]
+    ]
+  },
+  "descendant_timeout": {
+    "parent_timeout_seconds": 0.5,
+    "child_completed_after_parent_timeout": true
+  },
+  "uniprot_reviewed": {
+    "entry_type": "UniProtKB unreviewed (TrEMBL)",
+    "parsed_reviewed": true
+  },
+  "offline_html_metadata": {
+    "unexpected_elements_from_protein_name": [
+      "b",
+      "b"
+    ]
+  },
+  "paraplume_same_size_weight_change": {
+    "before": "d2e089374bcb294367b96b19dbc7e5e664068e369d2f953599bacc6905d0f8b7",
+    "after": "d2e089374bcb294367b96b19dbc7e5e664068e369d2f953599bacc6905d0f8b7",
+    "fingerprint_unchanged": true
+  }
+}
