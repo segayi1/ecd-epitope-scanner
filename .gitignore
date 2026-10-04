@@ -5,6 +5,8 @@ __pycache__/
 .ruff_cache/
 build/
 .venv/
+.tool_envs/
+.tool_cache/
 .packages/
 .pip-cache/
 .pnpm-cache/
@@ -13,6 +15,12 @@ build/
 workspace_data/
 test_output/
 output/playwright/
+/output/
+foldx_user_run_PD1/
+foldx_user_run_PDL1/
+acl-recovery/
+/vendor/
+docs/pd1_antibody_epitope_atlas/
 results/
 /models/
 web/vendor/*.map

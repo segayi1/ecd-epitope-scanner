@@ -73,6 +73,9 @@ def main() -> int:
         for key in ("structure_path", "output_dir"):
             if request.get(key):
                 request[key] = _wsl_path(str(Path(request[key]).resolve()), args.distro)
+        if request.get("parameters", {}).get("model_assets_root"):
+            request["parameters"]["model_assets_root"] = _wsl_path(
+                str(Path(request["parameters"]["model_assets_root"]).resolve()), args.distro)
         worker = _wsl_path(str(Path(args.worker).resolve()), args.distro)
         completed = subprocess.run(
             ["wsl.exe", "-d", args.distro, "--exec", args.python, worker],

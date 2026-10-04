@@ -58,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Joint V4 external-evidence policy",
     )
     analyze.add_argument("--max-sectors", type=int, default=7)
+    analyze.add_argument("--optimization-profile", choices=["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"], default="legacy")
+    analyze.add_argument("--surface-strategy", choices=["legacy", "surface_perturbation_v1_preview"], default="legacy")
+    analyze.add_argument("--candidate-ids", nargs="+")
+    analyze.add_argument("--calibration-repeat-schedule", nargs="+", type=int)
+    analyze.add_argument("--export-mode", choices=["checkpoint", "deliverable"], default="deliverable")
+    analyze.add_argument("--model-assets-root")
+    analyze.add_argument("--case-time-budget-seconds",type=float)
+    analyze.add_argument("--case-byte-budget",type=int)
     analyze.add_argument("--max-primary-constructs", type=int, default=7)
     analyze.add_argument("--allow-spurs-only-final", action="store_true")
     analyze.add_argument("--biological-context-mode", default="provided_structure")
@@ -129,6 +137,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             sequence = args.sequence
     request = PipelineRequest(
+        optimization_profile=args.optimization_profile,
+        surface_strategy=args.surface_strategy,
+        candidate_ids=args.candidate_ids,
+        calibration_repeat_schedule=args.calibration_repeat_schedule,
+        export_mode=args.export_mode,
+        model_assets_root=args.model_assets_root,
+        case_time_budget_seconds=args.case_time_budget_seconds,
+        case_byte_budget=args.case_byte_budget,
         input_type=input_type,
         identifier=identifier,
         accession=args.accession,

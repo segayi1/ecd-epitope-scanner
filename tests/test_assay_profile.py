@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 from ecd_epitope_scanner.assay_profiles import (
     DEFAULT_ASSAY_PROFILE_ID,
+    LEGACY_ASSAY_PROFILE_ID,
     get_assay_profile,
 )
 from ecd_epitope_scanner.pipeline import (
@@ -28,7 +29,10 @@ def test_fixed_profile_encodes_correct_cell_sides_and_backbone_hashes():
     }
     assert profile["antigen_display"]["anchor_side"] == "C_terminal"
     assert profile["fab_display"]["paratope_orientation"] == "extracellular"
-    assert profile["design_policy"]["stage1_maximum_constructs"] == 6
+    assert profile["design_policy"]["stage1_maximum_constructs"] == 8
+    # Historical geometry-only V1 replays retain their original six-probe cap.
+    legacy = get_assay_profile(LEGACY_ASSAY_PROFILE_ID)
+    assert legacy["design_policy"]["stage1_maximum_constructs"] == 6
     assert profile["design_policy"]["combination_maximum_sites"] == 4
     assert profile["antigen_display"]["sha256"] == (
         "CD314E6BE64E431D21EF491D9A18E021FABCEB6C1A0EFF9D03118A7E02B576BA"
@@ -72,8 +76,8 @@ def test_complete_pdb_only_profile_run_needs_no_sequence_or_accession(tmp_path):
     assert result["assay_profile"]["experimental_roles"]["antibody_cell"] == "Jurkat"
     assert result["assay_profile"]["experimental_roles"]["antigen_cell"] == "K562"
     assert result["assay_geometry"]["physical_membrane_plane_inferred"] is False
-    assert 1 <= len(probes) <= 6
-    assert result["partitioning"]["stage1_max_constructs"] == 6
+    assert 1 <= len(probes) <= 8
+    assert result["partitioning"]["stage1_max_constructs"] == 8
     assert all(
         not item["available"] and item["failure_reason"] == "disabled by request"
         for item in result["design_summary"]["tool_inventory"].values()

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import config
+from ..stability import AUTO_EXCLUDED_MUTANTS
 from ..integrations._adapter import request_for
 from ..integrations.discotope_adapter import DiscoTopeAdapter
 from ..integrations.foldx_adapter import FoldXAdapter
@@ -57,6 +58,7 @@ from .models import (
     PredictionResult,
     ToolInventory,
     V4Candidate,
+    V4Panel,
     V4Sector,
 )
 from .optimizer import select_panel
@@ -115,6 +117,10 @@ def _prediction(
     supplied_key: str | None = None,
     mutations: list[list[str]] | None = None,
 ) -> PredictionResult:
+    from ..surface_perturbation.runtime import ACTIVE_BUDGET
+    active_budget = ACTIVE_BUDGET.get()
+    if active_budget is not None:
+        adapter.timeout_seconds = min(adapter.timeout_seconds, active_budget.remaining())
     if mutations:
         # Worker results have one score per physical combination. Repeated
         # display memberships must never duplicate inference requests.
@@ -154,6 +160,9 @@ def _prediction(
         mutations=mutations,
         parameters=parameters,
     )
+    if active_budget is not None and adapter.name == "spurs":
+        from ..surface_perturbation.upstream_cache import predict_cached
+        return predict_cached(adapter,request)
     return adapter.predict(request)
 
 
@@ -191,6 +200,20 @@ def _map_mutation_notation(value: str, position_map: dict[int, int]) -> str:
         return value
     wt, position, mutant = match.groups()
     return f"{wt}{position_map.get(int(position), int(position))}{mutant}"
+
+
+def _physical_confirmation_priority(candidates, maximum, areas, initially_covered=()):
+    """Order costly confirmations by proxy diversity; never assign real coverage."""
+    remaining=list(candidates);covered=set(initially_covered);output=[]
+    while remaining and len(output)<maximum:
+        def priority(candidate):
+            support=set(candidate.covered_positions_by_scenario.get('geodesic_12',[]))
+            gain=sum(areas.get(position,0.) for position in support-covered)
+            return (-gain,candidate.structural_risk,-candidate.epitope_score,candidate.candidate_id)
+        winner=min(remaining,key=priority)
+        output.append(winner);remaining.remove(winner)
+        covered.update(winner.covered_positions_by_scenario.get('geodesic_12',[]))
+    return output
 
 
 def _foldx_shortlist(
@@ -369,7 +392,7 @@ def _annotate_stability(
             mutations = [_map_mutation_notation(str(item), position_map) for item in mutations]
         value = row.get("ddg", row.get("spurs_multi_ddg_kcal_mol"))
         try:
-            if mutations and value is not None:
+            if mutations and value is not None and math.isfinite(float(value)):
                 multi_map[tuple(sorted(str(item) for item in mutations))] = float(value)
         except (TypeError, ValueError):
             pass
@@ -382,7 +405,7 @@ def _annotate_stability(
             mutations = [_map_mutation_notation(str(item), position_map) for item in mutations]
         value = row.get("ddg", row.get("foldx_ddg_kcal_mol"))
         try:
-            if mutations and value is not None:
+            if mutations and value is not None and math.isfinite(float(value)):
                 foldx_map[tuple(sorted(str(item) for item in mutations))] = float(value)
         except (TypeError, ValueError):
             pass
@@ -397,7 +420,7 @@ def _annotate_stability(
         ]
         single_sum = (
             sum(value for value in singles if value is not None)
-            if any(value is not None for value in singles)
+            if all(value is not None and math.isfinite(value) for value in singles)
             else None
         )
         disagreement = (
@@ -424,6 +447,9 @@ def _annotate_stability(
             status = "FOLDX_ONLY_LEGACY"
         else:
             status = "NOT_SCORED"
+        if params.get("stability_contract") == "spurs_primary_foldx_sanity_v3":
+            from .stability_v3 import decision
+            status = decision(spurs, foldx_value, candidate.order)
         candidate.stability = CombinationStabilityEvidence(
             mutations=notation,
             spurs_multi_ddg_kcal_mol=spurs,
@@ -434,14 +460,15 @@ def _annotate_stability(
             ),
             extrapolation_level=(
                 "WITHIN_PRIMARY_VALIDATION_SCOPE"
-                if candidate.order == 2
+                if candidate.order in {1, 2}
                 else "HIGHER_ORDER_EXTRAPOLATION_MEDIUM"
                 if candidate.order == 3
                 else "HIGHER_ORDER_EXTRAPOLATION_HIGH"
             ),
             consensus_status=status,
             disagreement=disagreement,
-            provenance={"single_sum_used": single_sum is not None},
+            provenance={"single_sum_used": single_sum is not None, "stability_contract": params.get("stability_contract", "legacy"),
+                        "epistasis_interpretation": "multi minus independently trained single sum; diagnostic only"},
         )
 
 
@@ -452,12 +479,18 @@ def _formal_candidate_reasons(
     minimum_coverage_gain: float,
     lower_order_coverage: float,
     higher_order_information_gain: float | None = None,
+    physical_coverage_pending: bool = False,
     sasa_conflict_positions: set[int] | None = None,
     sasa_context_sensitive_positions: set[int] | None = None,
     sasa_method_unverified_positions: set[int] | None = None,
     sector_quality_flags: set[str] | None = None,
 ) -> list[str]:
     reasons = []
+    # Recheck the authoritative policy even for options loaded from old caches.
+    if any(option.mutant_aa in AUTO_EXCLUDED_MUTANTS for option in candidate.mutations):
+        reasons.append("AUTO_EXCLUDED_MUTANT")
+    if any(option.residue.one_letter in "CGP" for option in candidate.mutations):
+        reasons.append("AUTO_PROTECTED_NATIVE_RESIDUE")
     if candidate.qualification == "REVIEW_REQUIRED" or any(option.review_required for option in candidate.mutations):
         reasons.append("STRUCTURAL_CONFIDENCE_REVIEW_REQUIRED")
     if not candidate.connected:
@@ -500,7 +533,7 @@ def _formal_candidate_reasons(
             if higher_order_information_gain is not None else
             max(candidate.coverage_by_scenario.values(), default=0.0) - lower_order_coverage
         )
-        if candidate_gain < minimum_coverage_gain:
+        if not physical_coverage_pending and candidate_gain < minimum_coverage_gain:
             reasons.append("INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN")
         if stability is None or stability.foldx_ddg_kcal_mol is None:
             reasons.append("HIGHER_ORDER_REQUIRES_FOLDX")
@@ -786,6 +819,34 @@ def run_joint_v4_ml(
         ):
             params[key] = {**config.JOINT_V4_ML_PARAMETERS[key], **(parameters or {})[key]}
     supplied_predictions = dict(prediction_results or {})
+    from ..surface_perturbation import STRATEGY_ID
+    physical_preview = params.get("surface_strategy") == STRATEGY_ID
+    from .coverage_profile import PROFILE_V3, coverage_enabled, sequence_reasons
+    coverage_preview = coverage_enabled(params.get("optimization_profile"))
+    if coverage_preview and not physical_preview:
+        raise ValueError("Coverage profile requires physical surface strategy")
+    if params.get("surface_strategy") not in {None, "legacy", STRATEGY_ID}:
+        raise ValueError("Unknown surface_strategy")
+    if physical_preview:
+        from ..surface_perturbation.combo_contract import CONTRACT
+        params['surface_perturbation']={**params.get('surface_perturbation',{}),'panel_contract':CONTRACT}
+        params['surface_perturbation'].setdefault('candidate_route','unpartitioned_local')
+        params["candidate_search"] = {**params["candidate_search"], "orders": [2, 3],
+            "primary_orders":[2,3],"exploratory_orders":[],"global_span_paths":True}
+        params["foldx_confirmation"] = {**params["foldx_confirmation"], "number_of_runs": 1, "emit_paired_models": True}
+        params["foldx_confirmation"]["paired_cache_roots"] = params.get("surface_perturbation", {}).get("paired_cache_roots", [])
+    if coverage_preview:
+        params["candidate_search"] = {**params["candidate_search"], "coverage_scan_v2": True,
+            "canonical_sequence": protein.sequence, "orders": [2], "exploratory_orders": [],
+            "mandatory_candidate_ids": params.get('candidate_ids') or []}
+    params['surface_perturbation'] = {**params.get('surface_perturbation', {}),
+        'export_mode': params.get('export_mode', 'deliverable'),
+        'optimization_profile': params.get('optimization_profile', 'legacy')}
+    if params.get('calibration_repeat_schedule') is not None:
+        params['surface_perturbation']['calibration_repeat_schedule'] = params['calibration_repeat_schedule']
+    if params.get("optimization_profile") == PROFILE_V3:
+        params["spurs_multi"]["stability_contract"] = "spurs_primary_foldx_sanity_v3"
+        params["foldx_confirmation"].update(sampling_protocol="time_rotabase_v3", sampling_role="production", sampling_cohort="production_v3")
     if disable_external_engines:
         for name in ("procaliper", "spurs", "spurs_multi", "discotope", "foldx"):
             supplied_predictions.setdefault(name, PredictionResult(
@@ -798,6 +859,12 @@ def run_joint_v4_ml(
             ))
         prediction_results = supplied_predictions
     output_dir.mkdir(parents=True, exist_ok=True)
+    if coverage_preview:
+        params['foldx_confirmation'].setdefault('engine_work_root',str(output_dir/'fx'))
+        params['foldx_confirmation'].setdefault('short_binary_alias',True)
+        assets=Path(params.get('spurs_single',{}).get('model_assets_root') or Path(__file__).resolve().parents[1])
+        binaries=sorted((assets/'vendor/foldx').glob('foldx_*.exe'))
+        if binaries:params['foldx_confirmation'].setdefault('binary',str(binaries[-1]))
     mode = str(params.get("mode", "strict")).lower()
     if mode not in {"strict", "preview"}:
         raise ValueError("mode must be 'strict' or 'preview'")
@@ -923,6 +990,8 @@ def run_joint_v4_ml(
         params["spurs_single"],
         allow_unscored=mode == "preview",
         surface_by_position={item.residue.uniprot_pos: item for item in surface},
+        sequence=protein.sequence,
+        coverage_profile=coverage_preview,
     )
     options = compressed_options(
         records,
@@ -931,7 +1000,33 @@ def run_joint_v4_ml(
         epitope,
         float(params["candidate_search"].get("epitope_priority_weight", 1.0)),
         float(params["discotope"].get("seed_percentile", 0.80)),
+        coverage_profile=coverage_preview,
     )
+    if coverage_preview:
+        if params.get('full_replacement_search',False):
+            existing={(o.residue.uniprot_pos,o.mutant_aa) for o in options}
+            for row in single:
+                key=(row.residue.uniprot_pos,row.mutant_aa)
+                if row.eligible and not row.review_required and key not in existing:
+                    previous=(row.menu_selected,row.pareto_layer,row.selection_reason)
+                    options.extend(compressed_options(records,[row],1,coverage_profile=True))
+                    row.menu_selected,row.pareto_layer,row.selection_reason=previous
+                    existing.add(key)
+        for supplement in params.get('menu_supplements', []):
+            matches=[row for row in single if row.residue.uniprot_pos==supplement['position']
+                and row.mutant_aa==supplement['mutant'] and row.eligible and not row.review_required]
+            if len(matches)!=1 or not supplement.get('reason'):
+                details=[{'eligible':row.eligible,'review_required':row.review_required,
+                    'exclusion_reasons':row.hard_exclusions} for row in single
+                    if row.residue.uniprot_pos==supplement['position'] and row.mutant_aa==supplement['mutant']]
+                raise ValueError(f'Ineligible or unexplained menu supplement {supplement}: '
+                    f'{details}; SPURS status={spurs.status}, errors={spurs.errors}')
+            row=matches[0]
+            if not any(o.residue.uniprot_pos==supplement['position'] and o.mutant_aa==supplement['mutant'] for o in options):
+                original_layer=row.pareto_layer
+                options.extend(compressed_options(records,[row],1,coverage_profile=True))
+                row.pareto_layer=original_layer
+                row.selection_reason='SUPPLEMENT: '+supplement['reason']
     record_map = {item.uniprot_pos: item for item in records}
     sectors = build_epitope_sectors(
         surface,
@@ -990,9 +1085,14 @@ def run_joint_v4_ml(
             confidence=confidence, predicted=structure_type in {"alphafold", "predicted"},
         )
     candidate_pool_diagnostics = {}
+    search_hypotheses=hypotheses or None
+    if physical_preview:
+        from ..surface_perturbation.routes import candidate_hypotheses
+        search_hypotheses=candidate_hypotheses(params.get('surface_perturbation',{}).get(
+            'candidate_route','overlapping_windows'),options,graph,params['candidate_search'],hypotheses)
     candidates = generate_candidates(
         sectors, [option for option in options if not option.review_required], graph, params["candidate_search"],
-        hypotheses=hypotheses or None,
+        hypotheses=search_hypotheses,
         diagnostics=candidate_pool_diagnostics,
     )
     review_diagnostics = {}
@@ -1001,6 +1101,70 @@ def run_joint_v4_ml(
             sectors, options, graph, {**params["candidate_search"], "require_review": True},
             hypotheses=hypotheses or None, diagnostics=review_diagnostics,
         ))
+    priority_ids=[c.candidate_id for c in candidates]
+    if coverage_preview:
+        backup_ids={row['candidate_id'] for row in params['candidate_search'].get('conditional_pair_backups',[])}
+        for candidate in candidates:
+            if candidate.candidate_id in backup_ids:candidate.search_role='STABILITY_FAILURE_BACKUP'
+    if physical_preview and (not coverage_preview or any(c.order==3 for c in candidates)):
+        from .candidate_search import add_pair_controls
+        candidates=add_pair_controls(candidates,graph)
+    if coverage_preview:
+        candidates = [c for c in candidates if not sequence_reasons(protein.sequence,
+            [(o.residue.uniprot_pos, o.residue.one_letter, o.mutant_aa) for o in c.mutations])]
+        # Controls and triples share the same hard scoring-pool capacity.
+        required=set(params.get('candidate_ids') or [])
+        for triple in (c for c in candidates if c.order==3):
+            mutations={o.notation for o in triple.mutations}
+            required.update(c.candidate_id for c in candidates
+                if c is triple or (c.order==2 and {o.notation for o in c.mutations}<mutations))
+        cap=int(params['candidate_search'].get('global_shortlist',32))
+        if len(required)>cap:raise ValueError('Required nodes exceed hard scoring pool capacity')
+        ordinal={cid:i for i,cid in enumerate(priority_ids)}
+        candidates=sorted(candidates,key=lambda c:(c.candidate_id not in required,
+            ordinal.get(c.candidate_id,len(ordinal)),c.candidate_id))[:cap]
+        from ..surface_perturbation.paired import atoms
+        atom_rows=atoms(structure_pdb);heavy_by_residue={}
+        for atom_key,value in atom_rows.items():
+            if value[2].upper()!='H':heavy_by_residue.setdefault(atom_key[:3],[]).append(value[0])
+        contact_cache={}
+        for candidate in candidates:
+            separations=[];contacts=[]
+            for left,right in itertools.combinations(candidate.mutations,2):
+                a,b=record_map[left.residue.uniprot_pos].ca,record_map[right.residue.uniprot_pos].ca
+                if a is not None and b is not None:
+                    separations.append(math.dist(a,b))
+                keys=tuple(sorted((left.residue.stable_id,right.residue.stable_id)))
+                if keys not in contact_cache:
+                    sites=[heavy_by_residue.get((o.residue.chain_id,o.residue.auth_seq_id,
+                        (o.residue.insertion_code or '').strip()),[]) for o in (left,right)]
+                    contact_cache[keys]=min((math.dist(a,b) for a in sites[0] for b in sites[1]),default=None)
+                contacts.append(contact_cache[keys])
+            candidate.risk_components['minimum_ca_distance_a']=min(separations) if separations else None
+            candidate.risk_components['maximum_ca_distance_a']=max(separations) if separations else None
+            candidate.risk_components['minimum_native_heavy_atom_distance_a']=min(
+                (d for d in contacts if d is not None),default=None)
+            candidate.risk_components['native_heavy_contact_pair_count_4p5_a']=sum(
+                d<=4.5 for d in contacts if d is not None) if all(d is not None for d in contacts) else None
+            # C-alpha separation is geometry context, never a contact/stability gate.
+        write_json(output_dir/'candidate_pool_v2.json', {'schema_version':'coverage_pool_2',
+            'candidates':to_dict(candidates),'diagnostics':candidate_pool_diagnostics})
+    if params.get('candidate_stage_limit') is not None and params.get('candidate_ids') is None:
+        limit = int(params['candidate_stage_limit'])
+        if limit < 0:
+            raise ValueError('Negative candidate stage limit')
+        candidates = candidates[:limit]
+    if params.get("candidate_ids") is not None:
+        whitelist = set(params["candidate_ids"])
+        missing = whitelist - {c.candidate_id for c in candidates}
+        if missing:
+            raise ValueError("Unknown candidate_ids: " + ", ".join(sorted(missing)))
+        candidates = [c for c in candidates if c.candidate_id in whitelist]
+    if params.get('optimization_profile') == PROFILE_V3:
+        for candidate in candidates:
+            if candidate.order==3:
+                candidate.triple_role=params['candidate_search'].get('triple_roles_by_candidate_id',{}).get(candidate.candidate_id,candidate.triple_role)
+                candidate.parent_candidate_ids=params['candidate_search'].get('triple_parents_by_candidate_id',{}).get(candidate.candidate_id,candidate.parent_candidate_ids)
     annotate_hypothesis_geometry(
         hypotheses + raw_hypotheses, records,
         membrane_anchor=membrane_anchor,
@@ -1035,7 +1199,7 @@ def run_joint_v4_ml(
             params.get("spurs_multi", {}),
             prediction_results,
             "spurs_multi",
-            [candidate_notation(candidate) for candidate in candidates],
+            [candidate_notation(candidate) for candidate in candidates if not physical_preview or candidate.order > 1],
         )
         if candidates
         else PredictionResult(status="failed", errors=[{
@@ -1043,6 +1207,15 @@ def run_joint_v4_ml(
             "message": "SPURS multi was not run because candidate generation returned no combinations.",
         }])
     )
+    if physical_preview and _complete_success(spurs):
+        # Singles reuse the already computed stability landscape, with no multi forward pass.
+        singles = _spurs_rows(spurs.records)
+        reused = [{"mutations": candidate_notation(c), "ddg": singles[(c.mutations[0].residue.uniprot_pos,c.mutations[0].mutant_aa)],
+                   "source": "reused_spurs_single"} for c in candidates if c.order == 1
+                  and (c.mutations[0].residue.uniprot_pos,c.mutations[0].mutant_aa) in singles]
+        if reused:
+            multi = PredictionResult(status="success" if _complete_success(multi) or all(c.order == 1 for c in candidates) else multi.status,
+                                     records=multi.records+reused, errors=multi.errors, warnings=multi.warnings, provenance=multi.provenance)
     _annotate_stability(
         candidates, spurs.records if _complete_success(spurs) else [],
         multi, PredictionResult(status="failed"),
@@ -1062,6 +1235,22 @@ def run_joint_v4_ml(
         int(params["panel_optimizer"].get("stability_fallback_per_sector", 3)),
         hypotheses=hypotheses,
     )
+    if physical_preview and not coverage_preview:
+        maximum=int(params['foldx_confirmation'].get('max_candidates',42))
+        # Reserve most first-pass capacity for doubles. A few spatially distinct
+        # triples retain all exact pair controls without consuming the entire queue.
+        triples=_physical_confirmation_priority([c for c in confirmable if c.order==3],max(1,maximum//12),areas)
+        required={tuple(sorted(o.notation for o in pair)) for triple in triples for pair in itertools.combinations(triple.mutations,2)}
+        controls=[c for c in confirmable if c.order==2 and tuple(sorted(o.notation for o in c.mutations)) in required]
+        selected_controls=controls[:max(0,maximum-len(triples))]
+        used={c.candidate_id for c in triples+selected_controls}
+        initial_support={p for c in selected_controls+triples for p in c.covered_positions_by_scenario.get('geodesic_12',[])}
+        rest=_physical_confirmation_priority([c for c in confirmable if c.order==2 and c.candidate_id not in used],maximum,areas,initial_support)
+        foldx_candidates=(selected_controls+triples+rest)[:maximum]
+    if coverage_preview:
+        foldx_candidates = _physical_confirmation_priority(
+            [c for c in confirmable if c.order == 2 or params.get("candidate_ids") is not None],
+            int(params['foldx_confirmation'].get('max_candidates',42)), areas)
     foldx = (
         _prediction(
             adapters["foldx"],
@@ -1116,7 +1305,9 @@ def run_joint_v4_ml(
     for candidate in candidates:
         by_sector.setdefault(candidate.sector_id, []).append(candidate)
     for candidate in candidates:
-        lower_coverage = max(
+        # These proxy comparisons are used only by higher-order legacy gates.
+        # Physical preview requires actual combination-field gain downstream.
+        lower_coverage = 0.0 if candidate.order <= 2 or physical_preview else max(
             (
                 max(item.coverage_by_scenario.values(), default=0.0)
                 for item in (candidates if hypotheses else by_sector[candidate.sector_id])
@@ -1125,7 +1316,7 @@ def run_joint_v4_ml(
             default=0.0,
         )
         information_gain = None
-        if hypotheses and candidate.order > 2:
+        if hypotheses and candidate.order > 2 and not physical_preview:
             def separation(item: V4Candidate) -> float:
                 values = list(item.hypothesis_response.values())
                 count = len(values)
@@ -1156,16 +1347,82 @@ def run_joint_v4_ml(
             minimum_coverage_gain=minimum_gain,
             lower_order_coverage=lower_coverage,
             higher_order_information_gain=information_gain,
+            physical_coverage_pending=physical_preview,
             sasa_conflict_positions=sasa_conflicts,
             sasa_context_sensitive_positions=sasa_context_sensitive,
             sasa_method_unverified_positions=sasa_method_unverified,
             sector_quality_flags=sector_flags.get(candidate.sector_id),
         )
         candidate.formal_eligible = not candidate.formal_exclusion_reasons
+        if physical_preview and candidate.order==3 and candidate.formal_eligible:
+            candidate.warnings.append('REAL_HIGHER_ORDER_GAIN_PENDING')
     selectable = (
         candidates if mode == "preview" else [item for item in candidates if item.formal_eligible]
     )
-    panel, selected = select_panel(
+    if physical_preview:
+        from ..surface_perturbation.combo_contract import waiting_confirmation
+        selectable=[c for c in candidates if c.formal_eligible or waiting_confirmation(c)]
+        if params.get('optimization_profile') == PROFILE_V3:
+            selectable += [c for c in candidates if c not in selectable and c.stability is not None
+                and c.stability.consensus_status == 'STRUCTURAL_ENERGY_CONFLICT'
+                and set(c.formal_exclusion_reasons) <= {'STRUCTURAL_ENERGY_CONFLICT'}]
+    physical_summary = None
+    if physical_preview:
+        from ..surface_perturbation.engine import run_physical_preview
+        supplement_index = 0
+        seen_pair_ids = [(p['batch_path'],p['group'],p['run']) for row in foldx.records for p in row.get('paired_models',[])]
+        def register_pairs(pairs):
+            existing=set(seen_pair_ids)
+            for pair in pairs:
+                identity=(pair['batch_path'],pair['group'],pair['run'])
+                if identity not in existing:
+                    seen_pair_ids.append(identity);existing.add(identity)
+        def supplement(candidate, runs, *, role="production", cohort="production_v3", slot_start=0):
+            nonlocal supplement_index
+            supplement_index += 1
+            result = _prediction(adapters["foldx"], prediction_structure, chain, prediction_sequence,
+                                 output_dir/"surface_perturbation"/f"supplement_{supplement_index:04d}", structure_type,
+                                 {**params["foldx_confirmation"], "number_of_runs": runs,
+                                  "paired_cache_exclude_ids": seen_pair_ids, **({"sampling_role": role, "sampling_cohort": cohort, "sampling_slot_start": slot_start} if params.get("optimization_profile") == PROFILE_V3 else {})}, None, "foldx", [candidate_notation(candidate)])
+            if not _complete_success(result):
+                raise RuntimeError("FoldX supplemental repeats failed: " + str(result.errors))
+            pairs = result.records[0].get("paired_models", [])
+            seen_pair_ids.extend((p['batch_path'],p['group'],p['run']) for p in pairs)
+            return pairs
+        def recheck(candidate, pairs):
+            import numpy as np
+            scores = [p.get("ddg_kcal_mol") for p in pairs]
+            if not scores or any(v is None or not np.isfinite(v) for v in scores): return False
+            combined = PredictionResult(status="success", records=[{"mutations":candidate_notation(candidate),"ddg":float(np.median(scores))}])
+            _annotate_stability([candidate],spurs.records,multi,combined,params["spurs_multi"],params["foldx_confirmation"],position_map)
+            passed=candidate.stability.consensus_status == "CONSENSUS_PASS"
+            if passed:
+                cleared={'SPURS_ONLY_REVIEW_REQUIRED','HIGHER_ORDER_REQUIRES_FOLDX'}
+                if params.get('optimization_profile') == PROFILE_V3:cleared.add('STRUCTURAL_ENERGY_CONFLICT')
+                candidate.formal_exclusion_reasons=[r for r in candidate.formal_exclusion_reasons if r not in cleared]
+                candidate.formal_eligible=not candidate.formal_exclusion_reasons
+            elif params.get('optimization_profile') == PROFILE_V3:
+                candidate.formal_eligible=False
+                reason=candidate.stability.consensus_status
+                if reason not in candidate.formal_exclusion_reasons:candidate.formal_exclusion_reasons.append(reason)
+            return passed and candidate.formal_eligible
+        if params.get('surface_perturbation',{}).get('audit_candidate_routes',False):
+            from ..surface_perturbation.routes import search_controls
+            write_json(output_dir/'surface_perturbation_candidate_routes.json',search_controls(
+                sectors,options,graph,params['candidate_search'],hypotheses,selectable))
+        selected, physical_summary = run_physical_preview(structure=structure_pdb, records=records, options=options,
+                candidates=selectable, paired_records=foldx.records if _complete_success(foldx) else [],
+                notation=candidate_notation, supplement=supplement, recheck=recheck, output=output_dir,register_pairs=register_pairs,
+                settings={**params.get("surface_perturbation", {}),'ecd_length':len(protein.ecd_sequence),"primary_budget":params.get("panel_budget") or {"maximum_constructs":params.get("max_primary_constructs",7),"adaptive_budget":False}})
+        selected_ids = [c.candidate_id for c in selected]
+        for candidate in selected: candidate.role="PRIMARY"
+        curve = physical_summary.get("coverage_curve", [])
+        coverage = curve[min(len(selected),12)-1] if selected and curve else {}
+        panel = V4Panel(selected_candidate_ids=selected_ids,candidates_by_role={"PRIMARY":selected_ids},
+                        achieved_coverage={},uncovered_components=[],solver_status=physical_summary["status"],
+                        coverage_denominator_area_a2=physical_summary.get('reference_area_all_a2'),achieved_area_coverage={k:v for k,v in coverage.items() if k.startswith("C_") and v is not None})
+    else:
+      panel, selected = select_panel(
         selectable,
         max(1, int(params.get("max_primary_constructs", 7))),
         int(params["panel_optimizer"].get("higher_order_max_primary", 2)),
@@ -1211,7 +1468,7 @@ def run_joint_v4_ml(
     multi_ok = bool(selected) and all(
         item.stability and item.stability.spurs_multi_ddg_kcal_mol is not None for item in selected
     )
-    if mode == "preview":
+    if physical_preview or mode == "preview":
         recommendation_status = "PREVIEW_NOT_FOR_FORMAL_RECOMMENDATION"
     elif (
         missing
@@ -1309,6 +1566,7 @@ def run_joint_v4_ml(
             for error in result.errors
         ],
         provenance={
+            "surface_perturbation": physical_summary,
             **dict(source_provenance or {}),
             "surface_graph": graph_provenance,
             "qualification_audit": qualification_audit(records, float(params["surface"]["rsasa_threshold"])),

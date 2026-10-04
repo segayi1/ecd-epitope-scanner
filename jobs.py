@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import shutil
 import sqlite3
 import threading
@@ -12,11 +13,54 @@ from typing import Any
 
 from .models import TERMINAL_STATUSES
 from .pipeline import PipelineRequest, run_pipeline
-from .util import WaitingForAF3
+from .util import ClosingSQLiteConnection, WaitingForAF3
 
 
 def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat()
+
+
+def _process_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        open_process.restype = wintypes.HANDLE
+        wait_for_single_object = kernel32.WaitForSingleObject
+        wait_for_single_object.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        wait_for_single_object.restype = wintypes.DWORD
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = [wintypes.HANDLE]
+        close_handle.restype = wintypes.BOOL
+
+        # os.kill(pid, 0) is not a reliable existence check on Windows and can
+        # surface ERROR_INVALID_PARAMETER as a SystemError during restart scans.
+        handle = open_process(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:  # ERROR_INVALID_PARAMETER: no process has this PID
+                return False
+            # Access denied or an unfamiliar error is treated as possibly alive
+            # so recovery never interrupts a task based on uncertain evidence.
+            return True
+        try:
+            return wait_for_single_object(handle, 0) == 0x102  # WAIT_TIMEOUT
+        finally:
+            close_handle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, SystemError):
+        return False
+    return True
 
 
 class JobStore:
@@ -28,7 +72,9 @@ class JobStore:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.db_path, timeout=30)
+        connection = sqlite3.connect(
+            self.db_path, timeout=30, factory=ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         return connection
 
@@ -39,6 +85,7 @@ class JobStore:
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY,
                     owner_id TEXT NOT NULL DEFAULT 'local',
+                    owner_pid INTEGER,
                     status TEXT NOT NULL,
                     stage TEXT NOT NULL,
                     progress REAL NOT NULL,
@@ -57,18 +104,20 @@ class JobStore:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
             if "owner_id" not in columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'local'")
+            if "owner_pid" not in columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN owner_pid INTEGER")
             # Jobs left QUEUED/RUNNING by a previous process can never finish:
             # the single worker thread died with the old interpreter.  Mark them
             # failed so SSE streams terminate and the UI does not spin forever.
-            connection.execute(
-                """
-                UPDATE jobs
-                SET status='FAILED', stage='FAILED', error='interrupted by service restart',
-                    message='Pipeline was interrupted by a service restart', updated_at=?
-                WHERE status IN ('QUEUED', 'RUNNING')
-                """,
-                (_now(),),
-            )
+            for row in connection.execute("SELECT id,owner_pid FROM jobs WHERE status IN ('QUEUED', 'RUNNING')"):
+                if row["owner_pid"] is not None and _process_alive(row["owner_pid"]):
+                    continue
+                connection.execute(
+                    """UPDATE jobs SET status='FAILED', stage='FAILED',
+                       error='interrupted by service restart',
+                       message='Pipeline was interrupted by a service restart', updated_at=? WHERE id=?""",
+                    (_now(), row["id"]),
+                )
             connection.commit()
 
     def create(self, request: PipelineRequest, job_id: str | None = None, owner_id: str = "local") -> dict[str, Any]:
@@ -82,12 +131,13 @@ class JobStore:
             connection.execute(
                 """
                 INSERT INTO jobs
-                (id,owner_id,status,stage,progress,message,request_json,result_json,error,workdir,created_at,updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                (id,owner_id,owner_pid,status,stage,progress,message,request_json,result_json,error,workdir,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
                     owner_id,
+                    os.getpid(),
                     "QUEUED",
                     "QUEUED",
                     0.0,

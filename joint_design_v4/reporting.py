@@ -42,7 +42,7 @@ def _write_gzip_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -
 def _code_snapshot() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
     paths = list(root.glob("*.py"))
-    for directory in ("joint_design_v4", "joint_design", "integrations", "surface_patch"):
+    for directory in ("joint_design_v4", "joint_design", "integrations", "surface_patch", "surface_perturbation"):
         paths.extend((root / directory).rglob("*.py"))
     digest = hashlib.sha256()
     for path in sorted(set(paths)):
@@ -82,6 +82,18 @@ def write_v4_outputs(
     write_json(output_dir / "probe_sectors_v4.json", _rows(result.sectors))
     write_json(output_dir / "panel_candidates.json", _rows(result.candidates))
     write_json(output_dir / "selected_panel_v4.json", _rows(result.panel))
+    if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
+        menu_rows = [_rows(item) for item in result.mutation_options]
+        write_json(output_dir / "mutation_menu_v2.json", {
+            "schema_version": "coverage_menu_2.0", "optimization_profile": parameters["optimization_profile"],
+            "interpretation": "Chemical scheduling descriptors; not measured surface perturbation or binding evidence",
+            "rows": menu_rows})
+        _write_csv(output_dir / "mutation_menu_v2.csv", [
+            {**row, "residue": json.dumps(row["residue"], sort_keys=True),
+             "chemical_descriptors": json.dumps(row["chemical_descriptors"], sort_keys=True),
+             "hard_exclusions": json.dumps(row["hard_exclusions"])} for row in menu_rows],
+            ["residue", "mutant_aa", "spurs_ddg_kcal_mol", "stability_band", "eligible",
+             "hard_exclusions", "chemical_descriptors", "pareto_layer", "menu_selected", "selection_reason"])
     extension_names = [
         "qualification_audit_v411.json", "hypothesis_hierarchy_v411.json",
         "global_candidate_pool_v411.json", "review_candidates_v411.json",
@@ -91,6 +103,8 @@ def write_v4_outputs(
         "retrospective_benchmark_contract_v411.json",
         "raw_surface_footprints_v411.json",
     ]
+    if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
+        extension_names.extend(["mutation_menu_v2.json", "mutation_menu_v2.csv"])
     write_json(output_dir / extension_names[0], result.provenance.get("qualification_audit", {}))
     write_json(output_dir / extension_names[1], {
         "interpretation": "Raw -> family -> inference; engineering membership weights are not probabilities.",
@@ -304,6 +318,9 @@ def write_v4_outputs(
                 "recommendation_class": item.recommendation_class,
                 "structural_risk": item.structural_risk,
                 "role": item.role,
+                "triple_role": item.triple_role,
+                "parent_candidate_ids": ";".join(item.parent_candidate_ids),
+                "control_for_candidate_ids": ";".join(item.control_for_candidate_ids),
                 "formal_eligible": item.formal_eligible,
                 "formal_exclusion_reasons": ";".join(item.formal_exclusion_reasons),
                 "stability": _rows(item.stability),
@@ -324,6 +341,9 @@ def write_v4_outputs(
             "recommendation_class",
             "structural_risk",
             "role",
+            "triple_role",
+            "parent_candidate_ids",
+            "control_for_candidate_ids",
             "formal_eligible",
             "formal_exclusion_reasons",
             "stability",
@@ -535,5 +555,41 @@ def write_v4_outputs(
         "",
         *[f"- {item}" for item in result.warnings],
     ]
+    physical = result.provenance.get("surface_perturbation")
+    if physical and physical.get('panel_information'):
+        report.extend(['', 'Geometric information and robustness (not measured binding-response codes):',
+                      '```json',json.dumps(physical['panel_information'],indent=2),'```'])
+    if physical:
+        report.extend(["", "## Physical surface preview", "", f"Status: {physical['status']}",
+                       f"Combination target: {physical.get('goal_status','NOT_EVALUATED')}; search: {physical.get('search_status','NOT_EVALUATED')}",
+                       "Hard uses resolved local channels on native SES; APBS never changes the hard objective.",
+                       "Nested K curves are not independently optimal panels or antibody detection probabilities.",
+                       f"Verified constructs: {physical.get('actual_constructs',0)}",
+                       "Full raw channels, unknown masks and matched references: surface_perturbation_evidence.zip",
+                       "", "```json", json.dumps(physical.get('coverage_curve',[]),indent=2), "```"])
     (output_dir / "v4_scientific_report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     return {path.name: path.name for path in output_dir.iterdir() if path.is_file()}
+def externalize_checkpoint_pair_diagnostics(analysis, output_dir):
+    """Keep full proxy diagnostics in their hashed artifact, once per checkpoint."""
+    from ..util import sha256_file
+    artifact=Path(output_dir)/'hypothesis_hierarchy_v411.json'
+    if not artifact.is_file():raise ValueError('Missing full hierarchy diagnostics artifact')
+    saved=json.loads(artifact.read_text(encoding='utf-8'))['resolution_by_level']
+    digest=sha256_file(artifact)
+    for container in (analysis.get('partitioning',{}),analysis.get('joint_v4_ml',{})):
+        panel=container.get('selected_panel',{})
+        hierarchy=panel.get('hierarchy_resolution')
+        if hierarchy is None:continue
+        if hierarchy!=saved:raise ValueError('Checkpoint hierarchy diagnostics identity mismatch')
+        projected=dict(hierarchy)
+        for level,details in hierarchy.items():
+            if not isinstance(details,dict):continue
+            projected[level]=dict(details)
+            for name in ('near_pairs','pairwise_distances'):
+                if name not in details:continue
+                projected[level].pop(name)
+                projected[level][name+'_reference']={'file':artifact.name,'sha256':digest,
+                    'json_path':['resolution_by_level',level,name],'count':len(details[name])}
+        panel['hierarchy_resolution']=projected
+    analysis.setdefault('files',{})[artifact.name]=artifact.name
+

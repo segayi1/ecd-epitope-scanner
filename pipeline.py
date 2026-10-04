@@ -83,6 +83,7 @@ class PipelineRequest:
     assay_profile: str | None = None
     design_engine: str = "joint_v4_ml"
     ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
+    surface_strategy: str = "legacy"
     max_sectors: int = 7
     max_primary_constructs: int | None = None
     minimum_constructs: int | None = None
@@ -92,12 +93,65 @@ class PipelineRequest:
     allow_spurs_only_final: bool = False
     biological_context_mode: str = "provided_structure"
     metadata: dict[str, Any] = field(default_factory=dict)
+    optimization_profile: str = "legacy"
+    candidate_ids: list[str] | None = None
+    calibration_repeat_schedule: list[int] | None = None
+    export_mode: str = "deliverable"
+    model_assets_root: str | None = None
+    case_time_budget_seconds: float | None = None
+    case_byte_budget: int | None = None
 
     def __post_init__(self):
+        from .joint_design_v4.coverage_profile import PROFILES, resolve_threshold
+        threshold = resolve_threshold(self.optimization_profile, self.metadata)
+        if self.metadata.get('joint_v4_ml',{}).get('surface',{}).get('rsasa_threshold') is not None:
+            self.metadata['surface_rsasa_threshold']=threshold
+        if self.optimization_profile in PROFILES:
+            self.surface_strategy = "surface_perturbation_v1_preview"
+            if self.maximum_constructs is None and self.max_primary_constructs is None:
+                self.maximum_constructs = 12
+            self.metadata["surface_rsasa_threshold"] = threshold
+            parameters=dict(self.metadata.get('joint_v4_ml',{}))
+            settings=dict(parameters.get('surface_perturbation',{}))
+            settings.setdefault('case_time_budget_seconds',None if self.optimization_profile=='coverage_scan_v3_preview' else 14400)
+            settings.setdefault('case_byte_budget',20*1024**3)
+            parameters['surface_perturbation']=settings
+            self.metadata['joint_v4_ml']=parameters
+        if self.model_assets_root:
+            parameters=dict(self.metadata.get('joint_v4_ml',{}))
+            for name in ('spurs_single','spurs_multi','discotope'):
+                parameters[name]={**parameters.get(name,{}),'model_assets_root':self.model_assets_root}
+            self.metadata['joint_v4_ml']=parameters
+        if self.case_time_budget_seconds is not None or self.case_byte_budget is not None:
+            import math
+            if self.case_time_budget_seconds is not None and (not math.isfinite(self.case_time_budget_seconds) or (self.case_time_budget_seconds<=0 or (self.optimization_profile!='coverage_scan_v3_preview' and self.case_time_budget_seconds>14400))):
+                raise ValueError('Case runtime must be finite and at most four hours')
+            if self.case_byte_budget is not None and (self.case_byte_budget<=0 or (self.optimization_profile!='coverage_scan_v3_preview' and self.case_byte_budget>20*1024**3)):
+                raise ValueError('Case storage must be positive and at most 20 GiB')
+            parameters=dict(self.metadata.get('joint_v4_ml',{}))
+            settings=dict(parameters.get('surface_perturbation',{}))
+            for key in ('case_time_budget_seconds','case_byte_budget'):
+                if getattr(self,key) is not None:settings[key]=getattr(self,key)
+            parameters['surface_perturbation']=settings;self.metadata['joint_v4_ml']=parameters
+        if self.export_mode not in {"checkpoint", "deliverable"}:
+            raise ValueError("Unknown export_mode")
+        if self.candidate_ids is not None and (len(self.candidate_ids)>256 or
+            len(self.candidate_ids)!=len(set(self.candidate_ids)) or
+            any(not isinstance(cid,str) or not cid.strip() for cid in self.candidate_ids)):
+            raise ValueError('Candidate whitelist must contain unique nonempty identities, at most 256')
+        if self.calibration_repeat_schedule is not None and (
+            not self.calibration_repeat_schedule or
+            self.calibration_repeat_schedule != sorted(set(self.calibration_repeat_schedule)) or
+            any(x not in {5, 10, 20} for x in self.calibration_repeat_schedule)
+        ):
+            raise ValueError("Invalid calibration_repeat_schedule")
+        if self.surface_strategy not in {"legacy", "surface_perturbation_v1_preview"}:
+            raise ValueError("Unknown surface_strategy")
         from .joint_design_v4.budget import resolve_budget
         resolve_budget(minimum=self.minimum_constructs, target=self.target_constructs,
                        maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
-                       legacy_max=self.max_primary_constructs)
+                       legacy_max=self.max_primary_constructs,
+                       maximum_limit=12 if self.surface_strategy == "surface_perturbation_v1_preview" else 8)
 
     def as_dict(self) -> dict[str, Any]:
         data = to_dict(self)
@@ -565,7 +619,7 @@ def _software_versions() -> dict[str, str]:
     }
 
 
-def run_pipeline(
+def _run_pipeline(
     request: PipelineRequest,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
@@ -761,6 +815,16 @@ def run_pipeline(
     # remain in structure.cif for interface annotation and visual inspection.
     structure_pdb = write_mapped_ecd_pdb(parsed, mapping, protein, output_dir / "structure_for_energy.pdb")
     confidence = read_json(Path(request.confidence_path)) if request.confidence_path else None
+    if request.surface_strategy == 'surface_perturbation_v1_preview':
+        if request.confidence_path:
+            confidence_source=Path(request.confidence_path);confidence_destination=output_dir/'source_confidence.json'
+            if confidence_source.resolve()!=confidence_destination.resolve():shutil.copyfile(confidence_source,confidence_destination)
+        if request.structure_path and Path(request.structure_path).is_file():
+            original=Path(request.structure_path)
+            suffix=original.suffix.lower()
+            if suffix in {'.cif','.pdb'}:
+                destination=output_dir/('native_input'+suffix)
+                if original.resolve()!=destination.resolve():shutil.copyfile(original,destination)
     records, methods = analyze_residues(
         parsed,
         mapping,
@@ -836,6 +900,7 @@ def run_pipeline(
         maximum=request.maximum_constructs, adaptive=request.adaptive_budget,
         legacy_max=request.max_primary_constructs,
         policy=assay_profile["design_policy"] if assay_profile else None,
+        maximum_limit=12 if request.surface_strategy == "surface_perturbation_v1_preview" else 8,
     )
     # Region count is a Stage-1 experimental budget, not a geometry limit.
     # Surface V2 enumerates the complete surface first and the design stage
@@ -994,7 +1059,16 @@ def run_pipeline(
             parameters=config.SURFACE_V2_PARAMETERS, reliability=reliability,
         )
         v4_params = dict(request.metadata.get("joint_v4_ml", {}))
+        if request.surface_strategy == "surface_perturbation_v1_preview":
+            v4_params['surface_perturbation']={**v4_params.get('surface_perturbation',{}),
+                'reference_input':{'input_type':request.input_type,
+                    'confidence_sha256':sha256_file(Path(request.confidence_path)) if request.confidence_path else None}}
         v4_params.update({
+            "optimization_profile": request.optimization_profile,
+            "candidate_ids": request.candidate_ids,
+            "calibration_repeat_schedule": request.calibration_repeat_schedule,
+            "export_mode": request.export_mode,
+            "surface_strategy": request.surface_strategy,
             "mode": request.ml_mode,
             "max_sectors": request.max_sectors,
             "max_primary_constructs": effective_max,
@@ -1052,6 +1126,7 @@ def run_pipeline(
             "schema_extension_version": "4.1",
             "recommendation_status": joint_result.recommendation_status,
             "recommendation_diagnostics": joint_result.provenance.get("recommendation_diagnostics", {}),
+            "surface_perturbation": joint_result.provenance.get("surface_perturbation"),
             "tool_inventory": to_dict(joint_result.tool_inventory),
             "candidate_count": len(joint_result.candidates),
             "selected_candidate_ids": joint_result.panel.selected_candidate_ids,
@@ -1492,6 +1567,9 @@ def run_pipeline(
         ],
         "files": {},
     }
+    if request.optimization_profile in {'coverage_scan_v2_preview', 'coverage_scan_v3_preview'} and request.export_mode=='checkpoint':
+        from .joint_design_v4.reporting import externalize_checkpoint_pair_diagnostics
+        externalize_checkpoint_pair_diagnostics(analysis,output_dir)
     progress("EXPORTING", 0.91, "Writing auditable JSON, CSV, FASTA, GenBank and methods outputs")
     # structure.cif was written before residue analysis; hashing it here lets
     # the export run exactly once instead of twice (the old second pass existed
@@ -1505,8 +1583,13 @@ def run_pipeline(
         regions,
         designs,
         request.original_cds,
+        defer_archive=request.surface_strategy!='legacy',
     )
     analysis["files"] = files
+    if request.export_mode == 'checkpoint':
+        analysis['files'].pop('ecd_epitope_design.zip',None)
+        if request.optimization_profile in {'coverage_scan_v2_preview', 'coverage_scan_v3_preview'}:
+            analysis['files']['hypothesis_hierarchy_v411.json']='hypothesis_hierarchy_v411.json'
     if patch_engine == "joint_v3":
         for name in (
             "manifest.json", "structure_audit.json", "topology_context.json",
@@ -1521,6 +1604,7 @@ def run_pipeline(
             "tool_inventory.json", "structure_contexts.json", "residue_mapping.csv", "surface_graph_v4.json",
             "prediction_context.pdb",
             "surface_evidence.csv", "discotope_residues.csv", "single_mutation_options.csv",
+            "mutation_menu_v2.json", "mutation_menu_v2.csv", "candidate_pool_v2.json",
             "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
             "selected_panel_v4.json", "surface_hypotheses_v4.json",
             "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_manifest_v41.json", "v4_scientific_report.md",
@@ -1553,7 +1637,11 @@ def run_pipeline(
     # complete file map.  Persist the final analysis once more so V3 file
     # provenance and the legacy view agree on disk and in the API response.
     write_json(output_dir / "analysis.json", analysis)
-    finalize_scientific_bundle(output_dir)
+    if request.export_mode == "deliverable":
+        finalize_scientific_bundle(output_dir)
+    if request.surface_strategy!='legacy':
+        from .surface_perturbation.runtime import ACTIVE_BUDGET
+        if ACTIVE_BUDGET.get() is not None:ACTIVE_BUDGET.get().remaining()
     final_status = design_summary.get("recommendation_status")
     completion_message = (
         "Analysis completed; formal recommendations are blocked. See recommendation diagnostics."
@@ -1562,3 +1650,44 @@ def run_pipeline(
     )
     progress("COMPLETE", 1.0, completion_message)
     return analysis
+
+
+def run_pipeline(request: PipelineRequest, progress_callback: ProgressCallback | None = None) -> dict[str, Any]:
+    if request.surface_strategy == "legacy":
+        return _run_pipeline(request, progress_callback)
+    from .surface_perturbation.runtime import RunBudget, ACTIVE_BUDGET
+    settings = request.metadata.get("joint_v4_ml", {}).get("surface_perturbation", {})
+    phase = settings.get("phase", "production")
+    output = Path(request.output_dir or Path.cwd()/"results"/safe_name(request.identifier or "run"))
+    output.mkdir(parents=True, exist_ok=True)
+    limit = settings.get('case_time_budget_seconds') if request.optimization_profile=='coverage_scan_v3_preview' else (settings.get('case_time_budget_seconds') or (settings.get('calibration_limit_seconds',14400) if phase=='calibration' else min(7200,settings.get('limit_seconds',7200))))
+    budget_path=Path(settings.get('cumulative_budget_path',output/('case_cumulative_budget.json' if request.optimization_profile in {'coverage_scan_v2_preview', 'coverage_scan_v3_preview'} else f"surface_{phase}_cumulative_budget.json")))
+    budget = RunBudget(budget_path, limit)
+    token = ACTIVE_BUDGET.set(budget)
+    from .surface_perturbation.case_resources import ACTIVE_STORAGE, StorageGuard
+    storage = None
+    if settings.get('case_storage_root') or request.optimization_profile in {'coverage_scan_v2_preview', 'coverage_scan_v3_preview'}:
+        storage = StorageGuard(settings.get('case_storage_root',output), settings.get('case_byte_budget', 20*1024**3))
+    storage_token = ACTIVE_STORAGE.set(storage)
+    try:
+        budget.remaining()
+        from .surface_perturbation.power_guard import prevent_sleep
+        with prevent_sleep() as power_status:
+            write_json(output/'pipeline_power_guard.json',power_status)
+            result=_run_pipeline(request, progress_callback)
+        budget.remaining()
+        write_json(output/'case_acceptance.json',{'status':'WITHIN_CUMULATIVE_BUDGET','phase':phase,
+            'elapsed_seconds':budget.elapsed,'limit_seconds':None if budget.limit==float('inf') else budget.limit,
+            'interpretation':'runtime check only; scientific evidence is evaluated separately'})
+        return result
+    except TimeoutError as exc:
+        write_json(output/'case_acceptance.json',{'status':'INCOMPLETE_RUNTIME_EXHAUSTED' if budget.elapsed>=budget.limit else 'INCOMPLETE_WORKER_TIMEOUT','phase':phase,
+            'elapsed_seconds':budget.elapsed,'limit_seconds':None if budget.limit==float('inf') else budget.limit,'reason':str(exc),
+            'interpretation':'saved physical checkpoints are not acceptance of the complete case'})
+        raise
+    finally:
+        try:budget.save(False)
+        finally:
+            if not budget.lock.closed:budget.lock.close()
+            ACTIVE_BUDGET.reset(token)
+            ACTIVE_STORAGE.reset(storage_token)

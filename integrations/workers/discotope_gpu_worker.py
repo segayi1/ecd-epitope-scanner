@@ -36,7 +36,7 @@ def main() -> int:
         parameters = request.get("parameters", {})
         retries = max(0, int(parameters.get("cuda_oom_retries", 1)))
         allow_cpu_fallback = bool(parameters.get("allow_cpu_fallback_on_oom", True))
-        root = _project_root()
+        root = Path(parameters.get("model_assets_root") or _project_root())
         vendor = root / "vendor" / "discotope3"
         models = vendor / "models"
         structure_type = "alphafold" if request.get("structure_type") == "alphafold" else "solved"

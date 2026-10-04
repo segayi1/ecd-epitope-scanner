@@ -7,6 +7,8 @@ from typing import Any
 
 from .. import config
 from ..models import ResidueRecord
+from ..stability import AUTO_EXCLUDED_MUTANTS
+from .coverage_profile import descriptors
 from .models import (
     EpitopeEvidence,
     ResidueKey,
@@ -262,7 +264,7 @@ def epitope_evidence(
 
 
 def _chemistry(wt: str, mutant: str) -> str:
-    if wt in "KR" and mutant in "ED":
+    if (wt in "KR" and mutant in "ED") or (wt in "ED" and mutant in "KR"):
         return "charge_reversal"
     if wt in "WYF" and mutant == "A":
         return "hotspot_removal"
@@ -298,7 +300,7 @@ def _spurs_rows(rows: list[dict[str, Any]] | None) -> dict[tuple[int, str], floa
 
 
 def stability_band(value: float | None, params: dict[str, Any]) -> str:
-    if value is None:
+    if value is None or not math.isfinite(value):
         return "NOT_SCORED"
     if value <= float(params.get("preferred_max_ddg", 0.0)):
         return "PREFERRED"
@@ -317,12 +319,16 @@ def build_single_evidence(
     *,
     allow_unscored: bool = False,
     surface_by_position: dict[int, SurfaceEvidence] | None = None,
+    sequence: str | None = None,
+    coverage_profile: bool = False,
 ) -> list[SingleMutationEvidence]:
     scores = _spurs_rows(spurs_rows)
     result = []
     for item in records:
         surface_item = (surface_by_position or {}).get(item.uniprot_pos)
         surface_warnings = []
+        if .20 <= item.rsasa < .25:
+            surface_warnings.append("RSASA_BOUNDARY_020_025")
         if surface_item is not None:
             if surface_item.sasa_agreement_status == "SASA_DISAGREEMENT":
                 surface_warnings.append("SASA_DISAGREEMENT")
@@ -334,15 +340,30 @@ def build_single_evidence(
             if mutant == item.aa:
                 continue
             hard = list(item.hard_exclusions)
+            if coverage_profile and surface_item is not None and surface_item.native_context_classification_changed is True:
+                hard.append('native-normalized-sasa-threshold-conflict')
             if not item.coordinate_eligible:
                 hard.append("geometry-ineligible")
             if item.disulfide or item.aa == "C":
                 hard.append("disulfide-cysteine")
             if item.glycosylation_site or item.glycosylation_sequon:
                 hard.append("glycosylation-sequon")
+            if mutant in AUTO_EXCLUDED_MUTANTS:
+                hard.append("auto-excluded-mutant")
             if item.aa in "GP" or mutant in "GP":
                 hard.append("backbone-conformation-sensitive")
             value = scores.get((item.uniprot_pos, mutant))
+            if value is not None and not math.isfinite(value):
+                hard.append("nonfinite-spurs-score")
+                value = None
+            if coverage_profile:
+                from .coverage_profile import sequence_reasons
+                if sequence is None:
+                    hard.append("sequence-unavailable")
+                else:
+                    hard.extend(sequence_reasons(sequence, [(item.uniprot_pos, item.aa, mutant)]))
+                if value is None:
+                    hard.append("missing-spurs-score")
             band = stability_band(value, params)
             if value is not None and band == "REJECT":
                 hard.append("spurs-reject")
@@ -362,6 +383,7 @@ def build_single_evidence(
                         or (allow_unscored and band == "NOT_SCORED")
                     ),
                     provenance={"spurs_present": value is not None},
+                    chemical_descriptors=descriptors(item.aa, mutant),
                 )
             )
     return result
@@ -374,6 +396,7 @@ def compressed_options(
     epitope_rows: list[EpitopeEvidence] | None = None,
     epitope_priority_weight: float = 1.0,
     epitope_supported_percentile: float = 0.80,
+    coverage_profile: bool = False,
 ) -> list[V4MutationOption]:
     # Retained for call compatibility; DiscoTope is no longer folded into a
     # mutation quality score. It stays as separate hypothesis-prior evidence.
@@ -404,6 +427,9 @@ def compressed_options(
                 classes.add(item.chemistry_class)
             if len(selected) >= max_options:
                 break
+        if coverage_profile:
+            from .coverage_profile import select_menu
+            selected = select_menu(options, max_options)
         for item in selected:
             accessibility = min(1.0, max(0.0, record.rsasa))
             epitope = epitope_by_position.get(record.uniprot_pos)

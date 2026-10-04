@@ -670,6 +670,24 @@ def test_v4_formal_candidate_rejects_surface_and_sector_qc_failures():
     assert "SECTOR_GEOMETRY_QC_FAILED" in reasons
 
 
+@pytest.mark.parametrize("mutant", ["C", "P", "G"])
+def test_authoritative_mutation_policy_blocks_new_and_cached_options(mutant):
+    from ecd_epitope_scanner.joint_design_v4.evidence import build_single_evidence
+    from ecd_epitope_scanner.joint_design_v4.contexts import residue_keys
+    records = _fixture_records(1)
+    evidence = build_single_evidence(records, residue_keys(records),
+        [{"position": 1, "mutant": mutant, "ddg": -2.0}], {})
+    option = next(row for row in evidence if row.mutant_aa == mutant)
+    assert not option.eligible
+    assert "auto-excluded-mutant" in option.hard_exclusions
+    candidate = _series_candidate("VS001", 0, "STABILITY_FALLBACK")
+    candidate.mutations[0].mutant_aa = mutant
+    candidate.mutations[0].hard_exclusions = []  # Stale cache claims eligibility.
+    reasons = _formal_candidate_reasons(candidate, allow_spurs_only=True,
+        minimum_coverage_gain=0.05, lower_order_coverage=0.0)
+    assert "AUTO_EXCLUDED_MUTANT" in reasons
+
+
 def test_v4_procaliper_is_diagnostic_and_does_not_block_projection(tmp_path: Path):
     records = _fixture_records(10)
     evidence = _complete_per_residue_evidence(records)

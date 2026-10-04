@@ -4,13 +4,31 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
+import tempfile
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 import requests
 
 USER_AGENT = "ecd-epitope-workbench/1.0 (+local scientific workflow)"
+
+
+class ClosingSQLiteConnection(sqlite3.Connection):
+    """Keep sqlite connection context managers from leaking file handles."""
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
 
 
 class PipelineError(RuntimeError):
@@ -43,9 +61,22 @@ def sha256_file(path: Path) -> str:
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(value, ensure_ascii=False, indent=2)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(payload, encoding="utf-8")
-    os.replace(tmp, path)
+    # Independent writers must never share a temporary file; close it before
+    # replacing on Windows, where readers can briefly deny the replacement.
+    descriptor, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(payload)
+    for attempt in range(12):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 11:
+                # Preserve both the previous complete JSON and the attempted
+                # payload for diagnosis; never truncate the destination.
+                raise
+            time.sleep(min(.005 * 2**attempt, .1))
 
 
 def read_json(path: Path) -> Any:

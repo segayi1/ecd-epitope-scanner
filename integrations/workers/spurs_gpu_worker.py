@@ -139,7 +139,7 @@ def main() -> int:
     started = time.perf_counter()
     try:
         request = json.load(sys.stdin)
-        root = _project_root()
+        root = Path(request.get("parameters", {}).get("model_assets_root") or _project_root())
         sys.path.insert(0, str(root / "vendor" / "spurs"))
         # Some SPURS dependencies print informational messages to stdout during
         # import/inference. Keep stdout reserved for the worker JSON contract.

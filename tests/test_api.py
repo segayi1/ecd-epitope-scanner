@@ -19,6 +19,15 @@ def test_health_and_workbench_assets_are_served():
     assert client.get("/assets/vendor/pdbe-molstar-plugin-3.10.1.js").status_code == 200
 
 
+def test_job_restart_liveness_check_handles_current_and_missing_processes():
+    import os
+
+    from ecd_epitope_scanner.jobs import _process_alive
+
+    assert _process_alive(os.getpid())
+    assert not _process_alive(0x7FFFFFFF)
+
+
 def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path):
     from ecd_epitope_scanner.jobs import JobStore
     from ecd_epitope_scanner.pipeline import PipelineRequest

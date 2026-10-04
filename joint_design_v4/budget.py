@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 
-def resolve_budget(*, minimum=None, target=None, maximum=None, adaptive=None, legacy_max=None, policy=None):
+def resolve_budget(*, minimum=None, target=None, maximum=None, adaptive=None, legacy_max=None, policy=None, maximum_limit=8):
     policy = policy or {}
     for name, value in (("minimum", minimum), ("target", target), ("maximum", maximum), ("legacy_max", legacy_max)):
         if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
@@ -19,8 +19,9 @@ def resolve_budget(*, minimum=None, target=None, maximum=None, adaptive=None, le
         result = dict(minimum_constructs=lower, target_constructs=aim,
                       maximum_constructs=cap,
                       adaptive_budget=bool(adaptive if adaptive is not None else policy.get("adaptive_budget", not bool(policy))))
-    if not 1 <= result["minimum_constructs"] <= result["target_constructs"] <= result["maximum_constructs"] <= 8:
-        raise ValueError("Panel budget must satisfy 1 <= minimum <= target <= maximum <= 8")
+    if maximum_limit not in {8,12}: raise ValueError("Unknown budget ceiling")
+    if not 1 <= result["minimum_constructs"] <= result["target_constructs"] <= result["maximum_constructs"] <= maximum_limit:
+        raise ValueError(f"Panel budget must satisfy 1 <= minimum <= target <= maximum <= {maximum_limit}")
     return result
 
 

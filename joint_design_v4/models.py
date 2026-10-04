@@ -113,6 +113,10 @@ class SingleMutationEvidence:
     eligible: bool = False
     provenance: dict[str, Any] = field(default_factory=dict)
     review_required: bool = False
+    chemical_descriptors: dict[str, Any] = field(default_factory=dict)
+    pareto_layer: int | None = None
+    menu_selected: bool = False
+    selection_reason: str | None = None
 
 
 @dataclass
@@ -176,6 +180,12 @@ class V4Candidate:
     search_role: str = "PRIMARY_POOL"
     targeted_hypotheses: list[str] = field(default_factory=list)
     qualification: str = "FORMAL_POOL"
+    triple_role: str | None = None
+    parent_candidate_ids: list[str] = field(default_factory=list)
+    control_for_candidate_ids: list[str] = field(default_factory=list)
+    coupling_class: str = 'NOT_EVALUATED'
+    positive_lower_bound_qualified: bool = False
+    footprint_characterization_status: str = 'NOT_EVALUATED'
 
 
 @dataclass

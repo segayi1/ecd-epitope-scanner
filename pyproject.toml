@@ -11,14 +11,14 @@ dependencies = [
   "pydantic>=2,<3", "fastapi>=0.115,<2", "uvicorn>=0.30,<1", "python-multipart>=0.0.9",
   "requests>=2.31", "biopython>=1.83", "numpy>=1.26", "networkx>=3.2",
   "pandas>=2.0", "dnachisel>=3.2", "gemmi>=0.6", "scipy>=1.11",
-  "jsonschema>=4.21,<5",
+  "jsonschema>=4.21,<5", "xlrd>=2.0.1,<3", "openpyxl>=3.1,<4",
 ]
 
 [project.scripts]
 ecd-epitope-scanner = "ecd_epitope_scanner.cli:main"
 
 [tool.setuptools]
-packages = ["ecd_epitope_scanner", "ecd_epitope_scanner.surface_patch", "ecd_epitope_scanner.surface_patch.backend", "ecd_epitope_scanner.joint_design", "ecd_epitope_scanner.joint_design_v4", "ecd_epitope_scanner.integrations", "ecd_epitope_scanner.integrations.workers"]
+packages = ["ecd_epitope_scanner", "ecd_epitope_scanner.surface_perturbation", "ecd_epitope_scanner.surface_patch", "ecd_epitope_scanner.surface_patch.backend", "ecd_epitope_scanner.joint_design", "ecd_epitope_scanner.joint_design_v4", "ecd_epitope_scanner.integrations", "ecd_epitope_scanner.integrations.workers"]
 
 [tool.setuptools.package-dir]
 ecd_epitope_scanner = "."
@@ -32,7 +32,7 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = ["web/vendor", "web/backup_*", "vendor"]
+extend-exclude = ["web/vendor", "web/backup_*", "vendor", "tests/fixtures/grasp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]

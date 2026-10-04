@@ -31,13 +31,29 @@ def fixture_result(tmp_path_factory):
 def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     result, output = fixture_result
     assert result["summary"]["mapped_ecd_residues"] == 220
-    # Patch count is data-driven but bounded by the panel budget (maximum_regions).
-    assert 1 <= len(result["regions"]) <= 8
+    # Display count is soft and independent of the construct ceiling. Measure
+    # connectivity and diameter instead of forcing unsafe region merges.
+    sectors=result['joint_v4_ml']['sectors']
+    graph_data=json.loads((output/'surface_graph_v4.json').read_text(encoding='utf-8'))
+    graph={r['uniprot_pos']:{} for r in graph_data['nodes']}
+    for edge in graph_data['edges']:
+        graph[edge['source']][edge['target']]=edge['distance_a']
+        graph[edge['target']][edge['source']]=edge['distance_a']
+    from ecd_epitope_scanner.joint_design_v4.sectors import _distance
+    policy=graph_data['graph_provenance']['display_partition_policy']
+    positions=[p for sector in sectors for p in sector['residue_positions']]
+    assert len(result['regions'])==len(sectors)>0
+    assert sorted(positions)==sorted(graph) and len(positions)==len(set(positions))
+    for sector in sectors:
+        owned=set(sector['residue_positions'])
+        assert set(_distance(graph,min(owned),owned))==owned
+        assert sector['geodesic_diameter_a']<=policy['maximum_geodesic_diameter_a']+.001
+        assert sector['euclidean_diameter_a']<=policy['maximum_euclidean_diameter_a']+.001
     panel = result["partitioning"]["selected_panel"]
     assert panel["coverage_denominator_residues"] > 0
     assert panel["achieved_coverage"]
     assert all(0.0 <= value <= 1.0 for value in panel["achieved_coverage"].values())
-    assert result["partitioning"]["stage1_max_constructs"] <= 7
+    assert result["partitioning"]["stage1_max_constructs"] == result['parameters']['stage1_construct_budget']['maximum'] <= 8
     region_positions = {region["id"]: set(region["residues"]) for region in result["regions"]}
     protected = {
         residue["uniprot_pos"]

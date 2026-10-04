@@ -66,6 +66,7 @@ def annotate_candidate_risks(
                 or bool(flags & {"interface", "domain-interface", "domain interface"})
             )
         candidate.risk_components = {
+            **candidate.risk_components,
             "single_spurs_positive_sum_kcal_mol": round(single_positive_sum, 6),
             "spurs_multi_ddg_kcal_mol": (
                 combination.spurs_multi_ddg_kcal_mol if combination else None

@@ -41,6 +41,9 @@ def _run_engine(command: list[str], cwd: Path, timeout: int) -> subprocess.Compl
     whole job, so TimeoutExpired is caught here at every call site.
     """
     try:
+        if "--timeSeedRotabase=true" in command:
+            from .surface_perturbation.sampling_v3 import seeded_run
+            return seeded_run(command, cwd, timeout)
         return subprocess.run(
             command,
             cwd=cwd,
@@ -436,6 +439,7 @@ def score_many_with_foldx(
     runs: int = 5,
     already_repaired: bool = False,
     max_workers: int | None = None,
+    time_seed_rotabase: bool = False,
 ) -> list[float | None]:
     """Score all constructs, splitting the batch across parallel FoldX processes.
 
@@ -449,13 +453,13 @@ def score_many_with_foldx(
     workers = max_workers or config.FOLDX_MAX_WORKERS
     workers = max(1, min(int(workers), len(mutation_groups)))
     if workers <= 1:
-        return _run_foldx_batch(binary, pdb_path, mutation_groups, workdir, runs, already_repaired)
+        return _run_foldx_batch(binary, pdb_path, mutation_groups, workdir, runs, already_repaired, time_seed_rotabase)
     chunks = _split_groups(mutation_groups, workers)
     results: list[list[float | None] | None] = [None] * len(chunks)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
             index: pool.submit(
-                _run_foldx_batch, binary, pdb_path, chunk, workdir, runs, already_repaired
+                _run_foldx_batch, binary, pdb_path, chunk, workdir, runs, already_repaired, time_seed_rotabase
             )
             for index, chunk in enumerate(chunks)
         }
@@ -483,6 +487,7 @@ def _run_foldx_batch(
     workdir: Path,
     runs: int,
     already_repaired: bool,
+    time_seed_rotabase: bool = False,
 ) -> list[float | None]:
     """One BuildModel invocation over `mutation_groups` in a private run dir."""
     temp = _engine_run_dir(workdir, "foldx_batch")
@@ -512,6 +517,7 @@ def _run_foldx_batch(
                 f"--pdb={repaired.name}",
                 "--mutant-file=individual_list.txt",
                 f"--numberOfRuns={runs}",
+                *(["--timeSeedRotabase=true"] if time_seed_rotabase else []),
             ],
             temp,
             _buildmodel_timeout(len(mutation_groups), runs),

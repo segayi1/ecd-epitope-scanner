@@ -100,6 +100,7 @@ def write_scientific_outputs(
     regions: list[RegionRecord],
     designs: list[DesignRecord],
     original_cds: str | None = None,
+    *, defer_archive: bool = False,
 ) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     write_json(output_dir / "analysis.json", analysis)
@@ -353,6 +354,14 @@ This workflow designs antigen mutants for experimental testing. It does not infe
 - Maximum internal coordinate gap: {selection.get('max_internal_gap', 'n/a')}
 - Engineered mismatch positions: {', '.join(str(value) for value in methods.get('engineered_mismatch_positions', [])) or 'none'}
 
+## Structure admission and chain selection
+
+- Admission: {selection.get('admission', {}).get('status', 'not recorded')}
+- Chain selection: {selection.get('chain_selection', {}).get('method', 'not recorded')} ({selection.get('chain_selection', {}).get('confidence', 'unknown')} confidence)
+- Admission warnings: {'; '.join(selection.get('admission', {}).get('warnings', [])) or 'none'}
+- Chain-selection warnings: {'; '.join(selection.get('chain_selection', {}).get('warnings', [])) or 'none'}
+- PDB/UniProt sequence differences: {', '.join(str(value) for value in selection.get('engineered_mismatch_positions', [])) or 'none'}; original coordinates retained and differing positions omitted from per-residue scoring, surface partitioning and mutation design
+
 ## Surface and folding-risk screen
 
 - SASA method: {methods.get('sasa_method', '')}
@@ -482,6 +491,9 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "sasa_comparison.csv",
         "spurs_single_matrix.csv.gz",
         "single_mutation_options.csv",
+        "mutation_menu_v2.json",
+        "mutation_menu_v2.csv",
+        "candidate_pool_v2.json",
         "discotope_residues.csv",
         "epitope_islands.json",
         "probe_sectors_v4.json",
@@ -514,6 +526,17 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "inference_hypotheses_v411.json",
         "surface_complexity_v411.json",
         "retrospective_benchmark_contract_v411.json",
+        "surface_perturbation_preview.json",
+        "surface_perturbation_local_constructs.json",
+        "raw_null_import_manifest.json",
+        "surface_perturbation_local_constructs.csv",
+        "surface_perturbation_evidence.zip",
+        "frozen_input_manifest.json",
+        "launch_source_manifest.json",
+        "source_confidence.json",
+        "native_input.cif",
+        "native_input.pdb",
+        "structure_for_energy.pdb",
     ]
     manifest = {
         "schema_version": "1.0",
@@ -543,12 +566,26 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
     write_json(output_dir / "run_manifest.json", manifest)
     export_names.append("run_manifest.json")
     zip_path = output_dir / "ecd_epitope_design.zip"
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in export_names:
-            path = output_dir / name
-            if path.exists():
-                archive.write(path, arcname=name)
-    return {name: name for name in export_names + [zip_path.name] if (output_dir / name).exists()}
+    if not defer_archive:
+        _write_bundle_archive(output_dir,export_names)
+    return {name: name for name in export_names + [zip_path.name]
+            if (output_dir / name).exists() or defer_archive and name==zip_path.name}
+
+
+def _write_bundle_archive(output_dir: Path,names) -> None:
+    import os
+    destination=output_dir/'ecd_epitope_design.zip'
+    pending=destination.with_name(destination.name+f'.{os.getpid()}.pending')
+    try:
+        with zipfile.ZipFile(pending,'w',compression=zipfile.ZIP_DEFLATED) as archive:
+            for name in names:
+                path=output_dir/name
+                if path.exists():
+                    compression=zipfile.ZIP_STORED if path.suffix in {'.zip','.npz','.gz'} else zipfile.ZIP_DEFLATED
+                    archive.write(path,arcname=name,compress_type=compression)
+        pending.replace(destination)
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def finalize_scientific_bundle(output_dir: Path) -> None:
@@ -560,6 +597,4 @@ def finalize_scientific_bundle(output_dir: Path) -> None:
             raise ValueError(f"Invalid bundle artifact name: {name}")
         manifest["files"][name] = sha256_file(output_dir / name)
     write_json(manifest_path, manifest)
-    with zipfile.ZipFile(output_dir / "ecd_epitope_design.zip", "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in [*manifest["files"], "run_manifest.json"]:
-            archive.write(output_dir / name, arcname=name)
+    _write_bundle_archive(output_dir,[*manifest['files'],'run_manifest.json'])
