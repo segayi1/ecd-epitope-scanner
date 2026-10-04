@@ -274,11 +274,49 @@ def fetch_sifts_mapping(pdb_id: str, client: RemoteClient, output_dir: Path) -> 
     return payload
 
 
-def infer_uniprot_from_sifts(payload: dict[str, Any], pdb_id: str) -> tuple[str, list[str]]:
+def infer_uniprot_from_sifts(
+    payload: dict[str, Any],
+    pdb_id: str,
+    preferred_accession: str | None = None,
+    preferred_chain: str | None = None,
+) -> tuple[str, list[str]]:
     root = payload.get(pdb_id.lower(), payload.get(pdb_id.upper(), {}))
     entries = root.get("UniProt", {})
+    if preferred_accession:
+        data = entries.get(preferred_accession)
+        if not data:
+            return preferred_accession, []
+        chains = sorted({
+            item.get("chain_id")
+            for item in data.get("mappings", [])
+            if item.get("chain_id")
+        })
+        return preferred_accession, chains
     if not entries:
         raise PipelineError(f"No UniProt mapping was found for PDB {pdb_id}")
+    if preferred_chain:
+        matching = [
+            (accession, data)
+            for accession, data in entries.items()
+            if any(
+                item.get("chain_id") == preferred_chain
+                for item in data.get("mappings", [])
+            )
+        ]
+        if matching:
+            accession, data = max(
+                matching,
+                key=lambda pair: sum(
+                    int(item.get("unp_end", 0)) - int(item.get("unp_start", 0)) + 1
+                    for item in pair[1].get("mappings", [])
+                ),
+            )
+            chains = sorted({
+                item.get("chain_id")
+                for item in data.get("mappings", [])
+                if item.get("chain_id")
+            })
+            return accession, chains
     ranked = sorted(
         entries.items(),
         key=lambda pair: -sum(

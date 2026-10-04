@@ -1,0 +1,378 @@
+{
+  "manifest_version": 1,
+  "updated_at": "2026-09-29",
+  "python": {
+    "version": "3.12.4",
+    "platform": "Windows x86_64"
+  },
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "vram_gb": 6,
+    "nvidia_driver": "616.92"
+  },
+  "environments": {
+    "flowkit": ".tool_envs/flowkit",
+    "paraplume": ".tool_envs/paraplume"
+  },
+  "lock_files": {
+    "flowkit": "tooling/requirements-flowkit.lock",
+    "paraplume": "tooling/requirements-paraplume.lock"
+  },
+  "tools": [
+    {
+      "name": "FlowKit",
+      "version": "1.3.2",
+      "status": "installed",
+      "environment": ".tool_envs/flowkit",
+      "source": "https://pypi.org/project/FlowKit/1.3.2/",
+      "license": "BSD",
+      "wheel": {
+        "file": ".tool_cache/wheels/flowkit-1.3.2-py3-none-any.whl",
+        "sha256": "b659e6bf5e32e738718f988e85db4dbbb1a2f5aeacdac43ad202b91990fc4ece",
+        "verified_against_pypi": true
+      },
+      "key_dependencies": {
+        "numpy": "2.5.3",
+        "scipy": "1.18.1",
+        "pandas": "2.3.3",
+        "flowio": "1.4.0",
+        "flowutils": "1.2.2"
+      }
+    },
+    {
+      "name": "Paraplume",
+      "version": "2.0.0",
+      "status": "installed_large_weights_gpu_cpu_and_synthetic_task_progress_e2e_passed",
+      "environment": ".tool_envs/paraplume",
+      "source": "https://pypi.org/project/paraplume/2.0.0/",
+      "license": {
+        "name": "Custom PARAPLUME SOFTWARE LICENSE",
+        "source": "https://github.com/statbiophys/Paraplume/blob/main/LICENCE",
+        "installed_copy": ".tool_envs/paraplume/Lib/site-packages/paraplume-2.0.0.dist-info/licenses/LICENCE",
+        "installed_copy_sha256": "47fc1150dfe498c8ebb32ce36de9e6ec15dedadd7e53cfc05e160a3b3107a0b9",
+        "granted_scope": "private, academic, or institutional purposes, as stated in the license",
+        "redistribution": "Must be free of charge and retain the full license, copyright notice, and modification notice unless prior written authorization is obtained.",
+        "commercial_integration": "Commercial use, including paid product or service integration, requires prior written authorization.",
+        "combined_software_restriction": "The license prohibits combining Paraplume with software under incompatible licenses without prior written permission.",
+        "current_user_scope": "noncommercial_research_only_user_confirmed",
+        "written_compatibility_permission": false,
+        "distribution_intent": "NONE_USER_CONFIRMED",
+        "local_integrated_feature_status": "ENABLED_PER_USER_INSTRUCTION; LOOPBACK_SERVER_ONLY",
+        "current_use_status": "LOCAL_NONCOMMERCIAL_RESEARCH_USER_CONFIRMED; LICENSE_CATEGORY_AND_COMBINATION_SCOPE_UNCONFIRMED",
+        "compatibility_status": "UNCONFIRMED_WITH_MIT_PROJECT_LICENSE; UPSTREAM_RESTRICTION_IS_NOT_LIMITED_TO_DISTRIBUTION",
+        "redistribution_status": "NO_DISTRIBUTION_INTENDED; COMBINED_PACKAGE_COMPATIBILITY_UNCONFIRMED",
+        "deployment_status": "LOCAL_ONLY; INTEGRATED_USE_SCOPE_REQUIRES_CLARIFICATION"
+      },
+      "synthetic_task_progress_e2e": {
+        "status": "passed",
+        "date": "2026-09-29",
+        "scope": "ParaplumeRunner worker-to-task-progress-to-artifact persistence in an isolated temporary project",
+        "input": "synthetic repeated amino-acid alphabet strings; VH 120 aa, VL 120 aa; no biological interpretation",
+        "model": "Paraplume 2.0.0 large",
+        "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+        "torch": "2.6.0+cu124",
+        "cuda_runtime": "12.4",
+        "embedding_stages_completed": ["IgBert", "IgT5", "ESM2", "AntiBERTy", "ProtT5"],
+        "embedding_completion_percent": [30, 44, 58, 72, 86],
+        "progress_order_regression": "passed; completion progress strictly increases in runtime call order",
+        "task_progress_updates_before_persistence": 15,
+        "task_status": "COMPLETE",
+        "prediction_status": "PREDICTED_UNREVIEWED",
+        "output": "120 VH and 120 VL probabilities, all finite and within [0,1]",
+        "temporary_project_cleaned": true,
+        "real_project_modified": false
+      },
+      "wheel": {
+        "file": ".tool_cache/wheels/paraplume-2.0.0-py3-none-any.whl",
+        "sha256": "1170c69dbf91e1874defba0ca50007f3f44df5fcdb71046fcc0191620aac2e2f",
+        "verified_against_pypi": true
+      },
+      "runtime_versions": {
+        "torch": "2.6.0+cu124",
+        "cuda_runtime": "12.4",
+        "esm": "3.0.8",
+        "sentencepiece": "0.2.0",
+        "protobuf": "3.20.3",
+        "transformers": "4.57.6",
+        "antiberty": "0.1.3"
+      },
+      "model": {
+        "required_mode": "large",
+        "plm_weights": [
+          "AntiBERTy",
+          "ESM2",
+          "ProtT5",
+          "IgT5",
+          "IgBert"
+        ],
+        "cache_path": ".tool_cache/hf",
+        "status": "all_large_model_weights_cached_and_digest_verified",
+        "repositories": {
+          "Exscientia/IgBert": {
+            "commit": "81a4abb8a4dac5cdcbefc28e5b331a82224c485d",
+            "files": [
+              {
+                "file": "config.json",
+                "size": 686,
+                "sha256_or_blob": "3c2346e8154a0b112c3d4934f5771843a1b08a38",
+                "cached": true
+              },
+              {
+                "file": "generation_config.json",
+                "size": 90,
+                "sha256_or_blob": "50526a891c22a1b30805005d6aff952b66b45f75",
+                "cached": true
+              },
+              {
+                "file": "model.safetensors",
+                "size": 1679791776,
+                "sha256_or_blob": "e9bdc24c7a50bb303b75f8292eca8d47ddac39f00ef9802972ded38899db7740",
+                "cached": true
+              },
+              {
+                "file": "special_tokens_map.json",
+                "size": 125,
+                "sha256_or_blob": "a8b3208c2884c4efb86e49300fdd3dc877220cdf",
+                "cached": true
+              },
+              {
+                "file": "tokenizer_config.json",
+                "size": 1294,
+                "sha256_or_blob": "a3bcf8ff17d5a478c29e24a9fa55650ef77b2b59",
+                "cached": true
+              },
+              {
+                "file": "vocab.txt",
+                "size": 81,
+                "sha256_or_blob": "6fc4cfbdaf88194e894ef1ab9c394f3d5171e596",
+                "cached": true
+              }
+            ]
+          },
+          "Exscientia/IgT5": {
+            "commit": "5db9442f2c732b23bf329d6069b432ce783ba016",
+            "files": [
+              {
+                "file": "added_tokens.json",
+                "size": 2321,
+                "sha256_or_blob": "ebf40fb15fa27dea5d9d92a580d1bca519b3f4f3",
+                "cached": true
+              },
+              {
+                "file": "config.json",
+                "size": 827,
+                "sha256_or_blob": "adbd97686248ca605c090dc5acae1596796a232b",
+                "cached": true
+              },
+              {
+                "file": "generation_config.json",
+                "size": 142,
+                "sha256_or_blob": "11b50ce29aa776eb3695cebee20a846b11669c95",
+                "cached": true
+              },
+              {
+                "file": "model-00001-of-00003.safetensors",
+                "size": 4966822528,
+                "sha256_or_blob": "93a577bf673f15c6932c4289641e5f3be79c37f07da1a3470c1438e23b821bf7",
+                "cached": true
+              },
+              {
+                "file": "model-00002-of-00003.safetensors",
+                "size": 4999865056,
+                "sha256_or_blob": "25ea415d8b5aafd6748176761e44cad747dff727c27b140e661229f69aa64145",
+                "cached": true
+              },
+              {
+                "file": "model-00003-of-00003.safetensors",
+                "size": 1308696208,
+                "sha256_or_blob": "3d0085fe68f4484b72d816425bdef4f6d3d68485de6d31accb1a184f15b5ba04",
+                "cached": true
+              },
+              {
+                "file": "model.safetensors.index.json",
+                "size": 45945,
+                "sha256_or_blob": "625dbf61c46010c9e351f437651ccc6748e99333",
+                "cached": true
+              },
+              {
+                "file": "special_tokens_map.json",
+                "size": 2543,
+                "sha256_or_blob": "17ade346a1042cbe0c1436f5bedcbd85c099d582",
+                "cached": true
+              },
+              {
+                "file": "spiece.model",
+                "size": 237990,
+                "sha256_or_blob": "74da7b4afcde53faa570114b530c726135bdfcdb813dec3abfb27f9d44db7324",
+                "cached": true
+              },
+              {
+                "file": "tokenizer_config.json",
+                "size": 20371,
+                "sha256_or_blob": "62ffe61a2965c4081148162dcf8c10d5a2ae2220",
+                "cached": true
+              }
+            ]
+          },
+          "facebook/esm2_t33_650M_UR50D": {
+            "commit": "08e4846e537177426273712802403f7ba8261b6c",
+            "files": [
+              {
+                "file": "config.json",
+                "size": 724,
+                "sha256_or_blob": "a956a25d277f30bd870d3760b9a116f19ead885e",
+                "cached": true
+              },
+              {
+                "file": "model.safetensors",
+                "size": 2609506392,
+                "sha256_or_blob": "a08adabb949fa67ad3c14b509d04fd60368b35007b0095e3358f81200c4f4db0",
+                "cached": true
+              },
+              {
+                "file": "special_tokens_map.json",
+                "size": 125,
+                "sha256_or_blob": "ba0f9b53dbbf27934f7555e5d31e37bdea9317f1",
+                "cached": false
+              },
+              {
+                "file": "tokenizer_config.json",
+                "size": 95,
+                "sha256_or_blob": "3f0d47e841e1cb75257aeaf76d156802899a217e",
+                "cached": false
+              },
+              {
+                "file": "vocab.txt",
+                "size": 93,
+                "sha256_or_blob": "6b946952cc35537226f07fd70957ee2f848880d2",
+                "cached": false
+              }
+            ]
+          },
+          "Rostlab/prot_t5_xl_half_uniref50-enc": {
+            "commit": "94a6abc029ae13029317b140b7424e012bf8dfbf",
+            "files": [
+              {
+                "file": "config.json",
+                "size": 656,
+                "sha256_or_blob": "cff0e529dac2d369597f918a97f63fd41860911c",
+                "cached": false
+              },
+              {
+                "file": "pytorch_model.bin",
+                "size": 2416373051,
+                "sha256_or_blob": "7f51ba885541c7dc569d46b796af57cc7a2ba7945107dced4f19d1b5ec091157",
+                "cached": false
+              },
+              {
+                "file": "special_tokens_map.json",
+                "size": 1787,
+                "sha256_or_blob": "864653f16734b79a4e1e0e8a83e68bcc25a008be",
+                "cached": false
+              },
+              {
+                "file": "spiece.model",
+                "size": 237990,
+                "sha256_or_blob": "83d8d2c99eae89e3381864acde18b34ff149f35e",
+                "cached": false
+              },
+              {
+                "file": "tokenizer_config.json",
+                "size": 25,
+                "sha256_or_blob": "e4928a6cf839402a41b66f97bfbd5d3b5c1e4b91",
+                "cached": false
+              }
+            ]
+          }
+        },
+        "antiberty_package_weights": {
+          "directory": ".tool_envs/paraplume/Lib/site-packages/antiberty/trained_models/AntiBERTy_md_smooth",
+          "status": "installed_with_antiberty_0.1.3"
+        }
+      },
+      "compatibility_notes": [
+        "torch 2.6.0+cu124 official Windows CPython 3.12 wheel installed; SHA-256 3313061c1fec4c7310cf47944e84513dcd27b6173b72a349bb7ca68d0ee6e9c0.",
+        "Transformers 4.57.6 rejects torch <2.6 when loading PyTorch checkpoints due CVE-2025-32434; upgrading from 2.5.1+cu124 to 2.6.0+cu124 resolved the blocker.",
+        "esm 3.0.8 pinned for torch 2.6 compatibility; sentencepiece 0.2.0 pinned for Windows stability.",
+        "Paraplume predictions are antibody paratope probabilities and do not identify antigen epitopes without antigen/interface evidence."
+      ],
+      "gpu_status": {
+        "status": "cuda_available_and_large_inference_passed",
+        "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+        "vram_gb": 6,
+        "torch": "2.6.0+cu124",
+        "cuda_runtime": "12.4",
+        "cuda_smoke_test": "1024x1024 CUDA matrix multiplication succeeded",
+        "full_model_test": {
+          "command": "paraplume-infer file-to-paratope .tool_cache/paraplume_smoke/user_example.csv --large --gpu 0 --emb-proc-size 1 --result-folder .tool_cache/paraplume_smoke/out-user",
+          "input_chain_lengths": {
+            "heavy": 120,
+            "light": 107
+          },
+          "output_chain_lengths": {
+            "heavy": 120,
+            "light": 107
+          },
+          "probabilities": "all finite and within [0,1]",
+          "log": ".tool_cache/paraplume_smoke/user_example_gpu.log",
+          "result_pickle": ".tool_cache/paraplume_smoke/out-user/paratope_user_example.pkl",
+          "result_sha256": "225314b4b3288b172b777de8cfb17e8503ebbed0e0de465f60126dc3632bdb0e",
+          "antibody_identity": "Sequence exactly matches FMC63 anti-CD19 VH/VL as listed in public patent sequence record.",
+          "epitope_context": {
+            "target": "human CD19",
+            "evidence": "Published FMC63-CD19 cryo-EM complex PDB 7URV and interface analysis; CD19 loops 154-166 and 214-224, key residues Arg163, Lys220, Pro222.",
+            "sources": [
+              "https://www.rcsb.org/structure/7URV",
+              "https://pmc.ncbi.nlm.nih.gov/articles/PMC10228544/"
+            ],
+            "note": "This literature-grounded epitope is independent of Paraplume, which predicts antibody-side paratope residues."
+          }
+        },
+        "cpu_fallback": "not_needed_gpu_large_inference_succeeded"
+      },
+      "cpu_status": {
+        "status": "offline_large_model_worker_inference_passed",
+        "command": "CUDA_VISIBLE_DEVICES=-1 HF_HUB_CACHE=.tool_cache/hf/hub HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python integrations/workers/paraplume_worker.py",
+        "model_size": "large",
+        "model_version": "2.0.0",
+        "requested_device": "cpu",
+        "actual_device": "cpu",
+        "cpu_fallback_reason": "CUDA_UNAVAILABLE",
+        "input_chain_lengths": {
+          "heavy": 120,
+          "light": 107
+        },
+        "output_chain_lengths": {
+          "heavy": 120,
+          "light": 107
+        },
+        "probabilities": "all finite and within [0,1]",
+        "worker_runtime_seconds": 26.67,
+        "worker_response": ".tool_cache/paraplume_smoke/cpu-worker-response.json",
+        "worker_response_sha256": "bd2477361e250f88e4fc037c5bfabf6c24288f2c184d8eae2495b28d7d482704d",
+        "result_pickle": ".tool_cache/paraplume_smoke/cpu-validation/paratope_user_example.pkl",
+        "result_sha256": "6a67095b708e3250bd69ff35f03b7731b636114fec08c38cab2f492f3f993112",
+        "comparison_to_gpu": {
+          "max_absolute_difference": 0.0000021457672119140625,
+          "mean_absolute_difference": 0.00000007414473632515741
+        }
+      }
+    },
+    {
+      "name": "GRASP-JAX input format reference",
+      "version": "db1715f51039e27fcc8ec4ca05e3217cb0c4ea67",
+      "status": "pinned_parser_fixture_round_trip_passed",
+      "source": "https://github.com/xiergo/GRASP-JAX/blob/db1715f51039e27fcc8ec4ca05e3217cb0c4ea67/generate_restr.py",
+      "fixture": "tests/fixtures/grasp/generate_restr.py",
+      "sha256": "dda53ab36cd88f639ec5ead73920dc71072ddc4c28e7b2bdbd77820208be0601",
+      "license": "Apache-2.0; upstream LICENSE retained alongside the parser fixture.",
+      "verification": "tests/test_grasp_official_format.py parses IR and RPR constraints, serializes them with upstream code, and compares restraint arrays after round-trip.",
+      "inference_or_weights": "not_installed_by_design"
+    }
+  ],
+  "network_notes": [
+    "Python packages were fetched via the Tsinghua PyPI mirror after the default package route returned truncated or unavailable artifacts.",
+    "The initial GRASP-JAX git clone timed out; the later parser-only fixture is pinned to an upstream commit and excludes model code or weights.",
+    "FlowJo Desktop was not downloaded; only user-provided .wsp import is in scope."
+  ]
+}

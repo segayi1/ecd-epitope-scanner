@@ -1,5 +1,9 @@
 from ecd_epitope_scanner.models import FeatureRange, StructureCandidate
-from ecd_epitope_scanner.retrieval import find_public_af3_candidates, parse_uniprot_entry
+from ecd_epitope_scanner.retrieval import (
+    find_public_af3_candidates,
+    infer_uniprot_from_sifts,
+    parse_uniprot_entry,
+)
 from ecd_epitope_scanner.structure_analysis import _feature_positions
 
 
@@ -73,6 +77,38 @@ def test_strict_af3_does_not_accept_alphafold_db_as_af3():
     accepted = find_public_af3_candidates([afdb, archive], FakeClient())
     assert [item.identifier for item in accepted] == ["ma-test"]
     assert archive.explicit_af3
+
+
+def test_sifts_prefers_requested_target_accession_and_returns_its_chains():
+    payload = {
+        "1abc": {
+            "UniProt": {
+                "PANTIBODY": {"mappings": [{"chain_id": "H", "unp_start": 1, "unp_end": 120}]},
+                "PTARGET": {"mappings": [{"chain_id": "C", "unp_start": 1, "unp_end": 80}]},
+            }
+        }
+    }
+
+    accession, chains = infer_uniprot_from_sifts(payload, "1ABC", "PTARGET")
+
+    assert accession == "PTARGET"
+    assert chains == ["C"]
+
+
+def test_sifts_can_resolve_accession_from_the_selected_antigen_chain():
+    payload = {
+        "1abc": {
+            "UniProt": {
+                "PANTIBODY": {"mappings": [{"chain_id": "H", "unp_start": 1, "unp_end": 120}]},
+                "PTARGET": {"mappings": [{"chain_id": "C", "unp_start": 1, "unp_end": 80}]},
+            }
+        }
+    }
+
+    accession, chains = infer_uniprot_from_sifts(payload, "1ABC", preferred_chain="C")
+
+    assert accession == "PTARGET"
+    assert chains == ["C"]
 
 
 def test_disulfide_feature_protects_only_the_two_bond_endpoints():
