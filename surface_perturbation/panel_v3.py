@@ -99,3 +99,14 @@ def feasible_target(lower,upper,area,graph,risk,ids):
     if len(ids)<4 or float(np.asarray(area)[lower.any(axis=0)].sum()/np.sum(area))<.8:return None
     indices,_=select(lower,upper,area,graph,risk,ids,solver_seconds=2.)
     return indices if 4<=len(indices)<=12 and metrics(lower[indices],np.asarray(upper)[indices],area)['C_screen_lower_bound']>=.8 else None
+
+
+def frozen_compression_baseline(ids,regular,lower,area):
+    """Use the declared achieved double panel, not a newly optimized pool."""
+    lookup={c.candidate_id:c for c in regular}
+    if (not 4<=len(ids)<=12 or len(set(ids))!=len(ids)
+            or any(cid not in lookup or lookup[cid].order!=2 for cid in ids)):
+        raise ValueError('FROZEN_COMPRESSION_BASELINE_NOT_A_QUALIFIED_DOUBLE_PANEL')
+    if float(np.asarray(area)[np.any([lower[cid] for cid in ids],axis=0)].sum()/np.sum(area))<.8:
+        raise ValueError('FROZEN_COMPRESSION_BASELINE_BELOW_TARGET')
+    return [lookup[cid] for cid in ids]

@@ -20,11 +20,12 @@ from .null_v3 import obtain
 from .classification import classify_fields
 from .combo_contract import site_evidence, actual_pair_controls
 from .calibration_scope import local_scope
-from .panel_v3 import select, metrics, compression_information, feasible_target
+from .panel_v3 import select, metrics, compression_information, feasible_target, frozen_compression_baseline
 from .runtime import ACTIVE_BUDGET, RunBudget
 from .local_constructs import local_construct, export_local_constructs
 
 CONTRACT='positive_lower_bound_information_v3'
+COMPRESSION_CONTRACT='frozen_baseline_information_compression_v3_1'
 
 
 def coupling(components):
@@ -58,6 +59,7 @@ def run(**kwargs):
     summary={'strategy':'surface_perturbation_v1_preview','phase':settings.get('phase','production'),
         'status':'NO_VERIFIED_PANEL','panel_contract':CONTRACT,'goal_status':'NOT_EVALUATED',
         'hard_target_status':'NOT_EVALUATED','search_status':'OPEN','candidate_site_evidence':{},
+        'compression_contract':COMPRESSION_CONTRACT,
         'method_contract':{'version':CONTRACT,'scan_center_geodesic_radius_a':12.,
                            'production_repeats':5,'null_train_WT':10,'null_holdout_WT':10},
         'interpretation':'computational scan opportunity and geometric codes; not antibody response'}
@@ -198,7 +200,7 @@ def run(**kwargs):
                 not {0,1,2,3,4}<={p.get('sampling_slot') for p in all_pairs.get(c.candidate_id,[])
                     if p.get('sampling_role')=='production' and p.get('sampling_cohort')=='production_v3'}) for c in candidates)
             witness_candidates=[c for c in qualified if c.order==2]
-            if not errors and not cold_or_compression_triple and len(witness_candidates)>=4:
+            if not settings.get('final_panel_audit',False) and not errors and not cold_or_compression_triple and len(witness_candidates)>=4:
                 ids=[c.candidate_id for c in witness_candidates]
                 witness=feasible_target(np.array([lower[cid] for cid in ids]),np.array([upper[cid] for cid in ids]),
                     area,graph,[c.structural_risk for c in witness_candidates],ids)
@@ -222,6 +224,7 @@ def run(**kwargs):
         for c in (c for c in qualified if c.order==3):
             controls=actual_pair_controls(c,[x for x in candidates if x.order==2 and x.candidate_id in lower and x.formal_eligible])
             audit={'candidate_id':c.candidate_id,'role':c.triple_role,'accepted':False,'reasons':[]}
+            if controls is not None:audit['exact_double_control_ids']=[p.candidate_id for p in controls]
             if controls is None:audit['reasons'].append('EXACT_DOUBLE_CONTROLS_PENDING')
             elif c.triple_role=='TRIPLE_COMPRESSION':eligible.append(c)
             else:
@@ -246,16 +249,24 @@ def run(**kwargs):
             if 4<=len(proposal)<=12 and metrics(lo[proposal],up[proposal],area)['C_screen_lower_bound']>=.8:
                 indices=proposal;summary['panel_optimizer']['verified_witness_fallback']=True
         final=[regular[i] for i in indices]
+        frozen=settings.get('compression_baseline_ids')
+        if frozen is not None:
+            final=frozen_compression_baseline(frozen,regular,lower,area)
+            summary['compression_baseline_ids']=[c.candidate_id for c in final]
         baseline=np.any([lower[c.candidate_id] for c in final],axis=0) if final else np.zeros(n,bool)
         from .compression import compression_audit
         summary['compression_audits']=[]
         for c in (c for c in eligible if c.triple_role=='TRIPLE_COMPRESSION'):
             ids=[x.candidate_id for x in final]
-            if not set(c.parent_candidate_ids)<=set(ids):continue
+            if not set(c.parent_candidate_ids)<=set(ids):
+                next(a for a in summary['triple_audits'] if a['candidate_id']==c.candidate_id)['reasons'].append('COMPRESSION_PARENTS_NOT_IN_BASELINE_PANEL')
+                continue
             audit=compression_audit(ids,c.parent_candidate_ids,c.candidate_id,lower,area,graph,baseline)
             information=compression_information(ids,audit['after_ids'],lower,upper,area)
             audit['information']=information; audit['accepted'] &= information['accepted']
             audit['reasons']+=information['reasons'];summary['compression_audits'].append(audit)
+            role_audit=next(a for a in summary['triple_audits'] if a['candidate_id']==c.candidate_id)
+            role_audit.update(accepted=audit['accepted'],reasons=audit['reasons'])
             if audit['accepted']:
                 c.warnings.append('REAL_TRIPLE_COMPRESSION_VERIFIED')
                 final=[x for x in final if x.candidate_id not in c.parent_candidate_ids]+[c]

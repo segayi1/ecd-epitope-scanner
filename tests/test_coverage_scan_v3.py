@@ -162,10 +162,12 @@ def test_backup_stage_preserves_original_case_and_controls(tmp_path,monkeypatch)
     from ecd_epitope_scanner.scripts import run_ctla4_coverage_v3 as runner
     from ecd_epitope_scanner.util import write_json
     case=tmp_path/'case';route=case/'routes/coverage_v3'
+    ab='CV2_f1408e6b440bb101';ac='CV2_ad118b953b660407';bc='CV2_9d617576509297ec';abc='CV2_efd18628d844df64'
     write_json(route/'results/surface_perturbation_preview.json',{
-        'candidate_local_calibration':{'AB':{'positive_lower_bound_qualified':True}}})
-    config={'candidate_ids':['AB','AC','BC','ABC'],'triple_candidate_id':'ABC',
-        'triple_role':'TRIPLE_EXPANSION','mandatory_candidate_signatures':[['A','B'],['A','C'],['B','C']]}
+        'candidate_local_calibration':{ab:{'positive_lower_bound_qualified':True}}})
+    config={'candidate_ids':[ab,ac,bc,abc],'triple_candidate_id':abc,'triple_parent_ids':[ab,ac],
+        'triple_role':'TRIPLE_EXPANSION','mandatory_candidate_signatures':[
+            ['A61W','M134R'],['A61W','T67R'],['M134R','T67R']]}
     monkeypatch.setattr(runner.old,'triple_test',lambda *a,**k:dict(config))
     calls=[]
     def stage(case_arg,assets,route_arg,label,ids,**extra):
@@ -173,7 +175,7 @@ def test_backup_stage_preserves_original_case_and_controls(tmp_path,monkeypatch)
         return {'engineering_status':'COMPLETED','stage':'T5','physical':{'hard_target_status':'BELOW_TARGET'}}
     monkeypatch.setattr(runner,'run_stage',stage)
     assert runner.triple_review(case,tmp_path,route,'T5')
-    assert calls[0][0]==case and set(calls[0][2])=={'AB','AC','BC','ABC'}
+    assert calls[0][0]==case and set(calls[0][2])=={ab,ac,bc,abc}
     assert calls[0][3]['mandatory_candidate_signatures']==config['mandatory_candidate_signatures']
 
 
@@ -245,3 +247,88 @@ def test_resume_triple_keeps_its_exact_controls_and_role(tmp_path,monkeypatch):
     assert {'ABC','AB','AC'}<=set(calls[0]['candidate_ids'])
     assert len(calls[0]['mandatory_candidate_signatures'])==3
     assert calls[0]['triple_roles_by_candidate_id']=={'ABC':'TRIPLE_EXPANSION'}
+def test_compression_does_not_resume_unrelated_deferred_doubles():
+    from ecd_epitope_scanner.scripts.run_ctla4_coverage_v3 import triple_confirmation_ids
+    summary={'selected_candidate_ids':['panel'], 'candidate_local_calibration':{
+        'unselected_positive':{'positive_lower_bound_qualified':True},
+        'deferred':{'positive_lower_bound_qualified':False}}}
+    config={'triple_role':'TRIPLE_COMPRESSION','triple_candidate_id':'triple',
+            'triple_parent_ids':['parent'], 'mandatory_candidate_signatures':[['A1W','M2R']],
+            'candidate_ids':['panel','unrelated_deferred']}
+    ids=triple_confirmation_ids(summary,config)
+    assert {'panel','parent','triple'}<=set(ids)
+    assert len(ids)==4
+    assert 'deferred' not in ids and 'unselected_positive' not in ids
+    config['triple_role']='TRIPLE_EXPANSION'
+    assert 'unselected_positive' in triple_confirmation_ids(summary,config)
+
+
+def test_completed_compression_receipt_recovers_once_without_scientific_calls(tmp_path,monkeypatch):
+    import json
+    from ecd_epitope_scanner.scripts import run_ctla4_coverage_v3 as runner
+    route=tmp_path/'route';route.mkdir();stages=tmp_path/'stages';stages.mkdir()
+    report={'stage':'V3_T6_COMPRESSION_1','engineering_status':'COMPLETED','case_elapsed_seconds':123.,
+            'configuration':{'triple_candidate_id':'triple','triple_role':'TRIPLE_COMPRESSION'}}
+    (stages/'V3_T6_COMPRESSION_1_report.json').write_text(json.dumps(report))
+    (stages/'V3_T6_FAILED_report.json').write_text(json.dumps({**report,'engineering_status':'ENGINEERING_FAILURE','case_elapsed_seconds':999.}))
+    ledger=tmp_path/'case_budget.json';ledger.write_text(json.dumps({'elapsed_seconds':123.,'active':False}))
+    before=ledger.read_bytes();calls=[]
+    monkeypatch.setattr(runner,'audit_current',lambda r:calls.append(('audit',r)))
+    monkeypatch.setattr(runner.old,'record_completed_snapshot',lambda r,x:calls.append(('record',x['stage'])))
+    runner.recover_completed_search_stage(tmp_path,route)
+    runner.recover_completed_search_stage(tmp_path,route)
+    assert ledger.read_bytes()==before and len(calls)==2
+    assert json.loads((route/'v3_triple_attempts.json').read_text())==[
+        {'candidate_id':'triple','role':'TRIPLE_COMPRESSION','remote':False,'stage':'V3_T6_COMPRESSION_1'}]
+
+
+def test_compression_uses_frozen_achieved_double_panel():
+    from types import SimpleNamespace as NS
+    from ecd_epitope_scanner.surface_perturbation.panel_v3 import frozen_compression_baseline
+    regular=[NS(candidate_id=str(i),order=2) for i in range(5)]
+    lower={str(i):np.eye(5,dtype=bool)[i] for i in range(5)}
+    ids=['0','1','2','3']
+    assert [c.candidate_id for c in frozen_compression_baseline(ids,regular,lower,np.ones(5))]==ids
+    with pytest.raises(ValueError,match='QUALIFIED_DOUBLE_PANEL'):
+        frozen_compression_baseline(['0','1','2','missing'],regular,lower,np.ones(5))
+    with pytest.raises(ValueError,match='BELOW_TARGET'):
+        frozen_compression_baseline(ids,regular,{**lower,'3':np.zeros(5,bool)},np.ones(5))
+    with pytest.raises(ValueError,match='QUALIFIED_DOUBLE_PANEL'):
+        frozen_compression_baseline(['0','1','2','4'],regular[:-1]+[NS(candidate_id='4',order=3)],lower,np.ones(5))
+
+
+def test_old_compression_reaudit_reuses_original_proposal_and_baseline(tmp_path,monkeypatch):
+    import json
+    from ecd_epitope_scanner.scripts import run_ctla4_coverage_v3 as runner
+    from ecd_epitope_scanner.surface_perturbation.engine_v3 import COMPRESSION_CONTRACT
+    route=tmp_path/'route';route.mkdir();(tmp_path/'stages').mkdir()
+    config={'triple_candidate_id':'ABC','triple_role':'TRIPLE_COMPRESSION',
+            'triple_parent_ids':['A','B'],'compression_baseline_ids':['A','B','C','D'],
+            'mandatory_candidate_signatures':[], 'stage':'V3_T6_COMPRESSION_1'}
+    report={'stage':config['stage'],'engineering_status':'COMPLETED','case_elapsed_seconds':1.,
+            'configuration':config,'physical':{}}
+    (tmp_path/'stages/V3_T6_COMPRESSION_1_report.json').write_text(json.dumps(report))
+    calls=[]
+    def stage(case,assets,r,label,ids,**extra):
+        calls.append((ids,extra));return {'engineering_status':'COMPLETED','stage':'corrected'}
+    monkeypatch.setattr(runner,'run_stage',stage)
+    assert runner.compression_review(tmp_path,tmp_path,route,{'selected_candidate_ids':['unrelated_new']})
+    assert set(calls[0][0])=={'A','B','C','D','ABC'}
+    assert calls[0][1]['compression_baseline_ids']==['A','B','C','D']
+    assert json.loads((route/'v3_triple_attempts.json').read_text())[0]['compression_contract']==COMPRESSION_CONTRACT
+
+
+def test_final_confirmation_uses_only_fully_paid_positive_doubles():
+    from ecd_epitope_scanner.scripts.run_ctla4_coverage_v3 import final_confirmation_ids
+    from ecd_epitope_scanner.surface_perturbation.sampling_v3 import PROTOCOL
+    models=[{'sampling_protocol':PROTOCOL,'sampling_role':role,'sampling_cohort':cohort,
+             'sampling_slot':slot,'batch_path':role,'group':1,'run':slot}
+            for role,cohort,count in [('production','production_v3',5),
+                                     ('null_train','matched',10),('null_holdout','matched',10)]
+            for slot in range(count)]
+    history={cid:{'candidate':{'order':order},'candidate_local_calibration':{
+        'positive_lower_bound_qualified':positive}} for cid,order,positive in
+        [('paid',2,True),('cold',2,True),('negative',2,False),('triple',3,True)]}
+    pairs={'paid':models,'cold':models[:1],'negative':models,'triple':models}
+    assert final_confirmation_ids({'selected_candidate_ids':['selected']},history,pairs)==['paid','selected']
+

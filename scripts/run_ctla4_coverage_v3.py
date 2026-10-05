@@ -124,8 +124,18 @@ def run_stage(case,assets,route,label,ids,**extra):
 def finalize(case,assets,route):
     output=route/'results';summary=old.read(output/'surface_perturbation_preview.json')
     if summary.get('selected_candidate_ids'):
-        result=run_stage(case,assets,route,'FINAL_APBS',summary['selected_candidate_ids'],final_panel_audit=True)
+        ids=final_confirmation_ids(summary,old.read(route/'screened_candidate_history.json'),
+            old.read(output/'surface_perturbation/paired_manifest.json'))
+        result=run_stage(case,assets,route,'FINAL_APBS',ids,final_panel_audit=True)
         if result['engineering_status']!='COMPLETED':return
+    package_delivery(case,route,Path(__file__).resolve().parents[1])
+
+
+def package_delivery(case,route,source):
+    """Resume delivery after a closed final audit without rerunning science."""
+    if read_budget(case/'case_budget.json')['active']:
+        raise ValueError('Delivery requires a closed scientific boundary')
+    output=route/'results'
     from ecd_epitope_scanner.surface_perturbation.export import evidence_archive
     from ecd_epitope_scanner.exporting import finalize_scientific_bundle
     budget=RunBudget(case/'case_budget.json',None)
@@ -135,7 +145,6 @@ def finalize(case,assets,route):
         evidence_archive(output,pairs,output/'surface_perturbation/calibration')
         from .audit_ctla4_coverage_v3 import audit
         write_json(output/'independent_v3_semantic_audit.json',audit(route))
-        source=Path(__file__).resolve().parents[1]
         pin=old.read(source/'source_overlay_manifest.json')
         with ZipFile(output/'implementation_source_v3.zip','w',ZIP_DEFLATED) as archive:
             for name,digest in pin['files'].items():
@@ -167,6 +176,22 @@ def finalize(case,assets,route):
         'interpretation':'archive integrity and scientific target are separate'})
 
 
+def final_confirmation_ids(summary,history,pairs):
+    """Reaudit paid positive doubles for final optimization; add no cold work."""
+    from ecd_epitope_scanner.surface_perturbation.sampling_v3 import validate_roles
+    ids=set(summary['selected_candidate_ids'])
+    for cid,row in history.items():
+        if row['candidate']['order']!=2 or not row.get('candidate_local_calibration',{}).get('positive_lower_bound_qualified'):continue
+        models=pairs.get(cid,[])
+        cohorts={p.get('sampling_cohort') for p in models if p.get('sampling_role')=='null_train'}
+        if len(cohorts)!=1:continue
+        cohort=next(iter(cohorts))
+        if (len(validate_roles(models,'production',5,'production_v3'))==5
+                and all(len(validate_roles(models,role,10,cohort))==10 for role in ('null_train','null_holdout'))):
+            ids.add(cid)
+    return sorted(ids)
+
+
 def triple_review(case,assets,route,label):
     """Generate from measured concrete doubles; charge only original case."""
     summary=old.read(route/'results/surface_perturbation_preview.json')
@@ -180,18 +205,79 @@ def triple_review(case,assets,route,label):
     for remote in (False,True):
         config=old.triple_test(route,assets,{},retained,7200,remote=remote,proposal_only=True)
         if not config:continue
-        ids=config.pop('candidate_ids')
+        config.pop('candidate_ids')
+        ids=triple_confirmation_ids(summary,config)
         for key in ('confirmation_count','pool_cap'):config.pop(key,None)
         result=run_stage(case,assets,route,label,ids,**config)
         if result['engineering_status']!='COMPLETED':return False
         attempts.append({'candidate_id':config['triple_candidate_id'],'role':config['triple_role'],
                          'remote':remote,'stage':result['stage']})
+        if config['triple_role']=='TRIPLE_COMPRESSION':
+            attempts[-1]['compression_contract']=result['physical'].get('compression_contract')
         write_json(attempts_path,attempts)
         write_json(route/'T5_gate.json',{'engineering_status':'PASS','scientific_status':result['physical'].get('hard_target_status'),
                                       'actual_attempts':attempts})
         return True
     write_json(route/'T5_gate.json',{'engineering_status':'PASS','scientific_status':'NO_LEGAL_TRIPLE_PROPOSAL',
         'interpretation':'No missing parents or controls are fabricated','actual_attempts':attempts})
+    return True
+
+
+def triple_confirmation_ids(summary,config):
+    """A completed target must not reactivate unrelated deferred doubles."""
+    import hashlib
+    ids=set(summary.get('selected_candidate_ids',[]))
+    if config['triple_role']=='TRIPLE_EXPANSION':
+        ids.update(cid for cid,row in summary.get('candidate_local_calibration',{}).items()
+                   if row.get('positive_lower_bound_qualified'))
+    ids.update(config.get('triple_parent_ids',[]));ids.add(config['triple_candidate_id'])
+    for signature in config.get('mandatory_candidate_signatures',[]):
+        ids.add('CV2_'+hashlib.sha256('|'.join(sorted(signature)).encode()).hexdigest()[:16])
+    return sorted(ids)
+
+
+def recover_completed_search_stage(case,route):
+    """Recover a receipt recorded before a boundary stopped its coordinator."""
+    receipts=[old.read(path) for path in (case/'stages').glob('V3_T6*_report.json')]
+    completed=[r for r in receipts if r['engineering_status']=='COMPLETED']
+    if not completed:return
+    latest=max(completed,key=lambda r:r['case_elapsed_seconds'])
+    previous=route/'last_completed_report.json'
+    if previous.exists() and old.read(previous)['case_elapsed_seconds']>=latest['case_elapsed_seconds']:return
+    audit_current(route);old.record_completed_snapshot(route,latest)
+    write_json(previous,latest)
+    config=latest['configuration']
+    if config.get('triple_role'):
+        path=route/'v3_triple_attempts.json';attempts=old.read(path) if path.exists() else []
+        attempt={'candidate_id':config['triple_candidate_id'],'role':config['triple_role'],
+                 'remote':bool(config.get('allow_remote_triples')),'stage':latest['stage']}
+        if latest.get('physical',{}).get('compression_contract'):
+            attempt['compression_contract']=latest['physical']['compression_contract']
+        if not any((r['candidate_id'],r['role'],r.get('compression_contract'))==
+                   (attempt['candidate_id'],attempt['role'],attempt.get('compression_contract')) for r in attempts):
+            attempts.append(attempt);write_json(path,attempts)
+
+
+def compression_review(case,assets,route,summary):
+    from ecd_epitope_scanner.surface_perturbation.engine_v3 import COMPRESSION_CONTRACT
+    receipts=[old.read(path) for path in (case/'stages').glob('V3_T6*COMPRESSION*_report.json')]
+    legacy=[r for r in receipts if r['engineering_status']=='COMPLETED'
+            and r['configuration'].get('triple_role')=='TRIPLE_COMPRESSION'
+            and r.get('physical',{}).get('compression_contract')!=COMPRESSION_CONTRACT]
+    if not legacy:return triple_review(case,assets,route,'T6_COMPRESSION')
+    # Reaudit the actual original proposal, not another unmeasured triple.
+    saved=min(legacy,key=lambda r:r['case_elapsed_seconds'])['configuration']
+    before={**summary,'selected_candidate_ids':saved['compression_baseline_ids']}
+    ids=triple_confirmation_ids(before,saved)
+    extras={k:v for k,v in saved.items() if k not in {'phase','optimization_profile','results_root',
+        'confirmation_count','candidate_ids','stage_limit','pool_cap','schedule','full_replacement_search','stage','seconds'}}
+    result=run_stage(case,assets,route,'T6_COMPRESSION_FROZEN',ids,**extras)
+    if result['engineering_status']!='COMPLETED':return False
+    path=route/'v3_triple_attempts.json';attempts=old.read(path) if path.exists() else []
+    attempts.append({'candidate_id':saved['triple_candidate_id'],'role':'TRIPLE_COMPRESSION',
+        'remote':bool(saved.get('allow_remote_triples')),'stage':result['stage'],
+        'compression_contract':COMPRESSION_CONTRACT,'supersedes_unfrozen_stage':saved['stage']})
+    write_json(path,attempts)
     return True
 
 
@@ -239,6 +325,7 @@ def next_batch_size(case):
 
 def run(case,assets,pilot_only=False):
     route=initialize(case,assets);replay(case,route)
+    recover_completed_search_stage(case,route)
     history_path=route/'screened_candidate_history.json'
     # A boundary restart can occur after the charged worker receipt but before
     # the coordinator records its gate. Recover that exact completed stage.
@@ -316,7 +403,10 @@ def run(case,assets,pilot_only=False):
         StorageGuard(case).check()
         summary=old.read(route/'results/surface_perturbation_preview.json')
         if summary.get('hard_target_status')=='ACHIEVED':
-            if not triple_review(case,assets,route,'T6_COMPRESSION'):return
+            from ecd_epitope_scanner.surface_perturbation.engine_v3 import COMPRESSION_CONTRACT
+            attempts=old.read(route/'v3_triple_attempts.json') if (route/'v3_triple_attempts.json').exists() else []
+            if not any(r['role']=='TRIPLE_COMPRESSION' and r.get('compression_contract')==COMPRESSION_CONTRACT for r in attempts):
+                if not compression_review(case,assets,route,summary):return
             write_json(route/'search_state.json',{'status':'TARGET_REACHED','scope_exhausted':False});break
         history=old.read(history_path)
         pool=old.replenish_saved_frontier(route,set(history),256)
