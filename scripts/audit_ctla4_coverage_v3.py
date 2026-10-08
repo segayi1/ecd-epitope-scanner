@@ -130,7 +130,7 @@ def audit(route,packages=False):
     candidates.update({c['candidate_id']:c for c in read(output/'panel_candidates.json')})
     with (output/'residue_mapping.csv').open(encoding='utf-8-sig',newline='') as stream:
         mapping={int(row['uniprot_pos']):row for row in csv.DictReader(stream)}
-    sequence=read(output/'uniprot.json')['sequence']['value'];identities=set();counts={};diversity={}
+    sequence=read(output/'uniprot.json')['sequence']['value'];identities=set();counts={};diversity={};dependencies={}
     for cid,rows in pairs.items():
         c=candidates[cid]
         if sequence_reasons(sequence,[(m['residue']['uniprot_pos'],m['residue']['one_letter'],m['mutant_aa']) for m in c['mutations']]):
@@ -146,6 +146,11 @@ def audit(route,packages=False):
                         'mutant_content':len({p['mut_sha256'] for p in rows if p['sampling_role']==role}),
                         'logical_runs':sum(p['sampling_role']==role for p in rows)}
                         for role in ('production','null_train','null_holdout')}
+        roles=('production','null_train','null_holdout')
+        dependencies[cid]={f'{a}__{b}':len(
+            {p['wt_sha256'] for p in rows if p['sampling_role']==a} &
+            {p['wt_sha256'] for p in rows if p['sampling_role']==b})
+            for a,b in itertools.combinations(roles,2)}
     with np.load(folder/'coverage_matrix.npz',allow_pickle=False) as data:
         lower,upper,area,direct,ids=[data[k].copy() for k in ('hard','upper','area','direct','candidate_ids')]
     if np.any(lower&~upper) or not np.isclose(area.sum(),6874.363277945836,atol=1e-8,rtol=0):raise ValueError('Coverage contract mismatch')
@@ -193,6 +198,8 @@ def audit(route,packages=False):
             if c['triple_role']=='TRIPLE_EXPANSION' and min(gains)+1e-12<.05*area.sum():raise ValueError('Triple gain vs unknown upper not demonstrated')
     report={'engineering_status':'PASS','hard_target_status':'ACHIEVED' if 4<=len(ids)<=12 and screen>=.8 else 'BELOW_TARGET',
             'panel_information':info,'actual_pair_identities':len(identities),'role_counts':counts,'content_diversity':diversity,
+            'wt_content_shared_across_roles':dependencies,
+            'sampling_interpretation':'logical slots and unique bytes do not establish independent conformations or thermal replicates',
             'new_scientific_calls':0,'scientific_summary_sha256':sha256_file(output/'surface_perturbation_preview.json')}
     if report['hard_target_status']!=summary['hard_target_status']:raise ValueError('Hard target label mismatch')
     if packages:report['packages']={name:archive(output/name,manifest) for name,manifest in

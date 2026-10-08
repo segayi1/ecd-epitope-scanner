@@ -100,7 +100,7 @@ def supported_run_values(values,support):
     return np.where(support[...,None] if values.ndim==3 else support,values,0.)
 
 
-def cached_numerical_bounds(pair,native,records,reference,tools,run,folder,*,required_mask=None):
+def cached_numerical_bounds(pair,native,records,reference,tools,run,folder,*,required_mask=None,return_audit=False):
     """Reuse only the exact numerical sensitivity calculation for this pair."""
     contract={'protocol':protocol_identity([pair],reference,tools),'wt':pair['wt_sha256'],
               'mut':pair['mut_sha256'],'kind':'matched_pair_numerical_bounds_1'}
@@ -135,11 +135,19 @@ def cached_numerical_bounds(pair,native,records,reference,tools,run,folder,*,req
             values={name:data[name].copy() for name in data.files}
         if set(values)!=set(FIELD_CHANNELS) or any(v.shape!=(len(reference['area']),) for v in values.values()):
             raise ValueError('numerical sensitivity cache reference/channel mismatch')
-        return values
-    values=numerical_bounds(pair,native,records,reference,tools,numerical_run)
+        audit={"status":metadata.get("status","COMPLETE")}
+        if metadata.get("reason"):audit["reason"]=metadata["reason"]
+        return (values,audit) if return_audit else values
+    audit={"status":"COMPLETE"}
+    try:
+        values=numerical_bounds(pair,native,records,reference,tools,numerical_run)
+    except RuntimeError as exc:
+        if str(exc)!="SES mesh is not closed":raise
+        values={name:np.full(len(reference['area']),np.nan) for name in FIELD_CHANNELS}
+        audit={"status":"UNRESOLVED","reason":str(exc)}
     path.parent.mkdir(parents=True,exist_ok=True);np.savez_compressed(path,**values)
-    write_json(manifest,{'contract':contract,'sha256':sha256_file(path)})
-    return values
+    write_json(manifest,{'contract':contract,'sha256':sha256_file(path),**audit})
+    return (values,audit) if return_audit else values
 
 
 def seed_raw_field_cache(source,destination,reference,tools):

@@ -201,8 +201,12 @@ def launch(case,assets,stage,config,seconds):
             storage.check(solving=False,force_inventory=True)
         finally:
             budget.save(False)
-    report={'stage':stage,'engineering_status':status,'charged_seconds':time.monotonic()-start,
-        'case_elapsed_seconds':budget.elapsed,'new_bytes':max(0,owned_bytes(case)-before),
+    closed_elapsed=read_budget(case/'case_budget.json')['elapsed_seconds']
+    report={'stage':stage,'engineering_status':status,'charged_seconds':closed_elapsed-budget.carried,
+        'case_elapsed_seconds':closed_elapsed,'case_elapsed_before_stage':budget.carried,
+        'worker_and_checkpoint_wall_seconds':time.monotonic()-start,
+        'charge_basis':'persisted case ledger delta including admission and checkpoint',
+        'new_bytes':max(0,owned_bytes(case)-before),
         'peak_owned_bytes':storage.peak,'configuration':config}
     summary=Path(config.get('results_root',case/'results'))/'surface_perturbation_preview.json'
     if summary.is_file() and summary.stat().st_mtime>=started_wall:

@@ -62,7 +62,7 @@ def potential_pair(tools,wt,mut,grid):
     return tuple(values[d] for d in digests)
 
 
-def solvent_distances(tools,pqr_atoms,queries):
+def solvent_distances(tools,pqr_atoms,queries,*,return_audit=False):
     queries=np.asarray(queries,float)
     module=Path(__file__).parent
     contract={'atoms':fingerprint([(list(k),v) for k,v in sorted(pqr_atoms.items())]),
@@ -77,11 +77,19 @@ def solvent_distances(tools,pqr_atoms,queries):
         with np.load(data) as saved:distance=saved['distance'];valid=saved['valid']
         if distance.shape!=(len(queries),) or valid.shape!=distance.shape:raise ValueError('solvent cache shape changed')
         tools.calls['cache_hits']+=1
-        return distance,valid
+        result_audit={key:audit[key] for key in ('status','reason') if key in audit}
+        result_audit.setdefault('status','COMPLETE')
+        return (distance,valid,result_audit) if return_audit else (distance,valid)
     started=time.perf_counter()
-    distance,valid=pqr_surface(tools,pqr_atoms).signed_distance(queries)
+    try:
+        distance,valid=pqr_surface(tools,pqr_atoms).signed_distance(queries)
+        result_audit={'status':'COMPLETE'}
+    except RuntimeError as exc:
+        if str(exc)!='PQR SES is not closed':raise
+        distance=np.full(len(queries),np.nan);valid=np.zeros(len(queries),bool)
+        result_audit={'status':'UNRESOLVED','reason':str(exc)}
     np.savez_compressed(data,distance=distance,valid=valid)
-    write_json(manifest,{'contract':contract,'sha256':sha256_file(data)})
+    write_json(manifest,{'contract':contract,'sha256':sha256_file(data),**result_audit})
     if hasattr(tools,'activity'):tools.activity.append({'stage':'solvent_sdf','runtime_seconds':time.perf_counter()-started,
-        'queries':len(queries)})
-    return distance,valid
+        'queries':len(queries),**result_audit})
+    return (distance,valid,result_audit) if return_audit else (distance,valid)

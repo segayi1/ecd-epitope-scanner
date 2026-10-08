@@ -80,22 +80,53 @@ def prepare_candidate(candidate_id,pairs,native_atoms,records,tools,folder):
         portable_w=folder/f'{candidate_id}_{index}_WT.pqr';portable_m=folder/f'{candidate_id}_{index}_Mut.pqr'
         shutil.copyfile(wp,portable_w);shutil.copyfile(mp,portable_m)
         # PDB2PQR may move/add heavy atoms. Keep this as a distinct preparation audit.
-        drifts=[]
+        # A geometry-preserving terminal rotation remains conditional: chemical
+        # orientation can alter electrostatics even with an unchanged backbone.
+        drifts=[];rotations=[]
+        backbone={'N','CA','C','O','OXT'}
         for kind,source,pqr in (("WT",wt,wq),("Mut",mut,mq)):
             source_keys={(k[0],residue_ids[k[:3]],k[3]) for k in source}
+            displaced={}
             for key,value in source.items():
                 pkey=(key[0],residue_ids[key[:3]],key[3])
                 if pkey not in pqr: drifts.append({"kind":kind,"atom":list(key),"status":"MISSING"})
                 else:
                     distance=float(np.linalg.norm(np.array(pqr[pkey]["xyz"])-value[0]))
-                    if distance>.002:drifts.append({"kind":kind,"atom":list(key),"displacement_a":distance})
+                    if distance>.002:
+                        entry={"kind":kind,"atom":list(key),"displacement_a":distance}
+                        drifts.append(entry);displaced.setdefault(key[:3],[]).append(entry)
             for key in pqr:
                 if key not in source_keys and not key[2].lstrip('0123456789').startswith('H'):
                     drifts.append({'kind':kind,'pqr_atom':list(key),'status':'ADDED_HEAVY_ATOM'})
+            # Diagnose terminal rotations without waiving preparation QC.
+            for residue,moves in displaced.items():
+                names={m['atom'][3] for m in moves}
+                residue_atoms={k[3] for k in source if k[:3]==residue}
+                anchor=(backbone&residue_atoms)|{a for a in residue_atoms if a in {'CB','CG','CG1','CG2','CD','CD1','CD2','CE','CE1','CE2','CZ','NE','ND1','NE1','NE2','NZ','NH1','NH2','OD1','OG','OG1','OH','SD','SG'}}
+                anchor_moved=bool(names&anchor-{'OD1','OG','OG1','OH'})
+                terminal={n for n in names if n in {'OD1','ND2','OE1','OE2','OG','OG1','OH','NE','ND1','NE2','NZ','NH1','NH2'}}
+                if not terminal or names-terminal or anchor_moved:continue
+                fixed=[a for a in anchor if a not in names]
+                if not fixed or any((residue[0],residue_ids[residue],a) not in pqr for a in fixed):continue
+                preserved=all(
+                    np.isclose(np.linalg.norm(np.array(source[(*residue,a)][0])-
+                                                np.array(source[(*residue,b)][0])),
+                               np.linalg.norm(np.array(pqr[(residue[0],residue_ids[residue],a)]["xyz"])-
+                                              np.array(pqr[(residue[0],residue_ids[residue],b)]["xyz"])),
+                               atol=1e-3,rtol=0)
+                    for a in terminal for b in fixed)
+                if not preserved:continue
+                rotations.append({'kind':kind,'residue':[residue[0],residue[1],residue[2]],
+                                  'atoms':[m['atom'] for m in moves],
+                                  'max_displacement_a':max(m['displacement_a'] for m in moves),
+                                  'status':'CONDITIONAL_TERMINAL_ROTATION',
+                                  'backbone_unchanged':True,'anchor_distances_preserved':True,
+                                  'electrostatic_equivalence':'NOT_ESTABLISHED'})
         parameter=protonation_audit(wq,mq,{(x[0],residue_ids[tuple(x)]) for x in alignment["mutated_author_residues"]})
         parameter['residue_mapping']=[{'author':list(k),'pqr_number':v} for k,v in residue_ids.items()]
         parameter['residue_order_policy']='native input record chronology; never lexicographic author ID order'
-        audit.append({"run":index,**parameter,"heavy_atom_preparation_changes":drifts})
+        audit.append({"run":index,**parameter,"heavy_atom_preparation_changes":drifts,
+                      "sidechain_rotation_diagnostics":rotations})
         all_xyz.extend(v["xyz"] for v in wq.values());all_xyz.extend(v["xyz"] for v in mq.values())
         prepared.append((portable_w,portable_m,wq,mq))
     if len(prepared)<5: raise ValueError("APBS requires five verified paired models")

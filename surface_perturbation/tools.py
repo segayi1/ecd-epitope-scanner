@@ -114,10 +114,12 @@ class PhysicalTools:
             self.mesh_objects.popitem(last=False)
         return mesh
 
-    def prepare_pqr(self, pdb_path):
+    def prepare_pqr(self, pdb_path, *, protocol="legacy_optimized"):
         from .case_resources import ACTIVE_STORAGE
         if ACTIVE_STORAGE.get() is not None:
             ACTIVE_STORAGE.get().check(reserved=max(2*1024**2,Path(pdb_path).stat().st_size*4))
+        if protocol not in {"legacy_optimized", "heavy_atom_preserving_v1"}:
+            raise ValueError(f"unknown PDB2PQR preparation protocol: {protocol}")
         support_paths=self.config.get('pdb2pqr_support_paths')
         if support_paths is None and self.pqr=='/usr/bin/pdb2pqr' and not self.config.get('pdb2pqr_version3'):
             support_paths=['/usr/share/pdb2pqr','/usr/lib/pdb2pqr']
@@ -132,9 +134,12 @@ class PhysicalTools:
                 support_hash=self.run([self.config.get('pdb2pqr_support_python','/usr/bin/python3'),'-c',script],self.cache).splitlines()[0].strip()
                 self.identities[key]=support_hash if len(support_hash)==64 else None
             support_hash=self.identities[key]
+        preserve_heavy = protocol == "heavy_atom_preserving_v1"
         contract = {"input_sha256": sha256_file(pdb_path), "binary_sha256": self.identity(self.pqr),
                     "support_files_sha256":support_hash,
-                    "force_field": "PARSE", "pH": 7.4, "optimize_hydrogens": True}
+                    "force_field": "PARSE", "pH": 7.4,
+                    "optimize_hydrogens": not preserve_heavy,
+                    "debump": not preserve_heavy, "protocol": protocol}
         folder = self.cache / ("pqr_"+fingerprint(contract)); folder.mkdir(exist_ok=True)
         output = folder / "model.pqr"
         if support_hash and output.exists() and (folder/"complete.json").exists():
@@ -146,6 +151,7 @@ class PhysicalTools:
             version3 = bool(self.config.get("pdb2pqr_version3", False))
             flags = ["--ff=PARSE", "--with-ph=7.4", "--keep-chain" if version3 else "--chain"]
             if version3: flags += ["--titration-state-method=propka"]
+            if preserve_heavy: flags += ["--nodebump", "--noopt"]
             self.calls["pdb2pqr"] += 1
             log = self.run([self.pqr, *flags, self.path(pdb_path), self.path(output)], folder)
             (folder/"pdb2pqr.log").write_text(log, encoding="utf-8")

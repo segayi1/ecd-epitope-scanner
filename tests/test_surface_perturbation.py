@@ -87,6 +87,29 @@ def test_exact_solvent_query_cache_invalidates_input_and_detects_corruption(tmp_
     with pytest.raises(ValueError):execution.solvent_distances(tools,atoms,points)
 
 
+def test_nonclosed_pqr_surface_is_cached_as_unknown_with_reason(tmp_path,monkeypatch):
+    from ecd_epitope_scanner.surface_perturbation import execution
+    class Tools:
+        cache=tmp_path
+        nano='nano'
+        calls={'cache_hits':0}
+        activity=[]
+        def identity(self,*args):return 'a'*64
+    measured=[]
+    def nonclosed(*_args):
+        measured.append(1)
+        raise RuntimeError('PQR SES is not closed')
+    monkeypatch.setattr(execution,'pqr_surface',nonclosed)
+    tools=Tools();atoms={('A',1,'CA'):{'xyz':[0,0,0],'radius':1.7}}
+    points=np.array([[.4,.3,.2],[2,.3,.2]])
+    first=execution.solvent_distances(tools,atoms,points,return_audit=True)
+    second=execution.solvent_distances(tools,atoms,points,return_audit=True)
+    for left,right in zip(first[:2],second[:2]):np.testing.assert_array_equal(left,right)
+    assert first[2]==second[2]=={'status':'UNRESOLVED','reason':'PQR SES is not closed'}
+    assert np.isnan(first[0]).all() and not first[1].any()
+    assert measured==[1] and tools.calls['cache_hits']==1
+
+
 def test_whole_triangle_cache_preserves_projection_unknown_and_mesh_identity(tmp_path):
     from types import SimpleNamespace
     from ecd_epitope_scanner.surface_perturbation.query_cache import memoize_mesh

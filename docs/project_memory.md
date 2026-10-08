@@ -1,6 +1,7 @@
 # 项目记忆：有效决策、故障证据与维护约束
 
-更新日期：2026-10-04。用于后续开发查阅；历史运行是证据，不是当前算法规范。
+更新日期：2026-10-08。用于后续开发查阅；历史运行是证据，不是当前算法规范。
+2026-10-08 CTLA4六构建体结构查看页见 web/ctla4_six_mutants.html，冻结结构资产和清单见 web/data/ctla4_six_mutants/，由 tooling/export_ctla4_six_mutants_web.py 从原研究逐条配对清单重建。核验覆盖30个production WT/Mut槽位：PDB SHA-256匹配，链A序列差异恰为两个设计突变；折叠模型局部编号按完整序列比对映射至P16410 37–161。各候选WT唯一字节数为5/5、5/5、3/5、5/5、1/5、5/5；报告不得把逻辑槽位称作独立骨架。该页面是计算结构展示，不改变原正式面板、86.0262%旧合同或field-fusion unknown状态。
 本日筛查条件专项审查见 [ctla4_screening_conditions_audit_20261004.md](ctla4_screening_conditions_audit_20261004.md)。固定96候选检查点实际44组合拒绝均无FoldX，其中39仅SPURS在0.5–1.0；21模型分歧中17双方各自稳定门均通过。30逐位审查中21未确认，其中18前五次≥2拓扑拒绝；fields.py全结构Euler不等将所有通道置NaN，保存11粗细网格对照10个Euler敏感。calibration.py/directions.py在四次阳性之外要求五次全有限，零求解反例[2,2,2,2,NaN]拒绝已复现。9逐位阳性仅1正式的主要合同瓶颈为全局部全通道完整或扫描上界闭合；shadow8组79.381610%不可升级。case/audits/screening_96保存4来源字节/hash、96行CSV、可重放脚本与PASS断言，新增科学调用0。此次仅报告/审查证据新增，活跃冻结源码、原科学门及正式17.660761%不改；局部拓扑、四次quorum、新下界资格、联合null与review调度为待验证建议，不称已修复或已科学达标。
 本文件记录有效方向、已核对修复与边界；已放弃的实施建议从活动待办移除。历史输入、profile和审计保留，不能据此宣称所有输入都能产生正式推荐。
 
@@ -505,3 +506,37 @@ completed_pair_frontier_120.json独立完成报告/冻结scope审查PASS：108�
 2026-10-05最终科学审查闭合：V3_FINAL_APBS_1复用8已测阳性双点，正式5项A61W/M134R、T67R/M134R、Q117R/E155W、S55F/S101R、D78A/M122W。扫描86.0262353051%、直接11.5744840011%、二重32.3636162624%、单失效最差72.3038190447%、盲区376.8339883881 Å²。独立核验235真实pair身份（production55/train90/held90，含未入选/稳定排除历史），正式每项5+10+10，固定分母6874.363277945836及L⊆U/三态/编号/DDG/序列PASS。最终阶段工具新增NanoShaper/APBS/PDB2PQR均0、cachehit107；模型身份保持，不称物理算法提速。独立枚举当前8双点全部70种4构建子集，最高79.6660147108%，证明5是该实测双点池内最少，不证明728对全局最少。目标ACHIEVED、搜索TARGET_REACHED且scope_exhausted=false；APBS执行COMPLETE但准备及数值UNRESOLVED，不补入电静力覆盖。
 
 最终包审核复现一次工程缺陷：full_length_protein_sequences.fasta合法拆分对照PAIRWISE可同原双点主探针同基因型，独立审核器却全局拒绝重复。修复audit_ctla4_coverage_v3.verify_selected_exports，分别核查主探针唯一性、每条canonical WT/编号/完整序列、analysis设计身份和条件对照父子子集；35相关回归3.44秒通过，错误控制序列仍拒绝。package_delivery将已关闭科学阶段的归档恢复与科学求解分开，只恢复打包，paired_manifest hash前后不变，源6原字节和失败费用保留。真实headless Chrome最终DOM核验PASS，直接11.57%及测地扫描86.03%分开呈现。核心语义、便携模型/source及ZIP成员hash审核PASS；阶段/provenance补充另有收据。正式报告routes/coverage_v3/results/CTLA4_v3_final_report.md；NMR骨架、建模重复内容依赖、无全局95%控制及表达/折叠/结合未经实测仍是科学限制。
+
+2026-10-06既往日志全审及支线修复：117日志/64阶段/四包hash审查，原正式5项86.026235%仍通过。当前未冻结APBS旋转分类二元/三元残基键导致IndexError，锚距原表达式又误比较位移；electrostatics统一三元身份/真实锚距，缺锚保留未知、旋转为条件诊断不放宽门。reanalysis_apbs_preparation_fix修复min_only距离又取min导致(1,)零数组，恢复逐10199点/断开inf；沿保存准备/介质/numerical_error审核，撤销无依据全NaN设置并区分原始与可用电势及unknown原因。新增费用对账脚本，历史1106.213642秒单列未归属不造分摊；新launch用保存闭账减carried计费，含准入/检查点，另列wall。audit输出跨角色WT内容重合，蛋白链由entity_poly识别。160相关回归5.99秒通过（首轮锚距失败修复复测），5×5保存PDB/PQR重放、5衰减附件形状及235pair/主ZIP再核验通过，新科学求解0。原包/冻结模型/总账不改；APBS仍准备/介质/数值未知，单骨架/样本依赖/实验未校准不是工程修补可宣称解决。详见[修复审计](prior_task_repairs_20261006.md)，真实补充证据在E:/user/New project/cross_protein_validation_20261006/repairs。
+
+2026-10-07 field-fusion continuation: contact-scale cohort downloads retry transient TLS EOF and `IncompleteRead` into atomic `.part` files. A non-closed SES raises an exact topology error inside the shared mesh helper; the contact-scale builder records that complex as `UNKNOWN_OPEN_SURFACE` and continues, while unrelated runtime/identity errors remain fatal. Regression: contact-scale and cross-protein candidate-freeze scoped suite 11 passed. Frozen author-ID preflight passed for all 7 non-CTLA4 structures. 1AH1 first-model selection remains fixed; its 20 NMR models share 124 mapped Cα residues, with 190 pairwise aligned RMSDs (median 2.63 Å, p90 3.63 Å, max 4.91 Å); these are conformer sensitivity, not independent proteins or thermodynamic replicates. Contact-scale build remains active; last accepted-console checkpoint was 12/30, with 1,704 unique CIFs and 13 completed SES cache objects (one local topology failure). Builder SHA256 matches its frozen source snapshot; E: has about 36.0 GiB free. The 22,548-row source contains mapped candidates but no antigen sequences in the frozen chain annotations, so homolog filtering must parse the coordinate structures. Entity-sequence preclustering cannot be claimed equivalent because deposited sequences may include unresolved/truncated residues and each later homolog remains eligible if earlier geometric QC fails. Cross-protein SPURS candidate scoring waits for this shared WSL/NanoShaper job. No formal CTLA4 result or scientific gate changed.
+
+## 8. 2026-10-07 CTLA4 field-fusion closeout
+
+本轮 CTLA4 field-fusion 研究分支已完成，详细逐项数据与限制见 [CTLA4完成报告](E:/user/New project/ctla4_field_fusion_20261006/deliverables/CTLA4_field_fusion_completion_20261007.md)，可复核包为 `E:/user/New project/ctla4_field_fusion_20261006/deliverables/CTLA4_field_fusion_v1_portable_review.zip`。原正式五构建体与 86.026235% hard/12 Å 结果不改；第六构建体 S55F/I102R 在新研究清单中追加，旧hard mask增157.61 Å²/2.293百分点，新三机制raw阳性并集增194.49 Å²/2.829百分点。两种指标定义不同，不合并成同一coverage。
+
+六候选均完成全表面 geometry/chemistry 和 APBS Δφ执行；每候选固定5 production、10 estimate WT、10 held-out WT槽位。PDB2PQR heavy-atom-preserving准备的生产与两组null身份匹配；APBS和融合仍保留大量unknown，尤其电静力，研究状态是“计算完成、科学场部分解析”。12 Å geodesic机会模型在panel5和panel6都饱和，不能把100%扩张机会解释为整个表面直接受突变改变或实验结合下降。15个冻结Fab–抗原结构样本15/15测地尺度解析，形成12.403/13.147/14.827 Å三档结构先验；非实验校准。另核验12个CTLA4 Fab复合物交叠，只有几何对应关系。
+
+修复根因：接触图无向边排序沿错轴曾生成自边，且抽样允许重复；已改为逐边端点排序、无放回抽样及非正距离拒绝。APBS网格合同对候选ID变化过度严格；实算证明第六候选网格与原五项相同后才允许append-only更新，并保存旧合同历史。测试 `test_antibody_contact_scale.py`、`test_field_fusion_research.py`、`test_pdb2pqr_research_protocol.py` 共26项通过；完成包1564成员独立hash核验通过。累计solver ledger为NanoShaper/APBS/PDB2PQR=379/307/148。
+
+原 `study_manifest.json` 保持不变，其 `pair_manifest` 已有六候选各25行，但冗余 `paired_models`摘要仅含原五项；交付收据依逐行pair记录补足六项计数，没有修改历史身份。冻结的八蛋白候选科学评分尚未开始；本分支完成不能被用来宣称跨蛋白普适性。
+
+## 9. 2026-10-08：CTLA4 收尾与跨蛋白暂停
+
+用户要求暂停后续跨蛋白工作，先完成 CTLA4 收尾。CTLA4 field-fusion 报告、便携包与完成清单已交付；六个设计候选为 A61W/M134R、T67R/M134R、Q117R/E155W、S55F/S101R、D78A/M122W、S55F/I102R。原正式五项及 86.026235% 结果未改；第六项仅作为研究扩展候选，旧 hard-mask 面积对照为 88.3190%，不等同正式资格或实验结合证据。
+
+跨蛋白候选冻结进程已停止并保留部分结果。`freeze_manifest.json` 当前列有 CTLA4 固定集及 PD1、PDL1、B7H6、hen_lysozyme 各6项；MBP 与 T4_lysozyme 未完成冻结。该部分只属候选输入准备，没有跨蛋白科学评分、物理场确认或 APBS，也不能据此宣称普适性。后续若恢复，必须从保存清单检查点继续，不重复或覆盖既有输出。
+
+## 10. 2026-10-08：两组 CTLA4 三点压缩复审
+
+用户提出 1+2→A61W/T67R/M134R 与 4+6→S55F/S101R/I102R。完整审查及保存证据路径见 [三点压缩可行性报告](ctla4_triple_compression_feasibility_20261008.md)。前者已有五对生产、各10个估计/留出WT和三个精确双点对照；以当前六项反事实基准重算，扫描覆盖 88.3190%→88.9012%，但删任一构建体后的最差覆盖 75.9758%→57.4396%，几何区分1/2/3位均下降，按原压缩合同拒绝。后者缺三点自身与 S101R/I102R 精确对照；即使其 mask 理想，删除新三点后剩余 1/2/3/5 仅覆盖73.9350%，已低于基准最差75.9758%。两组同时压缩时相应上界74.3720%。这些是基于固定旧V3 hard-mask 的面板必要上界，不把第六项升级为原正式面板、不推断三点生物学表达或结合效果；新增科学求解0。
+
+## 11. 2026-10-08：小分区历史代码审查（未修复）
+
+用户指出1–2残基小区不符合分区预期。最新作业ee5b17b0f7ea有11区，其中VS007/008/009/010分别2/1/2/2残基。Git同图重放定位到01b52bb的几何拆分/有界整区合并：minimum_sector_residues=4仅是合并触发阈值，最终只验连通/直径并允许SMALL_DISPLAY_REGION；当前sectors.py仍与该提交同blob。旧35/30版本7区无小区，却违反当前26/18合同，不能回退。14次当前整区合并均不合法，但9个边界节点重分配可使11区全部≥4残基/≥50Å²、71节点完整唯一及连通有界，因此本例小区并非几何必然。只验几何就称正常的判断已更正；方法文档小区必合并/35与30默认值过时。审查证据、重放脚本、可行见证及限制见 [小分区历史版本审查](ctla4_small_region_version_audit_20261008.md)。生产算法/历史运行未改、科学新增0、7区可行性与普适修复尚未证明。
+
+## 12. 2026-10-08：小分区归并修复已实现
+
+用户批准最近可行邻区归并及边界重分配方案。`joint_design_v4/sectors.py`在现有有界整理后增加确定性局部回溯，公共返回门强制最少4残基/50Å²、连通、26/18直径及完整唯一覆盖。失败抛出带诊断异常；`engine.py`保存诊断和显式无归属原图，停止候选设计；策略版本connected_bounded_v3在各导出一致。CTLA4保存输入重放得到9区/71节点，大小按新编号12/5/4/13/9/9/9/4/6，最小面积133.224Å²、最大测地23.291Å/Cα17.991Å；完整PD1 AF3保存图仍7区/58节点。原结构、映射、analysis、图与confidence前后hash一致，科学新增0。
+
+初轮相关86项回归通过；扩展PD-L1完整流程暴露合法受体边界重建遗漏，随后补充回退：小区与受体部分成为合格区域，剩余受体也保持连通及4/50/26/18，区域数不变。PD-L1现17区/117节点，CA-only合成PD1也恢复正向分区，不改原正向流程测试预期。最终114项回归398.48秒全部通过（1条已有弃用提示），包含完整pipeline设计序列/报告/ZIP；随后补齐exporting.py共享文件清单，完整pipeline与导出补验8项249.77秒通过，诊断/graph/display/sectors四类文件的ZIP、磁盘及最终manifest SHA一致。局部搜索失败不证明全局无解；总预算100000状态，7区仍软目标，真实突变推荐未重算、历史目录与页面未改、运行服务未重启。详细验收、重放证据与限制见 [小分区修复验收](small_partition_repair_20261008.md)。
