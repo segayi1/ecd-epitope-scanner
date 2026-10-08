@@ -64,7 +64,7 @@ from .models import (
 from .optimizer import select_panel
 from .reporting import write_v4_outputs
 from .risk import annotate_candidate_risks
-from .sectors import build_epitope_sectors
+from .sectors import PartitionConstraintError, build_epitope_sectors
 from .surface_snapshot import write_surface_graph_snapshot
 
 
@@ -1028,22 +1028,29 @@ def run_joint_v4_ml(
                 row.pareto_layer=original_layer
                 row.selection_reason='SUPPLEMENT: '+supplement['reason']
     record_map = {item.uniprot_pos: item for item in records}
-    sectors = build_epitope_sectors(
-        surface,
-        epitope,
-        graph,
-        record_map,
-        max(1, int(params.get("max_sectors", 7))),
-        params.get("sectoring", {}),
-    )
-    graph_provenance["display_partition_policy"] = {
-        "version": "connected_bounded_v2",
-        "requested_region_count": max(1, int(params.get("max_sectors", 7))),
-        "realized_region_count": len(sectors),
-        "count_is_soft_target": True,
-        "maximum_geodesic_diameter_a": params.get("sectoring", {}).get("maximum_geodesic_diameter_a", 26.0),
-        "maximum_euclidean_diameter_a": params.get("sectoring", {}).get("maximum_euclidean_diameter_a", 18.0),
-    }
+    partition_diagnostics: dict[str, Any] = {}
+    graph_provenance["display_partition_policy"] = partition_diagnostics
+    try:
+        sectors = build_epitope_sectors(
+            surface,
+            epitope,
+            graph,
+            record_map,
+            max(1, int(params.get("max_sectors", 7))),
+            params.get("sectoring", {}),
+            diagnostics=partition_diagnostics,
+        )
+    except PartitionConstraintError as error:
+        write_json(output_dir / "partition_diagnostics_v4.json", error.diagnostics)
+        # Save the original eligible graph, without certifying draft ownership.
+        write_surface_graph_snapshot(
+            output_dir / "surface_graph_v4.json", graph, areas, None,
+            mapping_path=output_dir / "residue_mapping.csv",
+            structure_path=structure_pdb, provenance=graph_provenance,
+            include_display_ownership=False,
+        )
+        raise
+    write_json(output_dir / "partition_diagnostics_v4.json", partition_diagnostics)
     graph_snapshot_path = output_dir / "surface_graph_v4.json"
     graph_snapshot_sha256 = write_surface_graph_snapshot(
         graph_snapshot_path,

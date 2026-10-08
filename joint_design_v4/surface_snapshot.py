@@ -13,7 +13,7 @@ def write_surface_graph_snapshot(
     path: Path,
     graph: dict[int, dict[int, float]],
     areas: dict[int, float],
-    sectors: list[V4Sector],
+    sectors: list[V4Sector] | None,
     *,
     mapping_path: Path,
     structure_path: Path | None,
@@ -21,14 +21,16 @@ def write_surface_graph_snapshot(
     include_display_ownership: bool = True,
 ) -> str:
     """Write the exact weighted graph, with stable UniProt positions as node IDs."""
+    if sectors is None and include_display_ownership:
+        raise ValueError("Display ownership requires verified V4 sectors")
     owners = {
         position: sector.sector_id
-        for sector in sectors
+        for sector in sectors or []
         for position in sector.residue_positions
     }
-    if len(owners) != sum(len(sector.residue_positions) for sector in sectors):
+    if len(owners) != sum(len(sector.residue_positions) for sector in sectors or []):
         raise ValueError("A surface residue belongs to multiple V4 sectors")
-    if set(owners) != set(graph):
+    if sectors is not None and set(owners) != set(graph):
         raise ValueError("V4 sectors do not cover the surface graph exactly")
     edges = []
     for left in sorted(graph):

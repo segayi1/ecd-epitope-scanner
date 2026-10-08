@@ -436,6 +436,7 @@ def write_v4_outputs(
             *extension_names,
             "surface_graph_v41.json",
             "surface_display_regions_v41.json",
+            "partition_diagnostics_v4.json",
             "epitope_hypotheses_v41.json",
             "hypothesis_membership_v41.csv",
             "probe_hypothesis_matrix_v41.csv",

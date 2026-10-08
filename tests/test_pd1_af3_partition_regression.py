@@ -38,6 +38,8 @@ def assert_partition(sectors, graph, geo=26.0, euclidean=18.0):
     assert len(memberships) == len(set(memberships))
     for s in sectors:
         positions = set(s.residue_positions)
+        assert len(positions) >= 4
+        assert s.total_area_a2 >= 50.0
         assert set(_distance(graph, min(positions), positions)) == positions
         assert s.geodesic_diameter_a <= geo + 0.001
         assert s.euclidean_diameter_a <= euclidean + 0.001

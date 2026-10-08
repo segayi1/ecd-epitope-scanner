@@ -9,6 +9,15 @@ import numpy as np
 from .models import EpitopeEvidence, SurfaceEvidence, V4Sector
 
 
+PARTITION_SEARCH_LIMIT = 100_000
+
+
+class PartitionConstraintError(ValueError):
+    def __init__(self, message: str, diagnostics: dict[str, Any]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+
 def _components(graph: dict[int, dict[int, float]]) -> list[set[int]]:
     remaining = set(graph)
     output = []
@@ -56,14 +65,31 @@ def build_epitope_sectors(
     records: dict[int, Any],
     max_sectors: int = 7,
     parameters: dict[str, Any] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> list[V4Sector]:
     params = parameters or {}
     min_area = float(params.get("minimum_sector_area_a2", 50.0))
     min_residues = max(1, int(params.get("minimum_sector_residues", 4)))
     max_geodesic = float(params.get("maximum_geodesic_diameter_a", 26.0))
     max_euclidean = float(params.get("maximum_euclidean_diameter_a", 18.0))
-    if not all(math.isfinite(v) and v > 0 for v in (max_geodesic, max_euclidean)):
-        raise ValueError("Display region diameter limits must be positive and finite")
+    if not all(math.isfinite(v) and v > 0 for v in (min_area, max_geodesic, max_euclidean)):
+        raise ValueError("Display region area and diameter limits must be positive and finite")
+    audit = diagnostics if diagnostics is not None else {}
+    audit.clear()
+    audit.update({
+        "version": "connected_bounded_v3",
+        "status": "IN_PROGRESS",
+        "requested_region_count": max(1, max_sectors),
+        "count_is_soft_target": True,
+        "minimum_sector_residues": min_residues,
+        "minimum_sector_area_a2": min_area,
+        "maximum_geodesic_diameter_a": max_geodesic,
+        "maximum_euclidean_diameter_a": max_euclidean,
+        "search_limit": PARTITION_SEARCH_LIMIT,
+        "search_states": 0,
+        "search_scope": "local_boundary_reassignment; failure is not a global infeasibility proof",
+        "repairs": [],
+    })
     by_position = {item.residue.uniprot_pos: item for item in surface}
     epi = {item.residue.uniprot_pos: item for item in epitope}
     components = _components(graph)
@@ -81,8 +107,8 @@ def build_epitope_sectors(
 
     # Allocate at least one center to every physical surface component. Within
     # the remaining budget use deterministic farthest-point sampling. This is
-    # a graph k-center approximation: it controls sector diameter directly and
-    # avoids allowing a one-residue epitope island to become its own sector.
+    # a graph k-center approximation; the later split/repair and final checks
+    # enforce physical extent and minimum size independently of epitope islands.
     centers = [
         max(
             component,
@@ -201,8 +227,85 @@ def build_epitope_sectors(
     def adjacent(left: set[int], right: set[int]) -> bool:
         return any(neighbor in right for position in left for neighbor in graph.get(position, {}))
 
-    # Merge only if the union remains connected and bounded. Small regions
-    # remain auditable when no safe merge exists; count never overrides geometry.
+    def area(group: set[int]) -> float:
+        return sum(by_position[p].mapped_surface_area_a2 for p in sorted(group) if p in by_position)
+
+    def too_small(group: set[int]) -> bool:
+        return len(group) < min_residues or area(group) < min_area
+
+    def fail(reason: str) -> None:
+        audit.update({
+            "status": "FAILED", "reason": reason,
+            "draft_regions": [
+                {"residue_positions": sorted(g), "residue_count": len(g),
+                 "total_area_a2": area(g), "undersized": too_small(g)}
+                for g in sorted(groups, key=min)
+            ],
+        })
+        detail = ("搜索预算耗尽；不能据此判定无可行分区" if reason == "SEARCH_BUDGET_EXHAUSTED"
+                  else "无法满足显示分区的最小残基数、面积、连通性或直径约束")
+        raise PartitionConstraintError(f"{reason}: {detail}", audit)
+
+    def reassign(
+        proposed: list[set[int]], pending: set[int], source_region: int,
+    ) -> tuple[list[set[int]], list[dict[str, int]]] | None:
+        # ponytail: bounded local DFS, not a global partition solver; fail explicitly
+        # at the ceiling, extend the neighborhood only if real inputs require it.
+        stack = [(proposed, pending, [])]
+        while stack:
+            if audit["search_states"] >= PARTITION_SEARCH_LIMIT:
+                fail("SEARCH_BUDGET_EXHAUSTED")
+            audit["search_states"] += 1
+            current, remaining, moves = stack.pop()
+            if not remaining:
+                return current, moves
+            choices = []
+            for position in sorted(remaining):
+                for index, group in enumerate(current):
+                    if adjacent({position}, group) and bounded(group | {position}):
+                        choices.append((
+                            min(distances[position].get(p, math.inf) for p in group),
+                            min(group), position, index,
+                        ))
+            for _, destination, position, index in reversed(sorted(choices)):
+                updated = [set(g) for g in current]
+                updated[index].add(position)
+                stack.append((updated, remaining - {position}, moves + [{
+                    "position": position, "from_region": source_region,
+                    "to_region": destination,
+                }]))
+        return None
+
+    def rebuild_boundary(tiny: set[int], target: set[int]) -> set[int] | None:
+        # If full absorption strands the far side of a target, rebuild its
+        # boundary into two valid regions rather than certifying a tiny region.
+        stack = [set(tiny)]
+        visited = set()
+        while stack:
+            retained = stack.pop()
+            identity = frozenset(retained)
+            if identity in visited:
+                continue
+            if audit["search_states"] >= PARTITION_SEARCH_LIMIT:
+                fail("SEARCH_BUDGET_EXHAUSTED")
+            audit["search_states"] += 1
+            visited.add(identity)
+            remaining = target - retained
+            if (not too_small(retained) and not too_small(remaining)
+                    and set(_distance(graph, min(remaining), remaining)) == remaining):
+                return retained
+            if len(remaining) <= min_residues:
+                continue
+            frontier = {q for p in retained for q in graph[p] if q in remaining}
+            candidates = sorted(
+                (min(distances[p].get(q, math.inf) for p in tiny), q)
+                for q in frontier if bounded(retained | {q})
+            )
+            stack.extend(retained | {q} for _, q in reversed(candidates))
+        return None
+
+    # Preserve the initial bounded whole-region consolidation; repair its
+    # remaining undersized groups by adjusting boundaries below.
     groups.sort(
         key=lambda group: (
             -sum(by_position.get(p).mapped_surface_area_a2 for p in group if p in by_position),
@@ -218,22 +321,11 @@ def build_epitope_sectors(
         ]
         if not mergeable:
             break
-        undersized = [
-            index
-            for index in mergeable
-            if len(groups[index]) < min_residues
-            or sum(
-                by_position.get(p).mapped_surface_area_a2
-                for p in groups[index]
-                if p in by_position
-            )
-            < min_area
-        ]
+        undersized = [index for index in mergeable if too_small(groups[index])]
         if len(groups) <= max(1, max_sectors) and not undersized:
             break
-        pool = undersized or mergeable
         tiny_index = min(
-            pool,
+            undersized or mergeable,
             key=lambda i: (
                 sum(
                     by_position.get(p).mapped_surface_area_a2 for p in groups[i] if p in by_position
@@ -263,6 +355,76 @@ def build_epitope_sectors(
             ),
         )
         groups[target_index] |= tiny
+
+    while any(too_small(g) for g in groups):
+        repaired = False
+        for source_index in sorted(
+            (i for i, g in enumerate(groups) if too_small(g)),
+            key=lambda i: (len(groups[i]), area(groups[i]), min(groups[i])),
+        ):
+            tiny = groups[source_index]
+            targets = sorted(
+                (min(distances[p].get(q, math.inf) for p in tiny for q in group), min(group), i)
+                for i, group in enumerate(groups)
+                if i != source_index and adjacent(tiny, group)
+            )
+            for _, _, target_index in targets:
+                target = groups[target_index]
+                allowed = tiny | {p for p in target if bounded(tiny | {p})}
+                retained = set(_distance(graph, min(tiny), allowed))
+                if not tiny <= retained or too_small(retained) or not bounded(retained):
+                    continue
+                displaced = target - retained
+                proposed = [retained if i == target_index else set(g)
+                            for i, g in enumerate(groups) if i != source_index]
+                solution = (proposed, []) if not displaced else reassign(proposed, displaced, min(target))
+                if solution is None:
+                    continue
+                updated, moves = solution
+                final_target_index = target_index - int(source_index < target_index)
+                audit["repairs"].append({
+                    "repair_type": "ABSORPTION",
+                    "source_positions": sorted(tiny),
+                    "target_positions_before": sorted(target),
+                    "target_positions_after": sorted(updated[final_target_index]),
+                    "boundary_moves": moves,
+                })
+                groups = updated
+                repaired = True
+                break
+            if not repaired:
+                for _, _, target_index in targets:
+                    target = groups[target_index]
+                    retained = rebuild_boundary(tiny, target)
+                    if retained is None:
+                        continue
+                    remaining = target - retained
+                    audit["repairs"].append({
+                        "repair_type": "BOUNDARY_REBUILD",
+                        "source_positions": sorted(tiny),
+                        "target_positions_before": sorted(target),
+                        "target_positions_after": sorted(retained),
+                        "rebuilt_remainder_positions": sorted(remaining),
+                        "boundary_moves": [
+                            {"position": p, "from_region": min(target), "to_region": min(tiny)}
+                            for p in sorted(retained - tiny)
+                        ],
+                    })
+                    groups[source_index] = retained
+                    groups[target_index] = remaining
+                    repaired = True
+                    break
+            if repaired:
+                break
+        if not repaired:
+            fail("UNSATISFIED_PARTITION_CONSTRAINTS")
+
+    assigned = [p for g in groups for p in g]
+    if (len(assigned) != len(set(assigned)) or set(assigned) != set(graph)
+            or any(too_small(g) or not bounded(g) or set(_distance(graph, min(g), g)) != g
+                   for g in groups)):
+        fail("UNSATISFIED_PARTITION_CONSTRAINTS")
+    audit.update({"status": "COMPLETE", "realized_region_count": len(groups)})
     output = []
     for index, group in enumerate(sorted(groups, key=lambda value: min(value)), start=1):
         area = sum(by_position[p].mapped_surface_area_a2 for p in group if p in by_position)

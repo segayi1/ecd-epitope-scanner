@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,8 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     assert sorted(positions)==sorted(graph) and len(positions)==len(set(positions))
     for sector in sectors:
         owned=set(sector['residue_positions'])
+        assert len(owned) >= policy['minimum_sector_residues']
+        assert sector['total_area_a2'] >= policy['minimum_sector_area_a2']
         assert set(_distance(graph,min(owned),owned))==owned
         assert sector['geodesic_diameter_a']<=policy['maximum_geodesic_diameter_a']+.001
         assert sector['euclidean_diameter_a']<=policy['maximum_euclidean_diameter_a']+.001
@@ -84,6 +87,11 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
         assert translate_cds(design["mutant_coding_sequence"]) == design["mutant_ecd_sequence"]
 
     assert (output / "ecd_epitope_design.zip").is_file()
+    with zipfile.ZipFile(output / "ecd_epitope_design.zip") as archive:
+        for name in ("partition_diagnostics_v4.json", "surface_graph_v4.json",
+                     "surface_display_regions_v41.json", "probe_sectors_v4.json"):
+            assert name in result["files"]
+            assert archive.read(name) == (output / name).read_bytes()
     assert (output / "run_manifest.json").is_file()
     reliability = result["structure_reliability"]
     assert reliability["qc"]["state_counts"] == {"STRUCTURED": 220}
