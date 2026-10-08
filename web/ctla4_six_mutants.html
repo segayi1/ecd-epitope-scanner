@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>CTLA-4 六个双点突变体结构</title>
+<style>
+:root{color-scheme:light;--ink:#23313d;--muted:#6c7882;--line:#dce3e8;--paper:#f3f6f7;--card:#fff;--accent:#d96a42;--blue:#547d99;--warn:#8a5a16;--green:#2e6b55}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 "Segoe UI","Microsoft YaHei",sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 22px;background:#fff;border-bottom:1px solid var(--line)}
+h1{font-size:20px;margin:0 0 3px}header p{margin:0;color:var(--muted);font-size:12px}
+a{color:#315f7b;text-decoration:none}a:hover{text-decoration:underline}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:#e8f3ed;color:var(--green);font-size:12px;font-weight:650;white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:#49a078}
+main{display:grid;grid-template-columns:280px minmax(440px,1fr) 305px;gap:14px;padding:14px;min-height:calc(100vh - 70px)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:0 3px 12px #273b4a0a}
+aside{padding:14px;align-self:start}
+h2{font-size:14px;margin:0 0 10px}
+.candidate-list{display:grid;gap:8px}
+.candidate{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 11px;cursor:pointer;color:var(--ink)}
+.candidate:hover{border-color:#9bb0be}.candidate.active{border-color:var(--blue);box-shadow:0 0 0 2px #547d991c;background:#f5f9fb}
+.candidate strong{display:block;font-size:13px}.candidate small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.extension{font-size:10px;color:#80531b;background:#fff1d8;border-radius:5px;padding:1px 5px;margin-left:4px}
+.workspace{display:grid;grid-template-rows:auto minmax(480px,1fr) auto;min-width:0}
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line)}
+select,.tool{font:inherit;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);padding:6px 9px}
+.tool{cursor:pointer}.tool[aria-pressed="true"]{background:#eaf1f5;border-color:#8ca5b5;color:#274f68}
+.spacer{flex:1}
+#status{font-size:12px;color:var(--muted);min-width:112px;text-align:right}
+#viewer{position:relative;min-height:480px;background:radial-gradient(ellipse at 52% 45%,#fff 0,#eef3f5 72%,#e6ecef 100%);border-radius:0 0 12px 12px;overflow:hidden}
+#viewer canvas{display:block}
+.viewer-hint{padding:7px 12px;color:var(--muted);font-size:11px;border-top:1px solid var(--line)}
+.detail-block{padding:10px 0;border-top:1px solid #edf0f2}
+.detail-block:first-of-type{border-top:0;padding-top:0}
+.label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.value{margin-top:3px;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.mutations{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mutation-chip{border:1px solid #f0c5b5;background:#fff5f0;color:#984522;border-radius:7px;padding:3px 7px;font:12px ui-monospace,Consolas,monospace}
+.subtle{font-size:11px;color:var(--muted);font-weight:400}
+.warning{padding:9px 10px;background:#fff7e8;color:#775313;border:1px solid #f1dfb8;border-radius:9px;font-size:11px;line-height:1.5}
+.note{color:var(--muted);font-size:11px;line-height:1.55}
+.hash{font:10px ui-monospace,Consolas,monospace;color:var(--muted);word-break:break-all}
+#error{display:none;padding:10px;color:#8f2828;background:#fff0ef;border:1px solid #f2c9c5;border-radius:8px;margin:10px}
+@media(max-width:1100px){main{grid-template-columns:230px minmax(380px,1fr)}main>aside:last-child{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:0 18px}.detail-title{grid-column:1/-1}}
+@media(max-width:720px){header{align-items:flex-start;flex-direction:column}main{display:flex;flex-direction:column;padding:9px}.candidate-list{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace{order:2}.workspace #viewer{min-height:58vh}.workspace{grid-template-rows:auto minmax(58vh,1fr) auto}main>aside:first-child{order:1}main>aside:last-child{order:3;display:block}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>CTLA-4 六个双点突变体</h1>
+    <p>P16410 · 1AH1 链 A · 五个固定生产槽位 · 可切换配对 WT / Mut 结构</p>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span class="badge" id="identity-badge">结构身份核验中</span>
+    <a href="/assets/data/ctla4_six_mutants/CTLA4_field_fusion_completion_20261007.md">研究报告</a>
+  </div>
+</header>
+<main>
+  <aside class="card">
+    <h2>构建体</h2>
+    <div class="candidate-list" id="candidate-list"></div>
+    <div class="detail-block" style="margin-top:14px">
+      <div class="label">结构来源</div>
+      <div class="value">1AH1 · chain A</div>
+      <div class="note">模型局部编号按 P16410 参考序列 37–161 核验；突变位点同时显示规范编号与 PDB 局部编号。</div>
+    </div>
+  </aside>
+  <section class="workspace card">
+    <div class="toolbar">
+      <label for="slot-select" class="subtle">配对槽位</label>
+      <select id="slot-select" aria-label="生产配对模型槽位"></select>
+      <button class="tool" data-kind="mut" aria-pressed="true">Mut</button>
+      <button class="tool" data-kind="wt" aria-pressed="false">配对 WT</button>
+      <span class="spacer"></span>
+      <button class="tool" data-representation="cartoon" aria-pressed="true">主链</button>
+      <button class="tool" data-representation="surface" aria-pressed="false">表面</button>
+      <button class="tool" id="reset-view" title="复位视角">复位</button>
+      <span id="status" aria-live="polite">读取清单…</span>
+    </div>
+    <div id="viewer" aria-label="CTLA-4 三维结构"></div>
+    <div class="viewer-hint" id="viewer-caption">鼠标拖动旋转 · 滚轮缩放 · 橙色显示当前构建体的两个突变位置</div>
+    <div id="error"></div>
+  </section>
+  <aside class="card" id="details">
+    <h2 class="detail-title">核验信息</h2>
+    <div class="detail-block"><div class="label">当前构建体</div><div class="value" id="detail-name">—</div></div>
+    <div class="detail-block"><div class="label">突变位点</div><div class="mutations" id="mutation-list"></div></div>
+    <div class="detail-block"><div class="label">FoldX ΔΔG · 五个生产槽位</div><div class="value" id="ddg-summary">—</div><div class="note">侧链采样结果，不是五个独立生物学或骨架重复。</div></div>
+    <div class="detail-block"><div class="label">文件身份</div><div class="value" id="file-counts">—</div><div class="hash" id="model-hash"></div></div>
+    <div class="detail-block"><div class="label">解释边界</div><div class="warning">这是计算结构与研究证据展示，不代表表达、折叠或抗体结合实验通过。研究字段中的未知区域仍保持 unknown；原 12 Å 正式面板与资格不因本页面改变。</div></div>
+    <div class="detail-block">
+      <div class="note">源文件哈希与候选配对关系来自冻结的 CTLA4 field-fusion 清单。WT 文件内容重复时，页面按真实内容数提示；逻辑槽位数不等于独立骨架数。</div>
+      <div class="hash" id="manifest-hash"></div>
+    </div>
+  </aside>
+</main>
+<script src="/assets/vendor/3Dmol-min.js"></script>
+<script>
+(async function(){
+  "use strict";
+  var DATA_BASE="/assets/data/ctla4_six_mutants";
+  var el=function(id){return document.getElementById(id);};
+  var data, viewer=null, candidateIndex=0, modelIndex=0, kind="mut", representation="cartoon", drawVersion=0;
+  var aaColor="#d94832";
+  function format(value){return Number(value).toFixed(3);}
+  function setButtons(){
+    document.querySelectorAll("[data-kind]").forEach(function(button){button.setAttribute("aria-pressed",String(button.dataset.kind===kind));});
+    document.querySelectorAll("[data-representation]").forEach(function(button){button.setAttribute("aria-pressed",String(button.dataset.representation===representation));});
+  }
+  function activeCandidate(){return data.candidates[candidateIndex];}
+  function renderCandidateList(){
+    var list=el("candidate-list");
+    list.replaceChildren();
+    data.candidates.forEach(function(candidate,index){
+      var button=document.createElement("button");
+      button.className="candidate"+(index===candidateIndex?" active":"");
+      button.setAttribute("aria-pressed",String(index===candidateIndex));
+      var title=document.createElement("strong");
+      title.textContent=candidate.label.split(" (")[0];
+      if(candidate.role==="coverage_extension"){
+        var tag=document.createElement("span");tag.className="extension";tag.textContent="扩展候选";title.appendChild(tag);
+      }
+      var small=document.createElement("small");
+      small.textContent="5 个 Mut 结构 · WT 内容 "+candidate.unique_wt_files+"/5";
+      button.append(title,small);
+      button.addEventListener("click",function(){candidateIndex=index;modelIndex=0;renderCandidateList();renderDetails();render();});
+      list.appendChild(button);
+    });
+  }
+  function renderDetails(){
+    var candidate=activeCandidate();
+    el("detail-name").textContent=candidate.label;
+    el("mutation-list").replaceChildren();
+    candidate.mutations.forEach(function(mutation){
+      var chip=document.createElement("span");chip.className="mutation-chip";
+      chip.textContent=mutation.canonical+" · PDB A"+mutation.local_resi;
+      el("mutation-list").appendChild(chip);
+    });
+    var range=candidate.foldx_ddg_range_kcal_mol;
+    el("ddg-summary").textContent="中位数 "+format(candidate.foldx_ddg_median_kcal_mol)+" kcal/mol；范围 "+format(range[0])+" 至 "+format(range[1]);
+    el("file-counts").textContent="Mut 文件 "+candidate.unique_mutant_files+"/5 唯一；WT 文件 "+candidate.unique_wt_files+"/5 唯一";
+    if(candidate.unique_wt_files<5){
+      el("file-counts").style.color="#8a5a16";
+      el("model-hash").textContent="WT 内容有重复；逻辑配对槽位仍逐项显示，不按槽位数宣称独立 WT 结构。";
+    }else{
+      el("file-counts").style.color="";
+      el("model-hash").textContent="当前槽位将加载与该 Mut 配对的 WT / Mut 文件。不同文件也不代表不同骨架。";
+    }
+    el("manifest-hash").textContent="清单 SHA-256  "+data.source_manifest_sha256;
+  }
+  async function render(){
+    var version=++drawVersion;
+    var candidate=activeCandidate();
+    var pair=candidate.production_models[modelIndex];
+    var file=kind==="mut"?pair.mut_file:pair.wt_file;
+    var response;
+    el("error").style.display="none";
+    el("status").textContent="加载槽位 "+(modelIndex+1)+"…";
+    try{
+      response=await fetch(DATA_BASE+"/"+file);
+      if(!response.ok)throw new Error("结构文件 HTTP "+response.status);
+      var pdb=await response.text();
+      if(version!==drawVersion)return;
+      if(viewer)viewer.clear();
+      el("viewer").replaceChildren();
+      viewer=$3Dmol.createViewer(el("viewer"),{backgroundColor:"#f5f7f8",antialias:true});
+      viewer.addModel(pdb,"pdb");
+      viewer.setStyle({chain:"A"},{cartoon:{color:"#9cabb7"}});
+      if(representation==="surface"){
+        await viewer.addSurface($3Dmol.SurfaceType.MS,{color:"#b9c8d1",opacity:0.58,smoothness:2},{chain:"A"},{chain:"A"});
+        if(version!==drawVersion)return;
+      }
+      candidate.mutations.forEach(function(mutation){
+        viewer.addStyle({chain:"A",resi:mutation.local_resi},{stick:{color:aaColor,radius:0.28}});
+        viewer.addStyle({chain:"A",resi:mutation.local_resi,atom:"CA"},{sphere:{color:"#ff9b4a",radius:1.05}});
+      });
+      viewer.zoomTo({chain:"A"});
+      viewer.zoom(1.18);
+      viewer.render();
+      el("status").textContent=(kind==="mut"?"Mut":"WT")+" · 槽位 "+(modelIndex+1)+" 已加载";
+      el("viewer-caption").textContent=candidate.label+" · "+(kind==="mut"?"突变体":"配对 WT")+" · PDB 文件 SHA-256 "+(kind==="mut"?pair.mut_sha256:pair.wt_sha256);
+      el("model-hash").title=(kind==="mut"?pair.mut_sha256:pair.wt_sha256);
+    }catch(error){
+      if(version!==drawVersion)return;
+      el("status").textContent="加载失败";
+      el("error").textContent=error.message;
+      el("error").style.display="block";
+    }
+  }
+  try{
+    var response=await fetch(DATA_BASE+"/manifest.json");
+    if(!response.ok)throw new Error("研究清单 HTTP "+response.status);
+    data=await response.json();
+    if(!data.protein.sequence_identity_verified||data.candidates.length!==6)throw new Error("清单的身份或候选数量未通过检查");
+    el("identity-badge").textContent="六项身份核验通过";
+    var slotSelect=el("slot-select");
+    for(var i=1;i<=5;i++){var option=document.createElement("option");option.value=String(i-1);option.textContent="生产槽位 "+i;slotSelect.appendChild(option);}
+    slotSelect.addEventListener("change",function(){modelIndex=Number(slotSelect.value);render();});
+    document.querySelectorAll("[data-kind]").forEach(function(button){button.addEventListener("click",function(){kind=button.dataset.kind;setButtons();render();});});
+    document.querySelectorAll("[data-representation]").forEach(function(button){button.addEventListener("click",function(){representation=button.dataset.representation;setButtons();render();});});
+    el("reset-view").addEventListener("click",function(){if(viewer){viewer.zoomTo({chain:"A"});viewer.zoom(1.18);viewer.render();}});
+    el("manifest-hash").textContent="清单 SHA-256  "+data.source_manifest_sha256;
+    renderCandidateList();renderDetails();setButtons();await render();
+  }catch(error){
+    el("identity-badge").textContent="清单核验失败";
+    el("identity-badge").style.background="#fff0ef";el("identity-badge").style.color="#8f2828";
+    el("status").textContent="未加载";
+    el("error").textContent=error.message;el("error").style.display="block";
+  }
+})();
+</script>
+</body>
+</html>

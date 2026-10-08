@@ -1,0 +1,486 @@
+{
+  "schema_version": "ctla4_structure_viewer_v1",
+  "study_id": "CTLA4-field-fusion-v1-20261006",
+  "research_profile": "field_fusion_v1_shadow",
+  "protein": {
+    "name": "CTLA-4 extracellular domain",
+    "accession": "P16410",
+    "structure": "PDB 1AH1",
+    "chain": "A",
+    "reference_segment": [
+      37,
+      161
+    ],
+    "local_to_canonical_offset": 36,
+    "sequence_identity_verified": true
+  },
+  "source_manifest_sha256": "5d60ebdb21e5b5499dc7a524350ed60ee0389f96e22983034139d9c9ba7c2f54",
+  "canonical_mapping_sha256": "f09e2379bc721abe1dc6333dc6bd10a3071e27dde2ca122ba5eb505918b11568",
+  "completion_report": {
+    "file": "CTLA4_field_fusion_completion_20261007.md",
+    "sha256": "d4db0bff386f6fe30ca1e1fbd2eefbaad191f2d6d55bbf97b0a85ee2c3733241"
+  },
+  "interpretation": {
+    "role": "research structure display; does not grant or change formal eligibility",
+    "replicates": "FoldX side-chain sampling slots, not independent biological or backbone replicates",
+    "unknowns": "Research field-fusion report retains unresolved surface regions as unknown"
+  },
+  "candidates": [
+    {
+      "id": "CV2_f1408e6b440bb101",
+      "label": "A61W/M134R",
+      "mutations": [
+        {
+          "canonical": "A61W",
+          "from": "A",
+          "position": 61,
+          "to": "W",
+          "local_resi": 25
+        },
+        {
+          "canonical": "M134R",
+          "from": "M",
+          "position": 134,
+          "to": "R",
+          "local_resi": 98
+        }
+      ],
+      "role": "original_five_panel",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/b4e64c2a775be46e5f1dd8521d423779420847fad5f531b99db125235cc8405e.pdb",
+          "mut_file": "structures/3bec319bfb5b69e5b114deb44d49bab7c245e2dadcab0b85cd936abd9153f52c.pdb",
+          "wt_sha256": "b4e64c2a775be46e5f1dd8521d423779420847fad5f531b99db125235cc8405e",
+          "mut_sha256": "3bec319bfb5b69e5b114deb44d49bab7c245e2dadcab0b85cd936abd9153f52c",
+          "foldx_ddg_kcal_mol": -1.49739
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/8741ea758391a3ad29f4e54680da302315e1d90eed181e63e98011c973075ecf.pdb",
+          "mut_file": "structures/e43af799ebf083f800779ca34931171e5332ed25dec0a738d6dbc87b858e7096.pdb",
+          "wt_sha256": "8741ea758391a3ad29f4e54680da302315e1d90eed181e63e98011c973075ecf",
+          "mut_sha256": "e43af799ebf083f800779ca34931171e5332ed25dec0a738d6dbc87b858e7096",
+          "foldx_ddg_kcal_mol": -1.99162
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/ceba802891d5c419756e73537cfa2483ebae0fc2d593eaf5fa8151840ad14acd.pdb",
+          "mut_file": "structures/4869c24e064577591d33bb3463f15040633429fea3ef0bab61dbd3028d339b9d.pdb",
+          "wt_sha256": "ceba802891d5c419756e73537cfa2483ebae0fc2d593eaf5fa8151840ad14acd",
+          "mut_sha256": "4869c24e064577591d33bb3463f15040633429fea3ef0bab61dbd3028d339b9d",
+          "foldx_ddg_kcal_mol": -1.44054
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/814136218ff24ff316f9ddc7681d2983faf6e302762ec48f8a0840f76c18008d.pdb",
+          "mut_file": "structures/b173c27a765dcaaceffda32642f8939739cade383e0daeecd72ffc4ab685f2ab.pdb",
+          "wt_sha256": "814136218ff24ff316f9ddc7681d2983faf6e302762ec48f8a0840f76c18008d",
+          "mut_sha256": "b173c27a765dcaaceffda32642f8939739cade383e0daeecd72ffc4ab685f2ab",
+          "foldx_ddg_kcal_mol": -1.9121
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/85d7ffbe330adde4a713fe7bc70044bb5783e0fe8509ae694d9ef57b18c78b21.pdb",
+          "mut_file": "structures/8ddef1226d595fc481eeaa54103d2558c3a4febca5efba405d9fcff268ad65f5.pdb",
+          "wt_sha256": "85d7ffbe330adde4a713fe7bc70044bb5783e0fe8509ae694d9ef57b18c78b21",
+          "mut_sha256": "8ddef1226d595fc481eeaa54103d2558c3a4febca5efba405d9fcff268ad65f5",
+          "foldx_ddg_kcal_mol": -2.02932
+        }
+      ],
+      "unique_wt_files": 5,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": -1.9121,
+      "foldx_ddg_range_kcal_mol": [
+        -2.02932,
+        -1.44054
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    },
+    {
+      "id": "CV2_9d617576509297ec",
+      "label": "T67R/M134R",
+      "mutations": [
+        {
+          "canonical": "T67R",
+          "from": "T",
+          "position": 67,
+          "to": "R",
+          "local_resi": 31
+        },
+        {
+          "canonical": "M134R",
+          "from": "M",
+          "position": 134,
+          "to": "R",
+          "local_resi": 98
+        }
+      ],
+      "role": "original_five_panel",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/fc808e3c38d9426e2207ce437438ba5d826e5ad88248a5ae57d2ee1ac2802c3a.pdb",
+          "mut_file": "structures/928b4fed7827812de103139a883df6f4c6f0ae33b109383d1107384496c0cdc9.pdb",
+          "wt_sha256": "fc808e3c38d9426e2207ce437438ba5d826e5ad88248a5ae57d2ee1ac2802c3a",
+          "mut_sha256": "928b4fed7827812de103139a883df6f4c6f0ae33b109383d1107384496c0cdc9",
+          "foldx_ddg_kcal_mol": -1.57832
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/5b29522fca8dfac0b3722f5327d64f42ce3b4cd4291016cf66a08b63d420b8e9.pdb",
+          "mut_file": "structures/7259b40d3b9ed0666e1fc1f0122cb59b4cee9090407ded00dbc6eb203d025df0.pdb",
+          "wt_sha256": "5b29522fca8dfac0b3722f5327d64f42ce3b4cd4291016cf66a08b63d420b8e9",
+          "mut_sha256": "7259b40d3b9ed0666e1fc1f0122cb59b4cee9090407ded00dbc6eb203d025df0",
+          "foldx_ddg_kcal_mol": -1.97247
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/8fe6fb3892528aa94a936e428ce30bbaf40d50cde40a3a1cff42c94a79cb2270.pdb",
+          "mut_file": "structures/a1c1325be96f19d80eb6edc3aa0c6b2e20e89cf82339d411603d65702c16630c.pdb",
+          "wt_sha256": "8fe6fb3892528aa94a936e428ce30bbaf40d50cde40a3a1cff42c94a79cb2270",
+          "mut_sha256": "a1c1325be96f19d80eb6edc3aa0c6b2e20e89cf82339d411603d65702c16630c",
+          "foldx_ddg_kcal_mol": -2.16449
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/18b5685bb30097084235ccf9d2ba264121cdf5e2b0a720ade5bcdca730010985.pdb",
+          "mut_file": "structures/0faa4eae1be5ff9d97a2726062e55edd4ec969ec73cc5258c49f2f5456fa1c53.pdb",
+          "wt_sha256": "18b5685bb30097084235ccf9d2ba264121cdf5e2b0a720ade5bcdca730010985",
+          "mut_sha256": "0faa4eae1be5ff9d97a2726062e55edd4ec969ec73cc5258c49f2f5456fa1c53",
+          "foldx_ddg_kcal_mol": -2.02404
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/69e824f53e7a5046312999a905871ac3c446fdb845b56ec8045bf81a08da42f7.pdb",
+          "mut_file": "structures/4a64c44e094fcca7d45a256570ef36df682676beda3d06fa2b078aede1bc74b9.pdb",
+          "wt_sha256": "69e824f53e7a5046312999a905871ac3c446fdb845b56ec8045bf81a08da42f7",
+          "mut_sha256": "4a64c44e094fcca7d45a256570ef36df682676beda3d06fa2b078aede1bc74b9",
+          "foldx_ddg_kcal_mol": -2.12088
+        }
+      ],
+      "unique_wt_files": 5,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": -2.02404,
+      "foldx_ddg_range_kcal_mol": [
+        -2.16449,
+        -1.57832
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    },
+    {
+      "id": "CV2_7d231189c520d563",
+      "label": "Q117R/E155W",
+      "mutations": [
+        {
+          "canonical": "Q117R",
+          "from": "Q",
+          "position": 117,
+          "to": "R",
+          "local_resi": 81
+        },
+        {
+          "canonical": "E155W",
+          "from": "E",
+          "position": 155,
+          "to": "W",
+          "local_resi": 119
+        }
+      ],
+      "role": "original_five_panel",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/f3ed7d364bd706f9ac6eabadc8483a8a7f0402f817cec8fdac89d6e1d6e33cf7.pdb",
+          "mut_file": "structures/416fe47cdbed07bae73fce7a27d2468de893ab93cd91b8e5e9943f30f8b7874a.pdb",
+          "wt_sha256": "f3ed7d364bd706f9ac6eabadc8483a8a7f0402f817cec8fdac89d6e1d6e33cf7",
+          "mut_sha256": "416fe47cdbed07bae73fce7a27d2468de893ab93cd91b8e5e9943f30f8b7874a",
+          "foldx_ddg_kcal_mol": -1.09549
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/654226a33986bc19b502ee72095b8eb8f1ca28804182c8959e47387d64ed00ab.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "654226a33986bc19b502ee72095b8eb8f1ca28804182c8959e47387d64ed00ab",
+          "foldx_ddg_kcal_mol": -1.00896
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/c4f3133a8b8d49901267b8897829e2325d2854e8374baaa2e5f44dbd999e26d0.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "c4f3133a8b8d49901267b8897829e2325d2854e8374baaa2e5f44dbd999e26d0",
+          "foldx_ddg_kcal_mol": -0.970378
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/827f9fd946cce64a5183433e18b9ff720d523112ca29a67ae464e920841ab939.pdb",
+          "mut_file": "structures/c22ea5117d075133847aca5d84b9ba2624ea8625804d65021512bb0f8fbe8da2.pdb",
+          "wt_sha256": "827f9fd946cce64a5183433e18b9ff720d523112ca29a67ae464e920841ab939",
+          "mut_sha256": "c22ea5117d075133847aca5d84b9ba2624ea8625804d65021512bb0f8fbe8da2",
+          "foldx_ddg_kcal_mol": -0.948985
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/836f089f4585aadcddaa8708e280b3db3d7cfc18a08b43490d74a1d863914a79.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "836f089f4585aadcddaa8708e280b3db3d7cfc18a08b43490d74a1d863914a79",
+          "foldx_ddg_kcal_mol": -1.04399
+        }
+      ],
+      "unique_wt_files": 3,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": -1.00896,
+      "foldx_ddg_range_kcal_mol": [
+        -1.09549,
+        -0.948985
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    },
+    {
+      "id": "CV2_cf83338f020be23a",
+      "label": "S55F/S101R",
+      "mutations": [
+        {
+          "canonical": "S55F",
+          "from": "S",
+          "position": 55,
+          "to": "F",
+          "local_resi": 19
+        },
+        {
+          "canonical": "S101R",
+          "from": "S",
+          "position": 101,
+          "to": "R",
+          "local_resi": 65
+        }
+      ],
+      "role": "original_five_panel",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/1992095800212b7046838c5ad1104763712274f35524b4f4f5560c44c253f366.pdb",
+          "mut_file": "structures/820f45410291d2583c4d2894ea18905eb2b868df43cacdd27ec890c807465e8c.pdb",
+          "wt_sha256": "1992095800212b7046838c5ad1104763712274f35524b4f4f5560c44c253f366",
+          "mut_sha256": "820f45410291d2583c4d2894ea18905eb2b868df43cacdd27ec890c807465e8c",
+          "foldx_ddg_kcal_mol": 1.02383
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/8665a0479a77a6da61174b280af1af10b501ebbf64054b23b2e8622165e6b5e6.pdb",
+          "mut_file": "structures/1e649a16acd6ccf15dc829fe3529e74d149568c86243ae69f5f4afadcadb36d0.pdb",
+          "wt_sha256": "8665a0479a77a6da61174b280af1af10b501ebbf64054b23b2e8622165e6b5e6",
+          "mut_sha256": "1e649a16acd6ccf15dc829fe3529e74d149568c86243ae69f5f4afadcadb36d0",
+          "foldx_ddg_kcal_mol": 1.04788
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/3ad85e50276721227bbe758ad2d3d1b640ee6b3bb1c279531fdf14ef6e3a767a.pdb",
+          "mut_file": "structures/c6861eb8bbf4b6a954fa9ae8511f3fc3ea74a6900aad5e8f0d3f94dedf5eb91b.pdb",
+          "wt_sha256": "3ad85e50276721227bbe758ad2d3d1b640ee6b3bb1c279531fdf14ef6e3a767a",
+          "mut_sha256": "c6861eb8bbf4b6a954fa9ae8511f3fc3ea74a6900aad5e8f0d3f94dedf5eb91b",
+          "foldx_ddg_kcal_mol": 1.09322
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/d87d39f4fb97d23c6fc6dc71b65c0b74259317806ee02aadbd0e6b12290129a9.pdb",
+          "mut_file": "structures/449dd1f07cf47b585c24f7e97f88ae0001b828f503254e00a3169d1d8b7224d3.pdb",
+          "wt_sha256": "d87d39f4fb97d23c6fc6dc71b65c0b74259317806ee02aadbd0e6b12290129a9",
+          "mut_sha256": "449dd1f07cf47b585c24f7e97f88ae0001b828f503254e00a3169d1d8b7224d3",
+          "foldx_ddg_kcal_mol": 1.07182
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/f3c64438af3e3f95bb79e8c26b3cb2aba4180c966743fc6b5c00e6330b2aed81.pdb",
+          "mut_file": "structures/3bfc60cfce44a142ef81f7615a681b0fca841a59bac78f9677de694e2b920d09.pdb",
+          "wt_sha256": "f3c64438af3e3f95bb79e8c26b3cb2aba4180c966743fc6b5c00e6330b2aed81",
+          "mut_sha256": "3bfc60cfce44a142ef81f7615a681b0fca841a59bac78f9677de694e2b920d09",
+          "foldx_ddg_kcal_mol": 1.08146
+        }
+      ],
+      "unique_wt_files": 5,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": 1.07182,
+      "foldx_ddg_range_kcal_mol": [
+        1.02383,
+        1.09322
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    },
+    {
+      "id": "CV2_02f92b7d78126be5",
+      "label": "D78A/M122W",
+      "mutations": [
+        {
+          "canonical": "D78A",
+          "from": "D",
+          "position": 78,
+          "to": "A",
+          "local_resi": 42
+        },
+        {
+          "canonical": "M122W",
+          "from": "M",
+          "position": 122,
+          "to": "W",
+          "local_resi": 86
+        }
+      ],
+      "role": "original_five_panel",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/c32d542ddf675020fa04030649e179d9699f8a1be5cb448a367567a258abe149.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "c32d542ddf675020fa04030649e179d9699f8a1be5cb448a367567a258abe149",
+          "foldx_ddg_kcal_mol": 0.0129225
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/fc6fa64e8ad4fadff77ac583683b8704521e17451c3d3a1b655166b5b6e1d5de.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "fc6fa64e8ad4fadff77ac583683b8704521e17451c3d3a1b655166b5b6e1d5de",
+          "foldx_ddg_kcal_mol": 0.0131123
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/ef36877b4fd5e98afbe654d760b0111fcc3484bc5ca47294c6e73babaa1de5d9.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "ef36877b4fd5e98afbe654d760b0111fcc3484bc5ca47294c6e73babaa1de5d9",
+          "foldx_ddg_kcal_mol": 0.00643736
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/6470fe02909d309d1bf848f446af8f630986a1e9b04cb58f175c4fff793098a4.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "6470fe02909d309d1bf848f446af8f630986a1e9b04cb58f175c4fff793098a4",
+          "foldx_ddg_kcal_mol": 0.0158405
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea.pdb",
+          "mut_file": "structures/613a40c03da3acbf528cdbe964a5389b585620b10863b601dd36e1c024f1778a.pdb",
+          "wt_sha256": "4413f5ea15e4ef778ab5400a41f71642cace9eb328ddcf43d969e945b448f0ea",
+          "mut_sha256": "613a40c03da3acbf528cdbe964a5389b585620b10863b601dd36e1c024f1778a",
+          "foldx_ddg_kcal_mol": 0.0101204
+        }
+      ],
+      "unique_wt_files": 1,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": 0.0129225,
+      "foldx_ddg_range_kcal_mol": [
+        0.00643736,
+        0.0158405
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    },
+    {
+      "id": "CV2_5baddd4518a94929",
+      "label": "S55F/I102R (coverage extension)",
+      "mutations": [
+        {
+          "canonical": "S55F",
+          "from": "S",
+          "position": 55,
+          "to": "F",
+          "local_resi": 19
+        },
+        {
+          "canonical": "I102R",
+          "from": "I",
+          "position": 102,
+          "to": "R",
+          "local_resi": 66
+        }
+      ],
+      "role": "coverage_extension",
+      "production_models": [
+        {
+          "slot": 1,
+          "foldx_slot": 0,
+          "wt_file": "structures/f58b8b45de37271f5f5cc2ee877f7697d17edd032dcec91517f4342c90772054.pdb",
+          "mut_file": "structures/fe45ff283e849e54cc83b751a2a8b662bef36dc93a197980ee2a191b03065718.pdb",
+          "wt_sha256": "f58b8b45de37271f5f5cc2ee877f7697d17edd032dcec91517f4342c90772054",
+          "mut_sha256": "fe45ff283e849e54cc83b751a2a8b662bef36dc93a197980ee2a191b03065718",
+          "foldx_ddg_kcal_mol": -2.4259
+        },
+        {
+          "slot": 2,
+          "foldx_slot": 1,
+          "wt_file": "structures/3b55340bb9845b53a47b10cbeda7ac941e338b8fdf7b14803b8427f82161b526.pdb",
+          "mut_file": "structures/9b286c945dbb84533f76fe453198e3e2b8b14c56bdee5aa775a1e60ce2d94440.pdb",
+          "wt_sha256": "3b55340bb9845b53a47b10cbeda7ac941e338b8fdf7b14803b8427f82161b526",
+          "mut_sha256": "9b286c945dbb84533f76fe453198e3e2b8b14c56bdee5aa775a1e60ce2d94440",
+          "foldx_ddg_kcal_mol": -2.37709
+        },
+        {
+          "slot": 3,
+          "foldx_slot": 2,
+          "wt_file": "structures/58edbe15f9c1ed9b95268fe7af984a3b22213f7a5e0e36d35d84867dc044c67e.pdb",
+          "mut_file": "structures/4b2597238d11823636299c89ba0b6d2f4759de1c06d756c5caad0df6c351e8bd.pdb",
+          "wt_sha256": "58edbe15f9c1ed9b95268fe7af984a3b22213f7a5e0e36d35d84867dc044c67e",
+          "mut_sha256": "4b2597238d11823636299c89ba0b6d2f4759de1c06d756c5caad0df6c351e8bd",
+          "foldx_ddg_kcal_mol": -2.36691
+        },
+        {
+          "slot": 4,
+          "foldx_slot": 3,
+          "wt_file": "structures/9192e4457a23c404e27af6fec639713de75850df436fd5efbddb774034f00d4f.pdb",
+          "mut_file": "structures/a5fd383be37d4704b38a38f47b1897cc7eb1a810f372211e4422e6d5f81577c4.pdb",
+          "wt_sha256": "9192e4457a23c404e27af6fec639713de75850df436fd5efbddb774034f00d4f",
+          "mut_sha256": "a5fd383be37d4704b38a38f47b1897cc7eb1a810f372211e4422e6d5f81577c4",
+          "foldx_ddg_kcal_mol": -2.43814
+        },
+        {
+          "slot": 5,
+          "foldx_slot": 4,
+          "wt_file": "structures/612219346d939893e0ff03486bacb77a2e9e5b77b1dfcf7aa296c85b10dbef42.pdb",
+          "mut_file": "structures/48ba3f96827fcf6dec42d28bbbd736c86671f40f7f7d589831da269e17863c0c.pdb",
+          "wt_sha256": "612219346d939893e0ff03486bacb77a2e9e5b77b1dfcf7aa296c85b10dbef42",
+          "mut_sha256": "48ba3f96827fcf6dec42d28bbbd736c86671f40f7f7d589831da269e17863c0c",
+          "foldx_ddg_kcal_mol": -2.42865
+        }
+      ],
+      "unique_wt_files": 5,
+      "unique_mutant_files": 5,
+      "foldx_ddg_median_kcal_mol": -2.4259,
+      "foldx_ddg_range_kcal_mol": [
+        -2.43814,
+        -2.36691
+      ],
+      "sampling_protocol": "time_rotabase_v3"
+    }
+  ]
+}
