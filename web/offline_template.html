@@ -9,6 +9,7 @@
   --red:#C0564A; --sel:#8a2f1d; --off:#cfc8bb; --ok:#3B6D11; --warn:#854F0B;
 }
 *{box-sizing:border-box; margin:0}
+.recommendation-region{border-top:1px solid var(--line);padding:12px 0}.recommendation-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}.recommendation-card p{margin:8px 0}.recommendation-tags{display:flex;flex-wrap:wrap;gap:6px}.recommendation-table{overflow-x:auto;max-width:100%;margin:8px 0}.recommendation-table table{border-collapse:collapse;width:100%;min-width:260px}.recommendation-table th,.recommendation-table td{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}.recommendation-sequence{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow-y:auto;background:#f5f5f5;padding:8px}.recommendation-details summary{cursor:pointer;color:#28675d;padding:8px 0}.recommendation-details h4{margin:12px 0 4px}.recommendation-warning{color:#8b3c24}.swatch{display:inline-block;width:12px;height:12px}.mut-chip{display:inline-block;padding:2px 7px;border:1px solid #e0b8ad;border-radius:5px;margin:2px}.tag{display:inline-block;font-size:11px}
   html,body{min-height:100%;height:100%} body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink);display:grid;grid-template-rows:auto minmax(260px,1fr) auto;overflow:hidden}
 #bar{display:flex; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap}
 #bar b{font-size:14px}
@@ -59,6 +60,7 @@ th{color:var(--muted); font-weight:500}
 .seq span.dim{color:#b9b3a2}
   #inspector{position:absolute; right:10px; top:10px; width:250px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:12px; padding:10px; font-size:12px; display:none; max-height:70%; overflow:auto}
   @media (max-height:700px){body{height:auto;min-height:100%;overflow:auto}#main{height:420px;min-height:420px}#seqbar{max-height:none}}
+  @media (max-width:800px){body{display:block;height:auto;overflow:auto}#main{display:block;height:auto;min-height:0}#viewportWrap{min-width:0;width:100%;height:50vh;min-height:300px}#panel{width:100%;border-left:0;border-top:1px solid var(--line);overflow:visible}#seqbar{max-height:none}.seqrow{min-width:0;flex-wrap:wrap}.seq{min-width:0;max-width:100%}}
 .grid2{display:grid; grid-template-columns:auto 1fr; gap:2px 10px}
 .grid2 .k{color:var(--muted)}
 select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding:4px 8px; font-size:12px; background:#fff}
@@ -90,6 +92,7 @@ select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding
 <div id="seqbar"></div>
 
 <script>/*__3DMOL__*/</script>
+<script>/*__RECOMMENDATIONS__*/</script>
 <script>
 window.APP_DATA = __DATA__;
 window.APP_I18N = __I18N__;
@@ -362,10 +365,12 @@ function stepOverview(){
     [t('overview.chain'),selection.selected_chain||selection.chain||'—'],
     [t('overview.confidence'),(D.methods||{}).confidence_method||(request.input_type==='af3_upload'?'AF3 confidence JSON':'—')],
     [t('overview.run'),D.created_at||'—'], [t('overview.structureFile'),source.identifier||selection.selected_identifier||'—'],
-    [t('overview.summary'),(summary.mapped_ecd_residues||'—')+' ECD residues · '+(partition.actual_regions||regions.length)+' '+(partition.partition_mode==='compact_surface_face'?t('region.surfaceFace'):'patches')+' · '+designs.length+' constructs'],
+    [t('overview.summary'),(summary.mapped_ecd_residues||'—')+' ECD residues · '+(partition.actual_regions||regions.length)+' '+(partition.partition_mode==='compact_surface_face'?t('region.surfaceFace'):'patches')+' · '+designs.length+' design records（含控制与逐区建议 / including controls and sector suggestions）'],
     [t('overview.coverage'),partition.coverage!=null?Math.round(partition.coverage*100)+'%':'—'],
     [t('overview.files'),Object.keys(D.files||{}).join(', ')||'—']
   ];
+  var recommendations = (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]);
+  if (recommendations.length) rows.push(['逐区建议（通过 / 待审查 / 无组合） / Sector suggestions', ['PASSED','NEAR_THRESHOLD','NO_COMBINATION'].map(function(status){ return recommendations.filter(function(item){return item.status===status;}).length; }).join(' / ')]);
   return '<div class="box"><h3>'+esc((protein.protein_name||protein.accession||'ECD Epitope Workbench'))+'</h3><div class="grid2">'+rows.map(function(r){return '<span class="k">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+'</div></div>';
 }
 function stepSurface(){
@@ -424,6 +429,11 @@ function stepInterface(){
 }
 function stepDesign(){
   var h = '<div class="note">'+esc(t("design.note"))+'</div>';
+  var recommendations = (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]);
+  if (recommendations.length) {
+    state.result = D; state.lang = LANG;
+    return createRecommendationRenderer({state:state, h:esc, fmt:function(value,digits){return Number(value).toFixed(digits==null?2:digits);}, fmtPct:function(value){return (100*value).toFixed(0)+'%';}, notation:function(mutation){return mutation.wt+mutation.position+mutation.mutant;}}).renderSectorRecommendations(recommendations);
+  }
   designs.forEach(function(d){
     var on = state.designId===d.id ? " on":"";
     var origin = d.score_origin || "proxy";
@@ -450,6 +460,15 @@ function stepCustom(){
   return h + '</div>';
 }
 function wirePanel(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-review-design]'), function(button){
+    button.onclick = function(){ state.designId=button.getAttribute('data-review-design'); state.previewMode='construct'; applyStyles(); renderSeq(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy-design]'), function(button){
+    button.onclick = function(){ var design=designs.find(function(item){return item.id===button.getAttribute('data-copy-design');}); if(design){state.custom={}; design.mutations.forEach(function(m){state.custom[m.position]=m.mutant;}); state.step=6; renderSteps();renderPanel();} };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy-candidate]'), function(button){
+    button.onclick = function(){ if(navigator.clipboard){navigator.clipboard.writeText(button.getAttribute('data-copy-candidate')).catch(function(){button.textContent='请手动复制 / Copy manually';});}else{button.textContent='请手动复制 / Copy manually';} };
+  });
   Array.prototype.forEach.call(document.querySelectorAll("[data-region]"), function(s){
     s.onclick = function(){
       var id = Number(s.getAttribute("data-region"));

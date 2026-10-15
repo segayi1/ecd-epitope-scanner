@@ -20,6 +20,10 @@ from ecd_epitope_scanner.structure_reliability import classify_reliability
 from ecd_epitope_scanner.surface_patch import run_surface_patch_v2
 
 
+LEGACY_PARTITION = {'policy': 'connected_bounded_v3', 'maximum_geodesic_diameter_a': 26.0,
+                    'maximum_euclidean_diameter_a': 18.0}
+
+
 @pytest.fixture
 def pd1():
     data = json.loads((Path(__file__).parent / "fixtures/pd1_af3_partition.json").read_text(encoding="utf-8"))
@@ -52,7 +56,8 @@ def test_original_pd1_graph_is_repaired_before_output(pd1):
     areas = {r["uniprot_pos"]: r["surface_area_a2"] for r in data["graph_nodes"]}
     for edge in data["graph_edges"]:
         graph[edge["source"]][edge["target"]] = graph[edge["target"]][edge["source"]] = edge["distance_a"]
-    sectors = build_epitope_sectors(surface_rows(graph, areas), [], graph, {r.uniprot_pos: r for r in records})
+    sectors = build_epitope_sectors(surface_rows(graph, areas), [], graph, {r.uniprot_pos: r for r in records},
+                                   parameters=LEGACY_PARTITION)
     assert_partition(sectors, graph)
     assert len(sectors) > 7
     regions = _legacy_regions(sectors, records)
@@ -86,7 +91,8 @@ def test_count_target_cannot_force_long_chain_into_one_region():
     graph = {p: {} for p in records}
     for p in range(1, 30):
         graph[p][p + 1] = graph[p + 1][p] = 3.8
-    sectors = build_epitope_sectors(surface_rows(graph, {p: 80 for p in graph}), [], graph, records, max_sectors=1)
+    sectors = build_epitope_sectors(surface_rows(graph, {p: 80 for p in graph}), [], graph, records,
+                                   max_sectors=1, parameters=LEGACY_PARTITION)
     assert len(sectors) > 1
     assert_partition(sectors, graph)
 
@@ -109,8 +115,15 @@ def test_geometry_mask_reaches_surface_graph_and_footprints(pd1):
     assert all(not set(f.residues) & invalid for f in result.raw_footprints)
     _, graph, areas = build_surface_units(records, surface_geometry=result.surface)
     assert not set(graph) & invalid
-    sectors = build_epitope_sectors(surface_rows(graph, areas), [], graph, {r.uniprot_pos: r for r in records})
+    sectors = build_epitope_sectors(surface_rows(graph, areas), [], graph, {r.uniprot_pos: r for r in records},
+                                   parameters=LEGACY_PARTITION)
     assert_partition(sectors, graph)
+    audit = {}
+    balanced = build_epitope_sectors(surface_rows(graph, areas), [], graph,
+                                    {r.uniprot_pos: r for r in records}, diagnostics=audit)
+    assert_partition(balanced, graph, geo=30.0, euclidean=22.0)
+    assert audit['version'] == 'balanced_connected_v4'
+    assert not {p for sector in balanced for p in sector.residue_positions} & invalid
 
 
 def test_af3_replay_retains_model_type_and_confidence(tmp_path):

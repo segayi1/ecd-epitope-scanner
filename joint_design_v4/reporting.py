@@ -82,6 +82,16 @@ def write_v4_outputs(
     write_json(output_dir / "probe_sectors_v4.json", _rows(result.sectors))
     write_json(output_dir / "panel_candidates.json", _rows(result.candidates))
     write_json(output_dir / "selected_panel_v4.json", _rows(result.panel))
+    sector_recommendations = _rows(getattr(result.panel, "sector_recommendations", []))
+    write_json(output_dir / "sector_recommendations_v4.json", sector_recommendations)
+    recommendation_rows = [item for row in sector_recommendations for item in [row, *row.get("alternatives", [])]]
+    _write_csv(output_dir / "sector_recommendations_v4.csv", [
+        {key: json.dumps(value, ensure_ascii=False, sort_keys=True) if isinstance(value, (dict, list)) else value
+         for key, value in row.items()} for row in recommendation_rows
+    ], ["sector_id", "candidate_id", "status", "formal_eligible", "failed_gates", "gate_details",
+        "gate_distance", "coverage_gain", "coverage_gain_area_a2", "geometry_support", "regional_geometry_support", "mutation_positions_in_sector",
+        "mutation_notations", "selected_in_panel", "design_id", "recommendation_role", "ownership", "principles",
+        "recommendation_reasons", "gate_checks", "site_details", "stability_evidence", "pair_distances", "provenance", "primary_comparison", "validation_status"])
     if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
         menu_rows = [_rows(item) for item in result.mutation_options]
         write_json(output_dir / "mutation_menu_v2.json", {
@@ -102,6 +112,7 @@ def write_v4_outputs(
         "inference_hypotheses_v411.json", "surface_complexity_v411.json",
         "retrospective_benchmark_contract_v411.json",
         "raw_surface_footprints_v411.json",
+        "sector_recommendations_v4.json", "sector_recommendations_v4.csv",
     ]
     if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
         extension_names.extend(["mutation_menu_v2.json", "mutation_menu_v2.csv"])
@@ -313,6 +324,7 @@ def write_v4_outputs(
                 "targeted_hypotheses": ";".join(item.targeted_hypotheses),
                 "hypothesis_perturbation": json.dumps(item.hypothesis_perturbation or item.hypothesis_response, sort_keys=True),
                 "risk_components": json.dumps(item.risk_components, sort_keys=True),
+                "geometry_support": json.dumps(item.geometry_support, sort_keys=True),
                 "epitope_score": item.epitope_score,
                 "epitope_supported_sites": item.epitope_supported_sites,
                 "recommendation_class": item.recommendation_class,
@@ -336,6 +348,7 @@ def write_v4_outputs(
             "targeted_hypotheses",
             "hypothesis_perturbation",
             "risk_components",
+            "geometry_support",
             "epitope_score",
             "epitope_supported_sites",
             "recommendation_class",
@@ -492,6 +505,22 @@ def write_v4_outputs(
         f"- Recommendation status: `{result.recommendation_status}`",
         f"- Sectors: {len(result.sectors)}; candidates: {len(result.candidates)}",
         f"- Selected panel: {len(result.panel.selected_candidate_ids)} combinations",
+        "- Per-sector suggestions are separate from the formal primary panel; near-threshold suggestions do not count toward formal coverage or the primary construct budget.",
+        "- Exclusive primary suggestions contain mutations entirely inside that display region. Alternatives disclose lower model-risk, epitope-prior or cross-region coverage principles; they have independent eligibility and evidence. Repeated display does not add constructs to the primary panel.",
+        "- Per-sector coverage_gain uses geodesic_0: mapped surface area of mutated sites within the sector, without neighborhood expansion, divided by the sector surface area; coverage_gain_area_a2 records its area numerator. Each region is evaluated independently, without subtracting mutations displayed in earlier regions.",
+        "- Within-sector ranking prioritizes the fraction of the actual display sector covered by geodesic neighborhoods across 9/12/15 Å, then added neighborhood area, overlap and direct mutation-site coverage. This requires eligible surface areas and saved neighborhood positions. Neighborhood coverage is a geometry proxy, not measured perturbation or binding evidence, and cannot guarantee complete biological perturbation; residue-count proxies are not areas. Missing geometry remains unknown.",
+        "",
+        "| Sector | Suggestion role and principles | Candidate | Gate status | Mutations | Sector coverage gain | Selected in primary panel | Failed gates and evidence | Geometry proxy (9/12/15 Å) | Regional proxy coverage and uncovered residues |",
+        "|---|---|---|---|---|---:|---|---|---|---|",
+        *["| " + " | ".join(str(value).replace("|", "\\|").replace("\n", " ") for value in [
+            row["sector_id"], (row.get("recommendation_role", "PRIMARY") + ": " + ", ".join(row.get("principles", []))), row.get("candidate_id") or "—", row["status"],
+            ", ".join(row.get("mutation_notations", [])), row.get("coverage_gain", 0),
+            row.get("selected_in_panel", False),
+            json.dumps({"failed_gates": row.get("failed_gates", []), "gate_details": row.get("gate_details", [])}, ensure_ascii=False),
+            json.dumps(row.get("geometry_support", {}), ensure_ascii=False),
+            json.dumps(row.get("regional_geometry_support", {}), ensure_ascii=False),
+        ]) + " |" for row in recommendation_rows],
+        "",
         f"- Budget decision: {_rows(result.panel.budget_decision)}",
         f"- Surface complexity: {_rows(result.complexity)}",
         "- Near-distance connected groups are pending-resolution summaries, not pairwise equivalence classes.",
@@ -573,6 +602,9 @@ def write_v4_outputs(
 def externalize_checkpoint_pair_diagnostics(analysis, output_dir):
     """Keep full proxy diagnostics in their hashed artifact, once per checkpoint."""
     from ..util import sha256_file
+    if not any(analysis.get(name, {}).get('selected_panel', {}).get('hierarchy_resolution')
+               for name in ('partitioning', 'joint_v4_ml')):
+        return
     artifact=Path(output_dir)/'hypothesis_hierarchy_v411.json'
     if not artifact.is_file():raise ValueError('Missing full hierarchy diagnostics artifact')
     saved=json.loads(artifact.read_text(encoding='utf-8'))['resolution_by_level']
@@ -593,4 +625,65 @@ def externalize_checkpoint_pair_diagnostics(analysis, output_dir):
                     'json_path':['resolution_by_level',level,name],'count':len(details[name])}
         panel['hierarchy_resolution']=projected
     analysis.setdefault('files',{})[artifact.name]=artifact.name
+
+
+def project_display_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
+    """Project saved results for both viewers without mutating scientific evidence."""
+    if not analysis.get("joint_v4_ml"):
+        return dict(analysis)
+
+    def reference(file, path, value):
+        return {"file": file, "json_path": path, "count": len(value)}
+
+    projected = dict(analysis)
+    v4 = projected["joint_v4_ml"] = dict(analysis["joint_v4_ml"])
+    for name, artifact in (("candidates", "panel_candidates.json"),
+                           ("surface_hypotheses", "surface_hypotheses_v4.json")):
+        if name in v4:
+            v4[name + "_reference"] = reference(artifact, [], v4.pop(name))
+    panel = v4["selected_panel"] = dict(v4.get("selected_panel", {}))
+    if "nearby_hypothesis_pairs" in panel:
+        name = "nearby_hypothesis_pairs"
+        panel[name + "_reference"] = reference("selected_panel_v4.json", [name], panel.pop(name))
+    hierarchy = panel.get("hierarchy_resolution")
+    if isinstance(hierarchy, dict):
+        hierarchy = panel["hierarchy_resolution"] = dict(hierarchy)
+        for level, details in list(hierarchy.items()):
+            if not isinstance(details, dict):
+                continue
+            details = hierarchy[level] = dict(details)
+            for name in ("near_pairs", "pairwise_distances"):
+                if name in details:
+                    details[name + "_reference"] = reference(
+                        "hypothesis_hierarchy_v411.json", ["resolution_by_level", level, name], details.pop(name))
+    for container_name, field, path in (
+        ("partitioning", "selected_panel", ["joint_v4_ml", "selected_panel"]),
+        ("design_summary", "sector_recommendations", ["joint_v4_ml", "selected_panel", "sector_recommendations"]),
+        ("design_summary", "epitope_mapping_plan", ["epitope_mapping_plan"]),
+    ):
+        if field in projected.get(container_name, {}):
+            container = projected[container_name] = dict(projected[container_name])
+            container.pop(field)
+            container[field + "_reference"] = {"display_json_path": path, "file": "analysis.json"}
+
+    # Per-file hashes are audit data; keep the aggregate fingerprint and model identity visible.
+    bulk_identity_fields = {"source_files_sha256", "model_files_sha256", "git_tracked_modifications"}
+
+    def compact_identity(value, path=()):
+        if isinstance(value, list):
+            return [compact_identity(item, (*path, index)) for index, item in enumerate(value)]
+        if not isinstance(value, dict):
+            return value
+        compact = {}
+        for name, item in value.items():
+            if name in bulk_identity_fields and isinstance(item, (dict, list)):
+                compact[name + "_reference"] = {
+                    "file": "analysis.json", "json_path": [*path, name],
+                    "count": len(item),
+                }
+            else:
+                compact[name] = compact_identity(item, (*path, name))
+        return compact
+
+    return compact_identity(projected)
 

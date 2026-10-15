@@ -1046,7 +1046,7 @@ def test_three_site_proxy_gain_cannot_replace_real_physical_gain_or_stability():
     from types import SimpleNamespace
     from ecd_epitope_scanner.joint_design_v4.engine import _formal_candidate_reasons
     candidate=SimpleNamespace(qualification='FORMAL_POOL',mutations=[],connected=True,order=3,
-        coverage_by_scenario={},stability=SimpleNamespace(consensus_status='CONSENSUS_PASS',foldx_ddg_kcal_mol=.2))
+        coverage_by_scenario={},stability=SimpleNamespace(consensus_status='CONSENSUS_PASS',spurs_multi_ddg_kcal_mol=.1,foldx_ddg_kcal_mol=.2))
     kwargs={'allow_spurs_only':False,'minimum_coverage_gain':.05,'lower_order_coverage':0.}
     assert 'INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN' in _formal_candidate_reasons(candidate,**kwargs)
     assert _formal_candidate_reasons(candidate,physical_coverage_pending=True,**kwargs)==[]

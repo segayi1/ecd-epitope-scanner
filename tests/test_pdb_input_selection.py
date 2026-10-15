@@ -53,6 +53,20 @@ def test_sasa_uses_selected_protein_chain_without_crystal_solvent_or_partner(tmp
     assert "isolated selected protein chain" in method
 
 
+def test_sasa_is_invariant_to_explicit_hydrogen_and_preserves_source(tmp_path):
+    model = Model.Model(0)
+    _, residues = _add_protein_chain(model, "A", "ALA", 1, 0.0)
+    parsed = SimpleNamespace(model=model)
+    expected, _ = calculate_sasa(parsed, tmp_path, "A")
+    for name, element, offset in (("H", "H", 1.0), ("D", "D", -1.0)):
+        residues[0].add(Atom.Atom(name, np.asarray([offset, 1.0, 0.0]),
+            20.0, 1.0, " ", f"{name:>4}", 2, element=element))
+    actual, method = calculate_sasa(parsed, tmp_path, "A")
+    assert actual == expected
+    assert "H" in residues[0] and "D" in residues[0]
+    assert "hydrogen, deuterium" in method
+
+
 def test_antigen_chain_is_selected_from_fab_interface_and_entity_annotations():
     model = Model.Model(0)
     _add_protein_chain(model, "H", "TYR", 14, 0.0)

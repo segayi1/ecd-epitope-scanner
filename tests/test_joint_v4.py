@@ -670,6 +670,38 @@ def test_v4_formal_candidate_rejects_surface_and_sector_qc_failures():
     assert "SECTOR_GEOMETRY_QC_FAILED" in reasons
 
 
+@pytest.mark.parametrize("gain,expected", [
+    (None, "HIGHER_ORDER_COVERAGE_BASELINE_MISSING"),
+    (float("nan"), "HIGHER_ORDER_COVERAGE_BASELINE_MISSING"),
+    (0.035, "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN"),
+    (0.086, None),
+])
+def test_formal_higher_order_uses_regional_gain_instead_of_global_response(gain, expected):
+    candidate = _series_candidate("VS001", 0, "STABILITY_FALLBACK")
+    candidate.order = 3
+    reasons = _formal_candidate_reasons(candidate, allow_spurs_only=False,
+        minimum_coverage_gain=0.05, lower_order_coverage=1.0,
+        higher_order_information_gain=0.001,
+        regional_coverage_gain=gain, regional_gain_required=True)
+    if expected:
+        assert expected in reasons
+    else:
+        assert "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN" not in reasons
+        assert "HIGHER_ORDER_COVERAGE_BASELINE_MISSING" not in reasons
+
+
+@pytest.mark.parametrize("model", ["spurs_multi_ddg_kcal_mol", "foldx_ddg_kcal_mol"])
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf")])
+def test_formal_panel_requires_both_finite_models_despite_cached_pass(model, missing):
+    candidate = _series_candidate("VS001", 0, "STABILITY_FALLBACK")
+    candidate.stability.consensus_status = "CONSENSUS_PASS"
+    setattr(candidate.stability, model, missing)
+    reasons = _formal_candidate_reasons(candidate, allow_spurs_only=True,
+        minimum_coverage_gain=0.05, lower_order_coverage=0.0)
+    name = "FOLDX" if model == "foldx_ddg_kcal_mol" else "SPURS"
+    assert f"COMBINATION_{name}_MISSING" in reasons
+
+
 @pytest.mark.parametrize("mutant", ["C", "P", "G"])
 def test_authoritative_mutation_policy_blocks_new_and_cached_options(mutant):
     from ecd_epitope_scanner.joint_design_v4.evidence import build_single_evidence
@@ -711,6 +743,10 @@ def test_v4_procaliper_is_diagnostic_and_does_not_block_projection(tmp_path: Pat
     )
     assert result.recommendation_status == "FORMAL_RECOMMENDATION"
     assert result.legacy_designs
+    for row in result.panel.sector_recommendations:
+        for recommendation in [row, *row.get("alternatives", [])]:
+            if recommendation.get("candidate_id"):
+                assert recommendation["validation_status"]["foldx"] != "UNKNOWN"
     primary_designs = [
         item for item in result.legacy_designs if item.design_role == "STAGE1_PROBE"
     ]
@@ -764,6 +800,22 @@ def test_foldx_shortlist_is_capped_and_sector_balanced():
         "VS001-1",
         "VS002-1",
     ]
+
+
+def test_foldx_shortlist_supports_configured_budget_of_60():
+    candidates = [
+        V4Candidate(
+            candidate_id=f"VS{index // 10 + 1:03d}-{index}",
+            sector_id=f"VS{index // 10 + 1:03d}",
+            mutations=[],
+            order=2,
+            structural_risk=float(index),
+        )
+        for index in range(75)
+    ]
+    selected = _foldx_shortlist(candidates, 60)
+    assert len(selected) == 60
+    assert len({candidate.candidate_id for candidate in selected}) == 60
 
 
 def _series_candidate(sector: str, index: int, recommendation_class: str) -> V4Candidate:
@@ -891,7 +943,8 @@ def test_v4_sector_k_center_avoids_one_residue_island_sectors():
         graph,
         {item.uniprot_pos: item for item in records},
         max_sectors=3,
-        parameters={"minimum_sector_residues": 4},
+        parameters={"minimum_sector_residues": 4, 'policy': 'connected_bounded_v3',
+                    'maximum_geodesic_diameter_a': 26.0, 'maximum_euclidean_diameter_a': 18.0},
     )
     assert len(sectors) == 3
     assert min(len(sector.residue_positions) for sector in sectors) >= 4

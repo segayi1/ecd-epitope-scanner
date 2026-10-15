@@ -34,6 +34,11 @@
       <label>常见目标<input id="budget-target" type="number" min="1" max="8" value="7" style="width:45px"></label>
       <label>硬上限<input id="budget-maximum" type="number" min="1" max="12" value="8" style="width:45px"></label>
     </details>
+    <details><summary data-i18n="form.partitionSettings">显示分区设置</summary>
+      <label><span data-i18n="form.partitionTarget">目标残基数（软目标）</span><input id="sector-target" type="number" min="10" max="15" step="1" value="12" style="width:55px"></label>
+      <label><span data-i18n="form.partitionSurface">表面测地直径上限 Å</span><input id="sector-geodesic" type="number" min="1" step="1" value="30" style="width:55px"></label>
+      <label><span data-i18n="form.partitionCa">Cα直径上限 Å</span><input id="sector-ca" type="number" min="1" step="1" value="22" style="width:55px"></label>
+    </details>
     <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button>
     <button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
   </form>
@@ -85,6 +90,7 @@
         <strong data-i18n="hud.canvasTitle">结构审查画布</strong>
         <span data-i18n="hud.canvasHint">载入示例或提交蛋白后显示结构</span>
         <button id="load-demo" class="btn" type="button" data-i18n="hud.loadDemo">载入 PD-L1 示例</button>
+        <button id="retry-viewer" class="btn" type="button" data-i18n="hud.retryViewer" hidden>重试载入结构</button>
       </div>
       <div id="residue-tip" class="vp-tip" hidden></div>
     </div>

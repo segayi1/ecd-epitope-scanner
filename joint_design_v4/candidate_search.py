@@ -52,9 +52,15 @@ def generate_candidates(
     parameters: dict[str, Any],
     hypotheses: list[V4SurfaceHypothesis] | None = None,
     diagnostics: dict[str, Any] | None = None,
+    surface_areas: dict[int, float] | None = None,
 ) -> list[V4Candidate]:
     if parameters.get("coverage_scan_v2"):
         return coverage_candidates(options, graph, parameters, diagnostics)
+    from .spatial_support import (annotate_spatial_support, diverse_sites, spatial_shortlist,
+                                  candidate_region_membership, regional_support, site_signature)
+    guarantee = surface_areas is not None and parameters.get("sector_resource_guarantees", True) and not parameters.get("require_review")
+    base_quotas = {int(order): int(quota) for order, quota in parameters.get("exclusive_groups_by_order", {"2": 4, "3": 2}).items()}
+    coverage_trigger = float(parameters.get("sector_coverage_search_trigger", 0.9))
     by_position: dict[int, list[V4MutationOption]] = {}
     for option in options:
         by_position.setdefault(option.residue.uniprot_pos or -1, []).append(option)
@@ -64,6 +70,10 @@ def generate_candidates(
     ))
     maximum_span = float(parameters.get("maximum_geodesic_span_a", 24.0))
     site_cap = int(parameters.get("site_pool_per_sector", 12))
+    if hypotheses:
+        site_cap = min(site_cap, int(parameters.get("site_pool_per_hypothesis", 8)))
+    global_distances = {position: _distances(graph, position, set(graph))
+                        for position in {option.residue.uniprot_pos for option in options}} if surface_areas is not None else {}
     per_sector = int(parameters.get("shortlist_per_sector", 30))
     epitope_site_fraction = min(
         1.0, max(0.0, float(parameters.get("epitope_site_pool_fraction", 0.5)))
@@ -98,7 +108,9 @@ def generate_candidates(
     else:
         windows = [(sector, None) for sector in sectors]
     output = []
+    generation_audit = []
     for sector, hypothesis_id in windows:
+        scope_areas = {p: surface_areas[p] for p in sector.residue_positions if p in surface_areas} if surface_areas is not None else None
         positions = [position for position in sector.residue_positions if position in by_position]
         positions.sort(key=lambda p: (
             not any(option.review_required for option in by_position[p]) if parameters.get("require_review") else False,
@@ -118,15 +130,17 @@ def generate_candidates(
                 len(supported_positions), max(1, round(site_cap * epitope_site_fraction))
             )
             fallback_cap = min(len(fallback_positions), max(1, site_cap - supported_cap))
-            positions = supported_positions[:supported_cap] + fallback_positions[:fallback_cap]
+            supported = diverse_sites(supported_positions, supported_cap, global_distances, scope_areas)
+            fallback = diverse_sites(fallback_positions, fallback_cap, global_distances, scope_areas, supported)
+            positions = supported + fallback
             remaining = [
                 position
-                for position in supported_positions[supported_cap:] + fallback_positions[fallback_cap:]
+                for position in supported_positions + fallback_positions
                 if position not in positions
             ]
-            positions.extend(remaining[: max(0, site_cap - len(positions))])
+            positions.extend(diverse_sites(remaining, max(0, site_cap - len(positions)), global_distances, scope_areas, positions))
         else:
-            positions = positions[:site_cap]
+            positions = diverse_sites(positions, site_cap, global_distances, scope_areas)
         candidates: list[V4Candidate] = []
         order_shortlists: list[V4Candidate] = []
         if hypotheses:
@@ -216,17 +230,11 @@ def generate_candidates(
                         scenario: list(hit) for scenario, hit in covered_positions.items()
                     }
                     candidates.append(candidate)
-            candidates.sort(
-                key=lambda item: (
-                    item.structural_risk,
-                    -item.epitope_score,
-                    item.order,
-                    item.candidate_id,
-                )
-            )
+            annotate_spatial_support(candidates, graph, surface_areas, global_distances, allowed_positions,
+                                     hypothesis_id or sector.sector_id)
             beam_by_order = parameters.get("beam_width_by_order", {})
             beam_cap = beam_by_order.get(str(order), beam_by_order.get(order, parameters.get("beam_width", 300)))
-            candidates = candidates[: max(1, int(beam_cap))]
+            candidates = spatial_shortlist(candidates, max(1, int(beam_cap)))
             prioritized = [
                 item for item in candidates if item.recommendation_class == "EPITOPE_PRIORITIZED"
             ]
@@ -247,18 +255,36 @@ def generate_candidates(
                 )
                 fallback_cap = min(fallback_cap, max(1, order_cap - 1))
                 priority_cap = min(len(prioritized), max(1, order_cap - fallback_cap))
-                shortlisted = prioritized[:priority_cap] + fallback[:fallback_cap]
+                shortlisted = spatial_shortlist(prioritized, priority_cap) + spatial_shortlist(fallback, fallback_cap)
                 remaining = [
                     item
-                    for item in prioritized[priority_cap:] + fallback[fallback_cap:]
+                    for item in prioritized + fallback
                     if item not in shortlisted
                 ]
-                shortlisted.extend(remaining[: max(0, order_cap - len(shortlisted))])
+                shortlisted.extend(spatial_shortlist(remaining, max(0, order_cap - len(shortlisted))))
             else:
-                shortlisted = candidates[:order_cap]
+                shortlisted = spatial_shortlist(candidates, order_cap)
             order_shortlists.extend(shortlisted[:order_cap])
         output.extend(order_shortlists)
-    if hypotheses:
+    if guarantee:
+        for sector in sorted(sectors, key=lambda item: item.sector_id):
+            exclusive = [c for c in output if candidate_region_membership(c, sectors)["exclusive_region_id"] == sector.sector_id]
+            counts = {order: len({site_signature(c) for c in exclusive if c.order == order}) for order in (2, 3)}
+            best = max((regional_support(c, sector, surface_areas, global_distances)["target_mean_coverage_fraction"] or 0.0
+                        for c in exclusive if c.order in (2, 3)), default=0.0)
+            supplemental_orders = [order for order in orders if order in (2, 3)]
+            supplement = bool(supplemental_orders) and (any(counts[order] < base_quotas.get(order, 0) for order in supplemental_orders) or best < coverage_trigger)
+            if supplement:
+                supplemental_parameters = {**parameters, "sector_resource_guarantees": False,
+                    "orders": supplemental_orders, "exploratory_orders": [],
+                    "shortlist_by_order": {str(order): max(base_quotas.get(order, 0), int(parameters.get("shortlist_per_order", 10)))
+                                           for order in supplemental_orders}}
+                output.extend(generate_candidates([sector], options, graph, supplemental_parameters,
+                                                  surface_areas=surface_areas))
+            generation_audit.append({"sector_id": sector.sector_id, "supplemental_window": supplement,
+                                     "initial_exclusive_site_sets": {str(order): count for order, count in counts.items()},
+                                     "initial_best_mean_coverage": best})
+    if hypotheses or guarantee:
         # A construct can arise from overlapping footprints with different
         # display anchors. Its physical identity is global, not sector-local.
         unique: dict[tuple[tuple[int, str], ...], V4Candidate] = {}
@@ -278,10 +304,57 @@ def generate_candidates(
                 ))
         for signature, candidate in unique.items():
             candidate.candidate_id = "V41_" + hashlib.sha256(repr(signature).encode()).hexdigest()[:16]
-        from .hypotheses import attach_hypothesis_responses
-        attach_hypothesis_responses(list(unique.values()), hypotheses, graph)
-        output = hypothesis_balanced_shortlist(list(unique.values()), hypotheses, parameters, diagnostics)
+        # Global ranking compares one surface denominator, not the arbitrary
+        # first overlapping window retained by physical-identity deduplication.
+        annotate_spatial_support(list(unique.values()), graph, surface_areas, global_distances,
+                                 scope_id="full_eligible_surface")
+        if hypotheses:
+            from .hypotheses import attach_hypothesis_responses
+            attach_hypothesis_responses(list(unique.values()), hypotheses, graph)
+        generated = list(unique.values())
+        output = hypothesis_balanced_shortlist(generated, hypotheses or [], parameters, diagnostics,
+                    sectors=sectors if guarantee else None, surface_areas=surface_areas, distances=global_distances)
+        if diagnostics is not None and guarantee:
+            for row in generation_audit:
+                for label, pool in (("generated", generated), ("pool", output)):
+                    exclusive = [c for c in pool if candidate_region_membership(c, sectors)["exclusive_region_id"] == row["sector_id"]]
+                    row[label + "_exclusive_candidates"] = len(exclusive)
+                    row[label + "_exclusive_site_sets"] = {str(order): len({site_signature(c) for c in exclusive if c.order == order}) for order in (2, 3)}
+                row["quota_deficits"] = {str(order): max(0, base_quotas.get(order, 0) - row["pool_exclusive_site_sets"][str(order)]) for order in orders if order in (2, 3)}
+                row["generation_count_basis"] = "deduplicated_local_shortlists_after_beam_before_global_pool"
+            diagnostics["sector_resources"] = generation_audit
+    if diagnostics is not None and surface_areas is not None:
+        diagnostics.update(spatial_selection_policy="pareto_target_coverage_marginal_area_single_risk_then_site_set_round_robin_v2",
+                           geometric_support_basis="full_eligible_surface_graph_9_12_15_equal_weight_mean",
+                           geometric_support_interpretation="proxy only; not biological perturbation",
+                           retained_unique_site_sets=len({tuple(sorted(o.residue.uniprot_pos for o in c.mutations)) for c in output}))
     return sorted(output, key=lambda item: (item.order, item.candidate_id))
+
+
+def supplemental_exclusive_doubles(candidates, sectors, options, graph, parameters, areas):
+    """One bounded search round for regions with no SPURS-acceptable exclusive pair."""
+    from .spatial_support import candidate_region_membership, spatial_shortlist
+    known = {tuple(sorted(o.notation for o in c.mutations)) for c in candidates}
+    output, audit = [], []
+    for sector in sorted(sectors, key=lambda s: s.sector_id):
+        exclusive = [c for c in candidates if c.order == 2 and
+            candidate_region_membership(c, sectors)["exclusive_region_id"] == sector.sector_id]
+        if any(c.stability is not None and c.stability.consensus_status in
+               {"CONSENSUS_PASS", "SPURS_ONLY_REVIEW_REQUIRED"} for c in exclusive):
+            continue
+        pool = generate_candidates([sector], options, graph, {
+            **parameters, "orders": [2], "exploratory_orders": [],
+            "shortlist_by_order": {"2": 300}, "global_shortlist_by_order": {"2": 300},
+            "sector_resource_guarantees": True,
+        }, surface_areas=areas)
+        available = [c for c in pool if tuple(sorted(o.notation for o in c.mutations)) not in known]
+        chosen = spatial_shortlist(available, 12)
+        output.extend(chosen)
+        known.update(tuple(sorted(o.notation for o in c.mutations)) for c in chosen)
+        audit.append({"sector_id": sector.sector_id, "trigger": "NO_SPURS_ACCEPTABLE_EXCLUSIVE_DOUBLE",
+            "previous_exclusive_doubles": len(exclusive), "new_candidates": len(chosen),
+            "maximum_new_candidates": 12, "rounds": 1})
+    return output, audit
 
 
 def add_pair_controls(candidates, graph):
@@ -310,10 +383,23 @@ def add_pair_controls(candidates, graph):
     return sorted(existing.values(),key=lambda c:(c.order,c.candidate_id))
 
 
-def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostics=None):
-    """Quota is scientific-hypothesis based; display ownership is irrelevant."""
+def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostics=None,
+                                 sectors=None, surface_areas=None, distances=None):
+    """Preserve hypothesis capacity and add distinct exclusive-region reserves."""
+    from .spatial_support import (spatial_shortlist, candidate_region_membership,
+                                  site_signature, regional_priority, regional_support)
     output = []
-    ids = [h.hypothesis_id for h in hypotheses]
+    ids = sorted(h.hypothesis_id for h in hypotheses)
+    base_quotas = {int(order): int(quota) for order, quota in parameters.get("exclusive_groups_by_order", {"2": 4, "3": 2}).items()}
+    ownership = {c.candidate_id: candidate_region_membership(c, sectors)["exclusive_region_id"] for c in candidates} if sectors else {}
+    local_priority = {}
+    local_coverage = {}
+    if sectors:
+        for sector in sectors:
+            for candidate in candidates:
+                if ownership[candidate.candidate_id] == sector.sector_id:
+                    local_priority[candidate.candidate_id] = regional_priority(candidate, sector, surface_areas, distances)
+                    local_coverage[candidate.candidate_id] = -local_priority[candidate.candidate_id][0]
     audit = []
     groups = {(c.qualification, c.order) for c in candidates}
     qualification = "REVIEW_REQUIRED" if parameters.get("require_review", False) else "FORMAL_POOL"
@@ -326,7 +412,7 @@ def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostic
         missing = {}
         for hypothesis_id in ids:
             available = [c for c in ranked if hypothesis_id in c.targeted_hypotheses]
-            for candidate in available[:quota]:
+            for candidate in spatial_shortlist(available, quota):
                 chosen[candidate.candidate_id] = candidate
             if len(available) < quota:
                 missing[hypothesis_id] = quota - len(available)
@@ -334,12 +420,49 @@ def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostic
         requested = max(1, int(overrides.get(str(order), overrides.get(order, parameters.get("global_shortlist_per_order", 60)))))
         capacity = max(requested, len(chosen))
         reserved_count = len(chosen)
+        base_missing = 0
+        if sectors and order in (2, 3):
+            for sector in sorted(sectors, key=lambda s: s.sector_id):
+                exclusive = [c for c in ranked if ownership[c.candidate_id] == sector.sector_id]
+                representatives = {}
+                for candidate in sorted(exclusive, key=lambda c: local_priority[c.candidate_id]):
+                    representatives.setdefault(site_signature(candidate), candidate)
+                for candidate in list(representatives.values())[:base_quotas.get(order, 0)]:
+                    if candidate.candidate_id not in chosen:
+                        base_missing += 1
+                    chosen[candidate.candidate_id] = candidate
+            capacity += base_missing
         # Fill by perturbation diversity within a stability-qualified pool.
         vectors = {c.candidate_id: [c.hypothesis_response.get(hid, 0.0) for hid in ids] for c in ranked}
         remaining = [c for c in ranked if c.candidate_id not in chosen]
+        if sectors and order in (2, 3):
+            # Recompute deficits after each distinct regional opportunity.
+            def region_need(sector):
+                exclusive = [c for c in chosen.values() if ownership[c.candidate_id] == sector.sector_id]
+                quota_gap = max(0, base_quotas.get(order, 0) - len({site_signature(c) for c in exclusive}))
+                best = max((local_coverage[c.candidate_id] for c in exclusive), default=0.0)
+                area = sum(surface_areas.get(p, 0.0) for p in sector.residue_positions)
+                return (-quota_gap, -(1 - best), -(1 - best) * area, sector.sector_id)
+            while len(chosen) < capacity:
+                existing_sets = {site_signature(c) for c in chosen.values()}
+                available_by_region = [(sector, [c for c in remaining if site_signature(c) not in existing_sets and
+                    ownership[c.candidate_id] == sector.sector_id])
+                    for sector in sectors]
+                available_by_region = [(sector, available) for sector, available in available_by_region
+                                       if available and region_need(sector)[1] < 0]
+                if not available_by_region:
+                    break
+                sector, available = min(available_by_region, key=lambda pair: region_need(pair[0]))
+                winner = min(available, key=lambda c: local_priority[c.candidate_id])
+                chosen[winner.candidate_id] = winner
+                remaining.remove(winner)
         def vector_distance(left, right):
             return math.sqrt(sum((a-b)**2 for a,b in zip(vectors[left], vectors[right])) / max(1, len(ids)))
         nearest = {c.candidate_id: min((vector_distance(c.candidate_id, other) for other in chosen), default=math.inf) for c in remaining}
+        if any(c.geometry_support for c in remaining):
+            for candidate in spatial_shortlist(remaining, max(0, capacity - len(chosen))):
+                chosen[candidate.candidate_id] = candidate
+            remaining = []
         while remaining and len(chosen) < capacity:
             def key(candidate):
                 distance = nearest[candidate.candidate_id] if chosen else 0.0
@@ -352,6 +475,7 @@ def hypothesis_balanced_shortlist(candidates, hypotheses, parameters, diagnostic
         output.extend(chosen.values())
         audit.append({"qualification": qualification, "order": order, "requested_capacity": requested,
                       "effective_capacity": capacity, "reserved_unique": reserved_count,
+                      "exclusive_base_expansion": base_missing,
                       "selected": len(chosen), "quota_deficits": missing})
     if diagnostics is not None:
         diagnostics.update(global_order_pools=audit, physical_candidates_before_global_shortlist=len(candidates))

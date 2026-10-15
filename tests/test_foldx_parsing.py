@@ -12,6 +12,38 @@ from pathlib import Path
 
 from ecd_epitope_scanner.stability import _median_per_group, _parse_dif_fxout
 
+
+def test_buildmodel_guard_allows_slow_pdl1_batches_without_changing_runs():
+    from ecd_epitope_scanner import config
+    from ecd_epitope_scanner.stability import _buildmodel_timeout
+    assert _buildmodel_timeout(5, 5) == 3600
+    assert _buildmodel_timeout(6, 5) == 3600
+    assert _buildmodel_timeout(8, 5) == 4800
+    assert _buildmodel_timeout(1000, 5) == 14400
+    settings = config.JOINT_V4_ML_PARAMETERS['foldx_confirmation']
+    spurs = config.JOINT_V4_ML_PARAMETERS['spurs_multi']
+    assert settings['timeout_seconds'] > _buildmodel_timeout(6, 5)
+    assert settings['number_of_runs'] == 5
+    assert settings['combination_gate_kcal_mol'] == 2.0
+    assert settings['max_candidates'] == 60
+    assert spurs['preferred_max_ddg'] == 0.5
+    assert spurs['review_max_ddg'] == 1.0
+    assert spurs['disagreement_gate_kcal_mol'] == 1.5
+
+
+def test_native_timeout_is_recorded_and_never_returned_as_success(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    from ecd_epitope_scanner import stability
+    def expire(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+    monkeypatch.setattr(stability.subprocess, 'run', expire)
+    assert stability._run_engine(['foldx.exe', '--command=BuildModel'], tmp_path, 3600) is None
+    receipt = json.loads((tmp_path / 'engine_execution.json').read_text())
+    assert receipt['status'] == 'TIMEOUT'
+    assert receipt['timeout_seconds'] == 3600
+    assert receipt['returncode'] is None
+
 # Single construct, numberOfRuns=2 (captured 2026-09-03).
 SINGLE_RUN_DIF = """FoldX 5.1 (2011)
 by the FoldX Consortium

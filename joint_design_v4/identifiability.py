@@ -63,10 +63,16 @@ def objective(selected, hypotheses, risk_function, risk_weights=None):
     return metrics["information"] - risk - redundancy, metrics, risk, redundancy
 
 
-def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk_weights=None, stop_parameters=None):
+def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk_weights=None, stop_parameters=None,
+                 surface_areas=None):
     decision = PanelBudgetDecision(**budget)
-    stop_parameters = stop_parameters or {}
+    if any(c.geometry_support for c in pool):
+        decision.selection_priority = "direct_coverage_then_geometric_complementarity_then_information_then_risk"
     selected = []
+    covered_positions = set()
+    total_area = sum(max(0., area) for area in surface_areas.values()) if surface_areas is not None else None
+    if surface_areas is not None:
+        decision.coverage_basis = "geodesic_0_eligible_surface_area"
     old_value, old, old_risk, old_redundancy = objective([], hypotheses, risk_function, risk_weights)
     for _ in range(decision.maximum_constructs):
         choices = []
@@ -80,32 +86,35 @@ def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk
             if any(construct_signature(candidate) == construct_signature(c) for c in selected):
                 continue
             response = candidate.hypothesis_perturbation or candidate.hypothesis_response
-            if any(all(abs(response.get(h.hypothesis_id, 0)-(c.hypothesis_perturbation or c.hypothesis_response).get(h.hypothesis_id, 0)) < 1e-6 for h in hypotheses) for c in selected):
+            if surface_areas is None and any(all(abs(response.get(h.hypothesis_id, 0)-(c.hypothesis_perturbation or c.hypothesis_response).get(h.hypothesis_id, 0)) < 1e-6 for h in hypotheses) for c in selected):
                 continue
             value, metrics, risk, redundancy = objective(selected+[candidate], hypotheses, risk_function, risk_weights)
-            choices.append((value-old_value, candidate, metrics, value, risk, redundancy))
+            positions = set(candidate.covered_positions_by_scenario.get("geodesic_0",
+                [m.residue.uniprot_pos for m in candidate.mutations]))
+            area_gain = (sum(max(0., surface_areas.get(p, 0.)) for p in positions-covered_positions)
+                         if surface_areas is not None else None)
+            coverage_gain = (area_gain / total_area if total_area else 0.) if surface_areas is not None else metrics["coverage"]-old["coverage"]
+            choices.append((coverage_gain, metrics["information"]-old["information"], value-old_value,
+                            candidate, metrics, value, risk, redundancy, positions, area_gain))
         if not choices:
             decision.stop_reason = "NO_FEASIBLE_NONREDUNDANT_CANDIDATES"
             break
-        gain, winner, metrics, value, risk, redundancy = min(choices, key=lambda c: (-c[0], c[1].candidate_id))
-        information_gain = metrics["information"] - old["information"]
+        coverage_gain, information_gain, gain, winner, metrics, value, risk, redundancy, positions, area_gain = min(
+            choices, key=lambda c: (-c[0], -c[3].geometry_support.get("mean_marginal_area_a2", 0.0),
+                                   c[3].geometry_support.get("mean_overlap_fraction", 0.0),
+                                   -c[1], -c[2], c[3].candidate_id))
         relative = information_gain / max(old["information"], 1e-12)
         pair_reduction = len(old["near_pairs"]) - len(metrics["near_pairs"])
-        separation_improved = metrics["mean_separation"] > old["mean_separation"] + 1e-12 or pair_reduction > 0
-        if gain <= 1e-12:
-            decision.stop_reason = "NO_POSITIVE_NET_INFORMATION_GAIN"
-            break
-        if decision.adaptive_budget and len(selected) >= decision.minimum_constructs and (
-            information_gain < float(stop_parameters.get("minimum_marginal_information_gain", .02))
-            or relative < float(stop_parameters.get("minimum_relative_information_gain", .05))
-            or not separation_improved
-        ):
-            decision.stop_reason = "INFORMATION_GAIN_BELOW_STOPPING_POLICY"
+        if coverage_gain <= 1e-12 and len(selected) >= decision.minimum_constructs:
+            decision.stop_reason = "NO_POSITIVE_COVERAGE_GAIN"
             break
         selected.append(winner)
+        covered_positions.update(positions)
         decision.budget_curve.append(dict(construct_count=len(selected), candidate_id=winner.candidate_id,
             objective=value, net_gain=gain, information_gain=information_gain, relative_information_gain=relative,
-            coverage_gain=metrics["coverage"]-old["coverage"],
+            coverage_gain=coverage_gain, coverage_gain_area_a2=area_gain,
+            geometric_support=winner.geometry_support,
+            hypothesis_coverage_gain=metrics["coverage"]-old["coverage"],
             mean_separation_gain=metrics["mean_separation"]-old["mean_separation"],
             minimum_separation_gain=metrics["minimum_distance"]-old["minimum_distance"],
             unresolved_pair_reduction=pair_reduction, risk_delta=risk-old_risk,
@@ -124,7 +133,7 @@ def exhaustive_comparison(pool, hypotheses, budget, risk_function, risk_weights=
         raise ValueError("Exhaustive comparison requires <=20 candidates and budget <=8")
     if sum(math.comb(len(pool), k) for k in range(1, min(budget, len(pool))+1)) > 300000:
         raise ValueError("Exhaustive comparison exceeds 300000-panel work limit")
-    best_value, best_ids = 0.0, []
+    best_coverage, best_value, best_ids = -1.0, 0.0, []
     for k in range(1, min(budget, len(pool))+1):
         for subset in itertools.combinations(pool, k):
             if any(c.order >= 4 or not c.connected or c.search_role == "EXPLORATORY" or c.qualification == "REVIEW_REQUIRED" or any(m.review_required for m in c.mutations) for c in subset):
@@ -133,12 +142,16 @@ def exhaustive_comparison(pool, hypotheses, budget, risk_function, risk_weights=
                 continue
             if any(all(abs((a.hypothesis_perturbation or a.hypothesis_response).get(h.hypothesis_id, 0)-(b.hypothesis_perturbation or b.hypothesis_response).get(h.hypothesis_id, 0)) < 1e-6 for h in hypotheses) for a,b in itertools.combinations(subset,2)):
                 continue
-            value = objective(subset, hypotheses, risk_function, risk_weights)[0]
+            value, metrics, _, _ = objective(subset, hypotheses, risk_function, risk_weights)
+            coverage = metrics["coverage"]
             ids = sorted(c.candidate_id for c in subset)
-            if value > best_value+1e-12 or (abs(value-best_value)<1e-12 and ids < best_ids):
-                best_value, best_ids = value, ids
+            if coverage > best_coverage+1e-12 or (abs(coverage-best_coverage)<1e-12 and (
+                value > best_value+1e-12 or (abs(value-best_value)<1e-12 and ids < best_ids))):
+                best_coverage, best_value, best_ids = coverage, value, ids
     greedy, _, _ = greedy_panel(pool, hypotheses, dict(minimum_constructs=min(4,budget), target_constructs=budget, maximum_constructs=budget, adaptive_budget=False), higher_order_max, risk_function, risk_weights)
     greedy_value = objective(greedy, hypotheses, risk_function, risk_weights)[0]
     return dict(optimal_candidate_ids=best_ids, optimal_objective=best_value,
+                optimal_coverage=max(0., best_coverage), greedy_coverage=panel_metrics(greedy, hypotheses)["coverage"],
+                selection_priority="coverage_then_information_then_risk",
                 greedy_objective=greedy_value, absolute_gap=max(0., best_value-greedy_value),
                 relative_gap=max(0., best_value-greedy_value)/max(best_value,1e-12))

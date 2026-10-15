@@ -46,10 +46,12 @@ def build_offline_html(
 ) -> str:
     """Render one self-contained offline report (no network, file:// openable).
 
-    Embeds 3Dmol.js, the ECD PDB text, the full analysis payload and both i18n
+    Embeds 3Dmol.js, the ECD PDB text, the display analysis and both i18n
     dictionaries.  The offline page offers beads + 3Dmol-cartoon rendering
     (PDBe Mol* stays online-only: embedding it would roughly sextuple the file).
     """
+    from .joint_design_v4.reporting import project_display_analysis
+
     template = OFFLINE_TEMPLATE.read_text(encoding="utf-8")
     js = _js_safe(VENDOR_3DMOL.read_text(encoding="utf-8"))
     i18n = {
@@ -66,7 +68,7 @@ def build_offline_html(
     task_label = f"{task_name} ({accession})" if accession and accession not in task_name else task_name
 
     html = template
-    html = html.replace("__DATA__", _json_inline(analysis))
+    html = html.replace("__DATA__", _json_inline(project_display_analysis(analysis)))
     html = html.replace("__I18N__", _json_inline(i18n))
     html = html.replace("__PDB__", json.dumps(pdb_text))
     html = html.replace("__LANG__", "en" if lang == "en" else "zh")
@@ -75,6 +77,8 @@ def build_offline_html(
     # 3Dmol last: it is the biggest blob and the others' placeholders cannot
     # plausibly occur inside it, but the reverse is not true.
     html = html.replace("/*__3DMOL__*/", _js_safe(js))
+    recommendation_js = (WEB_ROOT / "recommendations.js").read_text(encoding="utf-8")
+    html = html.replace("/*__RECOMMENDATIONS__*/", _js_safe(recommendation_js.replace("export function", "function", 1)))
     return html
 
 
@@ -501,6 +505,8 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "combination_stability.csv",
         "panel_candidates.json",
         "selected_panel_v4.json",
+        "sector_recommendations_v4.json",
+        "sector_recommendations_v4.csv",
         "v4_manifest.json",
         "v4_scientific_report.md",
         "v4_manifest_v41.json",

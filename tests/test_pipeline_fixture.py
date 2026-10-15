@@ -89,9 +89,18 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     assert (output / "ecd_epitope_design.zip").is_file()
     with zipfile.ZipFile(output / "ecd_epitope_design.zip") as archive:
         for name in ("partition_diagnostics_v4.json", "surface_graph_v4.json",
-                     "surface_display_regions_v41.json", "probe_sectors_v4.json"):
+                     "surface_display_regions_v41.json", "probe_sectors_v4.json",
+                     "sector_recommendations_v4.json", "sector_recommendations_v4.csv"):
             assert name in result["files"]
             assert archive.read(name) == (output / name).read_bytes()
+    suggestions = result["joint_v4_ml"]["selected_panel"]["sector_recommendations"]
+    assert {row["sector_id"] for row in suggestions} == {sector["sector_id"] for sector in sectors}
+    assert suggestions == json.loads((output / "sector_recommendations_v4.json").read_text(encoding="utf-8"))
+    assert all(row["failed_gates"] for row in suggestions if row["status"] == "NEAR_THRESHOLD")
+    assert all(candidate["geometry_support"]["area_basis"] == "eligible_surface_area_a2"
+               for candidate in result["joint_v4_ml"]["candidates"])
+    assert all(set(row["geometry_support"]["scenarios"]) == {"geodesic_9", "geodesic_12", "geodesic_15"}
+               for row in suggestions if row["candidate_id"])
     assert (output / "run_manifest.json").is_file()
     reliability = result["structure_reliability"]
     assert reliability["qc"]["state_counts"] == {"STRUCTURED": 220}

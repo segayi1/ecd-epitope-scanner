@@ -17,20 +17,27 @@ const MolstarView = (() => {
   let plugin = null;
   let ready = false;
   let initOptions = null;
+  const disposed = new WeakSet();
+
+  function dispose(instance) {
+    if (!instance?.plugin || disposed.has(instance)) return;
+    disposed.add(instance);
+    instance.plugin.dispose();
+  }
 
   /* plugin.render() can resolve BEFORE the internal molstar Plugin has built
      its managers (canvas controls make this window obvious).  Painting before
      managers exist throws "Cannot read properties of undefined (reading
      'managers')", so every caller waits for this. */
-  async function waitReady(timeoutMs = 15000) {
+  async function waitReady(timeoutMs = 15000, instance = plugin) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
-      if (plugin && plugin.plugin && plugin.plugin.managers
-          && plugin.assemblyRef
-          && plugin.plugin.managers.structure.hierarchy.current.structures.length > 0) return;
+      if (instance !== plugin) return false;
+      if (instance?.plugin?.managers && instance.assemblyRef
+          && instance.plugin.managers.structure.hierarchy.current.structures.length > 0) return true;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    throw new Error("Mol* structure loading timed out");
+    throw Object.assign(new Error("Mol* structure loading timed out"), { stage: "structure" });
   }
 
   /* Mol* defaults ship with distance fog (intensity 15) and far-plane
@@ -48,9 +55,12 @@ const MolstarView = (() => {
   const alive = () => Boolean(plugin && plugin.plugin && plugin.plugin.managers);
 
   async function init(host, structureUrl, representation) {
-    ready = false;
+    destroy();
     host.innerHTML = "";
-    plugin = new window.PDBeMolstarPlugin();
+    let instance;
+    try { instance = new window.PDBeMolstarPlugin(); }
+    catch (error) { error.stage = "webgl"; throw error; }
+    plugin = instance;
     initOptions = {
       customData: { url: structureUrl, format: "cif", binary: false },
       defaultPreset: "default",
@@ -70,12 +80,31 @@ const MolstarView = (() => {
       reactive: true,
       subscribeEvents: false,
     };
-    await plugin.render(host, initOptions);
-    await waitReady();
-    applyViewProps();
-    ready = true;
-    window.__ecdMolstar = plugin;   // debug/inspection handle
-    return plugin;
+    let resourceUrl = null;
+    let stage = "fetch";
+    try {
+      const response = await fetch(structureUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.text();
+      stage = "parse";
+      if (!/^\s*(?:#[^\n]*\n\s*)*data_/i.test(data)) throw new Error("Expected mmCIF structure data");
+      if (instance !== plugin) return null;
+      resourceUrl = URL.createObjectURL(new Blob([data], { type: "text/plain" }));
+      const options = { ...initOptions, customData: { ...initOptions.customData, url: resourceUrl } };
+      stage = "render";
+      await instance.render(host, options);
+      if (!await waitReady(15000, instance)) return null;
+      applyViewProps();
+      ready = true;
+      window.__ecdMolstar = instance;
+      return instance;
+    } catch (error) {
+      error.stage ||= /webgl|context|gpu/i.test(error.message) ? "webgl" : stage;
+      throw error;
+    } finally {
+      if (resourceUrl) URL.revokeObjectURL(resourceUrl);
+      if (instance !== plugin) dispose(instance);
+    }
   }
 
   async function update(structureUrl) {
@@ -90,23 +119,25 @@ const MolstarView = (() => {
   async function setRepresentation(representation) {
     if (!plugin) return;
     if (!alive()) return;
+    const instance = plugin;
     const visualStyle = { polymer: representation, het: "ball-and-stick", carbs: "carbohydrate" };
     /* PDBe Mol* 3.10.1 `visual.update({ visualStyle }, false)` only updates
        init params; it does not rebuild existing representations. The pinned
        build exposes the same applyVisualStyles method used during load. Keep
        a full-reload fallback for a future build that hides that method. */
-    if (typeof plugin.applyVisualStyles === "function" && plugin.assemblyRef) {
-      await plugin.applyVisualStyles(plugin.assemblyRef, visualStyle);
+    if (typeof instance.applyVisualStyles === "function" && instance.assemblyRef) {
+      await instance.applyVisualStyles(instance.assemblyRef, visualStyle);
     } else {
       initOptions = { ...initOptions, visualStyle };
-      await plugin.visual.update(initOptions, true);
-      await waitReady();
+      await instance.visual.update(initOptions, true);
+      if (!await waitReady(15000, instance)) return;
     }
-    await plugin.canvas.applySettings({
+    if (instance !== plugin) return;
+    await instance.canvas.applySettings({
       color: "#f4f0e7",
       lighting: representation === "molecular-surface" ? "matte" : "flat",
     });
-    applyViewProps();
+    if (instance === plugin) applyViewProps();
   }
 
   async function color(queryRecords, nonSelectedColor) {
@@ -159,10 +190,11 @@ const MolstarView = (() => {
   }
 
   function destroy() {
-    try { if (plugin && plugin.plugin) plugin.plugin.dispose(); } catch (e) { /* noop */ }
+    try { dispose(plugin); } catch (e) { console.warn("Mol* dispose failed", e); }
     plugin = null;
     initOptions = null;
     ready = false;
+    window.__ecdMolstar = null;
   }
 
   return { init, update, waitReady, setRepresentation, color, highlight, clearHighlight, tooltips, focus, reset, resize, spin, destroy, isReady: () => ready && alive() };
@@ -175,20 +207,23 @@ const BeadsView = (() => {
   let hoverCb = null;
 
   async function init(host, pdbUrl, residueList) {
+    destroy();
     residues = residueList;
     host.innerHTML = '<div class="beads-canvas" style="position:absolute;inset:0"></div>';
-    viewer = $3Dmol.createViewer(host.querySelector(".beads-canvas"), {
+    const instance = $3Dmol.createViewer(host.querySelector(".beads-canvas"), {
       backgroundColor: "#f4f0e7", antialias: true,
     });
+    viewer = instance;
     const text = await fetch(pdbUrl).then((r) => {
       if (!r.ok) throw new Error(`structure fetch failed: HTTP ${r.status}`);
       return r.text();
     });
+    if (instance !== viewer) return null;
     viewer.addModel(text, "pdb");
     viewer.zoomTo();
     viewer.zoom(1.35);
     apply(() => "#9CB89C", { selected: new Set(), sidechain: new Set() });
-    return viewer;
+    return instance;
   }
 
   function apply(colorFn, flags) {

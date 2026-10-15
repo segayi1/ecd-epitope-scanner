@@ -49,7 +49,7 @@ Joint V4-ML 4.1（SPURS single/multi、DiscoTope-3.0、FoldX 和可选 ProCalipe
 
 V4.1 保留确定性 V4 sector 作为显示归属，同时单独导出 Surface V2 footprint 假设成员关系；一个残基可同时属于多个假设。偏好的 12 Å 与 adaptive-area footprints 构成主假设池，同中心 9 Å 区域标为 core、9–15 Å 外缘标为 boundary。输出另含 geometry-only `surface_graph_v41.json`、显示区域、假设成员表、探针—假设矩阵与面板可辨识性摘要。旧 `surface_graph_v4.json` 继续保留 sector 字段以兼容实验项目。
 
-当前工作站的 V4 默认配置接入全部推理与确认算法。SPURS single/multi 使用 WSL2 环境 `/home/segayi1/miniconda3/envs/spurs_v4`，DiscoTope-3.0 使用 `/home/segayi1/miniconda3/envs/discotope_v4`，通过 CUDA 12.4 在 NVIDIA RTX 3060 Laptop GPU 上推理；ProCaliper 0.2.1 使用 `G:\anaconda\envs\ecd_procaliper\python.exe` 在 CPU 上计算 SASA/rSASA cross-check；FoldX 5.1 使用 `vendor/foldx/foldx_1_20270131.exe`，执行 `RepairPDB + BuildModel`，修复结构跨作业缓存，每个候选默认运行 5 次并取中位数。FoldX 对确定性短名单最多 42 个候选启用 8 路 CPU 并行。所有 WSL GPU worker 使用跨进程锁串行占用显卡；CUDA OOM 时清理缓存后重试 1 次，仍失败则按配置显式回退到 CPU，并在 warning/provenance 中记录实际设备和回退原因。SPURS single 与 DiscoTope 的超时为 900 秒，SPURS multi 为 1800 秒。历史本机运行曾测得 290 aa PD-L1 的 SPURS single 约 58 秒、SPURS multi 单组合约 60 秒、DiscoTope 约 39 秒；另一次 215 aa strict V4 中 ProCaliper 约 2.28 秒，FoldX 的 42 候选 × 5 次重复约 17.96 分钟。这些数字是旧版本机量级，不是 V4.1 性能基准。DiscoTope 的 GPU 路径限短于 1000 aa 的预测链。修改配置或 worker 后需要重启网页服务；`tool_inventory.json` 和各 worker 返回的 provenance 是每次作业实际环境的审计依据。
+V4 默认配置声明以下推理与确认环境，系统重装后需要分别检查可用性。SPURS single/multi 使用 WSL2 环境 `/home/segayi1/miniconda3/envs/spurs_v4`，DiscoTope-3.0 使用 `/home/segayi1/miniconda3/envs/discotope_v4`，通过 CUDA 12.4 在 NVIDIA RTX 3060 Laptop GPU 上推理；ProCaliper 0.2.1 使用 `G:\anaconda\envs\ecd_procaliper\python.exe` 在 CPU 上计算 SASA/rSASA cross-check；FoldX 5.1 使用 `vendor/foldx/foldx_1_20270131.exe`，执行 `RepairPDB + BuildModel`，修复结构跨作业缓存，每个候选默认运行 5 次并取中位数。FoldX 对确定性短名单最多 60 个候选启用 8 路 CPU 并行。所有 WSL GPU worker 使用跨进程锁串行占用显卡；CUDA OOM 时清理缓存后重试 1 次，仍失败则按配置显式回退到 CPU，并在 warning/provenance 中记录实际设备和回退原因。SPURS single 与 DiscoTope 的超时为 900 秒，SPURS multi 为 1800 秒。历史本机运行曾测得 290 aa PD-L1 的 SPURS single 约 58 秒、SPURS multi 单组合约 60 秒、DiscoTope 约 39 秒；另一次 215 aa strict V4 中 ProCaliper 约 2.28 秒，FoldX 的 42 候选 × 5 次重复约 17.96 分钟。这些数字是旧版本机量级，不是 V4.1 性能基准。DiscoTope 的 GPU 路径限短于 1000 aa 的预测链。修改配置或 worker 后需要重启网页服务；`tool_inventory.json` 和各 worker 返回的 provenance 是每次作业实际环境的审计依据。
 
 V4 示例：
 
@@ -74,7 +74,7 @@ V4.1 保留 ECD anchor-axis 膜相对几何代理，但没有模拟实际膜平�
 在项目根目录执行：
 
 ```powershell
-python -m venv .venv --system-site-packages
+python -m venv .venv
 $env:PIP_CACHE_DIR = "$PWD\.pip-cache"
 .\.venv\Scripts\python.exe -m pip install -e . -r .\requirements-dev.txt
 .\.venv\Scripts\python.exe -m ecd_epitope_scanner serve --host 127.0.0.1 --port 8765
@@ -95,7 +95,7 @@ $env:PIP_CACHE_DIR = "$PWD\.pip-cache"
 用完后双击 **`stop_ecd_epitope_workbench.bat`** 结束服务（释放 8765 端口）。
 
 文件夹可整体移动或复制到本机其他位置后继续使用（`.venv` 依赖本机的 Anaconda 基础解释器）；
-换电脑则需要重建虚拟环境：`python -m venv .venv --system-site-packages` 后执行
+换电脑则需要重建虚拟环境：`python -m venv .venv` 后执行
 `.\.venv\Scripts\python.exe -m pip install -e . -r requirements-dev.txt`。
 
 ## CLI 调用

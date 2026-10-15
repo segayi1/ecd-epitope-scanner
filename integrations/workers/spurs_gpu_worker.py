@@ -14,6 +14,7 @@ from gpu_runtime import (
     recovery_devices,
     serialized_gpu,
     sha256_model_files,
+    software_identity,
 )
 
 ALPHABET = "ACDEFGHIKLMNPQRSTVWY"
@@ -188,6 +189,7 @@ def main() -> int:
                     "errors": [],
                     "provenance": {
                         **_provenance(torch, final_device, mode),
+                        **software_identity("spurs", root / "vendor" / "spurs"),
                         "requested_device": requested_device,
                         "actual_device": final_device,
                         "cuda_oom_retry_count": oom_retries,

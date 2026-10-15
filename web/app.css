@@ -146,6 +146,7 @@ body {
 /* ---------- stage column: viewport + persistent seqdock ---------- */
 .stage-col {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0; min-height: 0;
   background: var(--bg);
@@ -300,6 +301,17 @@ table.audit th { color: var(--muted); font-weight: 500; }
 .design-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 6px; }
 .design-head strong { font-size: 12.5px; }
 .design-head .st { font-size: 11px; color: var(--muted); }
+.recommendation-region { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 16px; }
+.recommendation-card h4 { margin: 0 0 8px; font-size: 14px; }
+.recommendation-card p { line-height: 1.65; margin: 8px 0; }
+.recommendation-tags { display: flex; gap: 5px; flex-wrap: wrap; margin: 8px 0; }
+.recommendation-warning { color: #8b3c24; padding: 8px; background: #fff5ec; border-radius: 6px; }
+.recommendation-table { overflow-x: auto; max-width: 100%; margin: 8px 0; }
+.recommendation-table table { width: 100%; min-width: 260px; }
+.recommendation-table td { overflow-wrap: anywhere; vertical-align: top; }
+.recommendation-details > summary { font-weight: 600; padding: 8px 0; }
+.recommendation-details h4 { margin-top: 16px; }
+.recommendation-sequence { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 180px; overflow-y: auto; padding: 8px; background: #f6f7f7; }
 .mut-chip { display: inline-block; border: 1px solid #e0b8ad; background: #f9ece8; color: var(--sel); border-radius: 6px; padding: 1px 8px; font-size: 11.5px; margin: 1px 2px 1px 0; cursor: pointer; }
 .actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 
@@ -343,6 +355,12 @@ details summary { cursor: pointer; color: var(--teal-dark); }
   .viewport { height: 52dvh; min-height: 380px; }
   .seqdock { max-height: none; }
   .panel { border-left: 0; border-top: 1px solid var(--line); max-height: none; }
+  .app-actions { flex-wrap: wrap; min-width: 0; }
+  .stage-col { min-width: 0; width: 100%; }
+  .seq-line { flex-wrap: wrap; }
+  .seq-meta { min-width: 0; overflow-wrap: anywhere; }
+  .seqdock-head select { min-width: 0; max-width: 100%; }
+  .seqdock-head .fld-inline { min-width: 0; max-width: 100%; }
 }
 
 /* legend: collapsible and less occlusive when zoomed in */

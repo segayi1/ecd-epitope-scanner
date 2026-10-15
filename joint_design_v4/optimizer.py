@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from collections import defaultdict
 
 from .models import V4Candidate, V4Panel, V4Sector, V4SurfaceHypothesis
@@ -113,146 +112,6 @@ def _diverse_take(
     return chosen
 
 
-def _information_take(
-    pool: list[V4Candidate],
-    hypotheses: list[V4SurfaceHypothesis],
-    budget: int,
-    higher_order_max: int,
-    risk_penalty_weights: dict[str, float] | None = None,
-) -> tuple[list[V4Candidate], float, float, float, int, float, float, dict[str, float], list[list[str]], list[str], dict[str, list[float]]]:
-    """Greedy panel selection by hypothesis coverage and pair separation."""
-    ids = [item.hypothesis_id for item in hypotheses]
-    pairs = [(left, right) for left in range(len(ids)) for right in range(left + 1, len(ids))]
-    prior = {
-        item.hypothesis_id: max(0.05, min(1.0, item.discotope_prior if item.discotope_prior is not None else 0.5))
-        for item in hypotheses
-    }
-    pair_weights = [prior[ids[left]] * prior[ids[right]] for left, right in pairs]
-    responses = {
-        item.candidate_id: [
-            (item.hypothesis_perturbation or item.hypothesis_response).get(hypothesis_id, 0.0)
-            for hypothesis_id in ids
-        ]
-        for item in pool
-    }
-    selected: list[V4Candidate] = []
-    coverage = [0.0] * len(ids)
-    separation_sq = [0.0] * len(pairs)
-    signatures: set[tuple[tuple[int, str], ...]] = set()
-    marginal_information_gain: dict[str, float] = {}
-    for _ in range(max(0, budget)):
-        choices = []
-        for candidate in pool:
-            signature = _construct_signature(candidate)
-            if candidate.candidate_id in {item.candidate_id for item in selected} or signature in signatures:
-                continue
-            if candidate.order >= 4 or candidate.search_role == "EXPLORATORY":
-                continue
-            if candidate.order > 2 and sum(item.order > 2 for item in selected) >= higher_order_max:
-                continue
-            row = responses[candidate.candidate_id]
-            distances = [
-                math.sqrt(sum((left - right) ** 2 for left, right in zip(row, responses[item.candidate_id])) / max(1, len(ids)))
-                for item in selected
-            ]
-            if any(distance < 1e-6 for distance in distances):
-                continue
-            coverage_deltas = [
-                max(0.0, value - coverage[index]) for index, value in enumerate(row)
-            ]
-            uniform_coverage_gain = sum(coverage_deltas) / max(1, len(ids))
-            prior_total = sum(prior.values())
-            prior_coverage_gain = (
-                sum(coverage_deltas[index] * prior[ids[index]] for index in range(len(ids))) / prior_total
-                if prior_total else uniform_coverage_gain
-            )
-            coverage_gain = 0.5 * uniform_coverage_gain + 0.5 * prior_coverage_gain
-            separation_deltas = [
-                math.sqrt(old + (row[left] - row[right]) ** 2) - math.sqrt(old)
-                for old, (left, right) in zip(separation_sq, pairs)
-            ]
-            uniform_separation_gain = sum(separation_deltas) / max(1, len(pairs))
-            weighted_total = sum(pair_weights)
-            prior_separation_gain = (
-                sum(value * weight for value, weight in zip(separation_deltas, pair_weights)) / weighted_total
-                if weighted_total else uniform_separation_gain
-            )
-            separation_gain = 0.5 * uniform_separation_gain + 0.5 * prior_separation_gain
-            minimum_gain = (
-                min(math.sqrt(separation_sq[index] + (row[left] - row[right]) ** 2)
-                for index, (left, right) in enumerate(pairs)
-                ) - min(math.sqrt(value) for value in separation_sq)
-            ) if pairs else 0.0
-            # Stability is already a formal gate. This small penalty breaks
-            # near ties without turning ddG into an epitope probability.
-            penalty = _risk_penalty(candidate, risk_penalty_weights) + (0.01 if candidate.order > 2 else 0.0)
-            redundancy_weight = max(0.0, float((risk_penalty_weights or {}).get("redundancy", 0.03)))
-            redundancy_penalty = (
-                redundancy_weight * max(max(0.0, 1.0 - distance / 0.25) for distance in distances)
-                if distances else 0.0
-            )
-            information_gain = coverage_gain + 1.5 * separation_gain + 0.5 * minimum_gain
-            value = information_gain - penalty - redundancy_penalty
-            choices.append((value, information_gain, coverage_gain, separation_gain, candidate))
-        if not choices:
-            break
-        value, information_gain, coverage_gain, separation_gain, winner = min(
-            choices, key=lambda item: (-item[0], -item[3], -item[2], item[4].candidate_id)
-        )
-        if value <= 0 and selected:
-            break
-        selected.append(winner)
-        marginal_information_gain[winner.candidate_id] = round(information_gain, 6)
-        signatures.add(_construct_signature(winner))
-        row = responses[winner.candidate_id]
-        coverage = [max(old, new) for old, new in zip(coverage, row)]
-        separation_sq = [
-            old + (row[left] - row[right]) ** 2
-            for old, (left, right) in zip(separation_sq, pairs)
-        ]
-    separation = [math.sqrt(value / max(1, len(selected))) for value in separation_sq]
-    weighted_separation = (
-        sum(value * weight for value, weight in zip(separation, pair_weights)) / sum(pair_weights)
-        if pair_weights and sum(pair_weights) else 0.0
-    )
-    signatures_by_hypothesis = {
-        hypothesis_id: [responses[item.candidate_id][index] for item in selected]
-        for index, hypothesis_id in enumerate(ids)
-    }
-    adjacency = {hypothesis_id: set() for hypothesis_id in ids}
-    for distance, (left, right) in zip(separation, pairs):
-        if distance < 0.1:
-            adjacency[ids[left]].add(ids[right])
-            adjacency[ids[right]].add(ids[left])
-    unresolved = []
-    remaining = set(ids)
-    while remaining:
-        start = min(remaining)
-        group = {start}
-        queue = [start]
-        remaining.remove(start)
-        while queue:
-            for neighbor in sorted(adjacency[queue.pop()] & remaining):
-                remaining.remove(neighbor)
-                group.add(neighbor)
-                queue.append(neighbor)
-        if len(group) > 1:
-            unresolved.append(sorted(group))
-    return (
-        selected,
-        sum(coverage) / max(1, len(coverage)),
-        sum(coverage[index] * prior[ids[index]] for index in range(len(ids))) / max(1e-12, sum(prior.values())),
-        sum(separation) / max(1, len(separation)),
-        sum(value < 0.1 for value in separation),
-        min(separation, default=0.0),
-        weighted_separation,
-        marginal_information_gain,
-        unresolved,
-        [ids[index] for index, value in enumerate(coverage) if value < 0.1],
-        signatures_by_hypothesis,
-    )
-
-
 def select_panel(
     candidates: list[V4Candidate],
     max_primary: int = 7,
@@ -330,11 +189,17 @@ def _select_panel(
     hypothesis_signatures: dict[str, list[float]] = {}
     budget_decision = None
     nearby_pairs = []
-    if panel_budget is not None:
+    if panel_budget is not None or surface_areas is not None or hypotheses:
         from .identifiability import greedy_panel
+        effective_budget = panel_budget or dict(
+            minimum_constructs=min(4, max_primary), target_constructs=max_primary,
+            maximum_constructs=max_primary, adaptive_budget=False)
+        eligible_areas = ({p: surface_areas.get(p, 0.)
+                          for sector in sectors for p in sector.residue_positions}
+                         if surface_areas is not None and sectors is not None else surface_areas)
         selected, metrics, budget_decision = greedy_panel(
-            candidates, hypotheses or [], panel_budget, max(0, higher_order_max),
-            _risk_penalty, risk_penalty_weights, stop_parameters,
+            candidates, hypotheses or [], effective_budget, max(0, higher_order_max),
+            _risk_penalty, risk_penalty_weights, stop_parameters, eligible_areas,
         )
         mean_response = metrics["coverage"]
         prior_weighted_response = metrics["weighted_coverage"]
@@ -347,22 +212,9 @@ def _select_panel(
         uncovered_hypotheses = metrics["uncovered"]
         hypothesis_signatures = metrics["signatures"]
         marginal_information_gain = {row["candidate_id"]: row["information_gain"] for row in budget_decision.budget_curve}
-    elif hypotheses:
-        (selected, mean_response, prior_weighted_response, mean_separation, indistinguishable,
-         minimum_distance, prior_weighted_separation, marginal_information_gain, unresolved_groups, uncovered_hypotheses,
-         hypothesis_signatures) = _information_take(
-            [
-                item for item in candidates
-                if item.connected and item.order < 4 and item.search_role != "EXPLORATORY"
-            ],
-            hypotheses,
-            max(1, int(max_primary)),
-            max(0, int(higher_order_max)),
-            risk_penalty_weights,
-        )
     high_order_count = 0
     offset = 0
-    while not hypotheses and panel_budget is None and len(selected) < max(1, int(max_primary)):
+    while not hypotheses and panel_budget is None and budget_decision is None and len(selected) < max(1, int(max_primary)):
         added = False
         for sector_id in sorted(sector_series):
             series = sector_series[sector_id]
@@ -424,7 +276,8 @@ def _select_panel(
         candidates_by_role=roles,
         achieved_coverage=coverage,
         uncovered_components=uncovered,
-        solver_status="FOOTPRINT_IDENTIFIABILITY_GREEDY" if hypotheses else "SECTOR_SERIES_DETERMINISTIC",
+        solver_status=("COVERAGE_FIRST_GREEDY" if budget_decision else
+                       "FOOTPRINT_IDENTIFIABILITY_GREEDY" if hypotheses else "SECTOR_SERIES_DETERMINISTIC"),
         coverage_denominator_residues=len(denominator),
         covered_residues_by_scenario={
             scenario: len(positions) for scenario, positions in sorted(coverage_positions.items())

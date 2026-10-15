@@ -65,6 +65,7 @@ from .optimizer import select_panel
 from .reporting import write_v4_outputs
 from .risk import annotate_candidate_risks
 from .sectors import PartitionConstraintError, build_epitope_sectors
+from .sector_recommendations import build_sector_recommendations
 from .surface_snapshot import write_surface_graph_snapshot
 
 
@@ -222,23 +223,96 @@ def _foldx_shortlist(
     epitope_priority_per_sector: int = 3,
     stability_fallback_per_sector: int = 3,
     hypotheses=None,
+    sectors=None,
+    surface_areas=None,
+    graph=None,
+    diagnostics=None,
 ) -> list[V4Candidate]:
     """Select a deterministic, sector-balanced FoldX confirmation set."""
+    from .spatial_support import spatial_shortlist, site_signature
     maximum = max(1, int(maximum))
+    if sectors is not None:
+        from dataclasses import replace
+        from .spatial_support import candidate_region_membership, regional_support, spatial_priority
+        ranked = [c for c in candidates if c.order in {2, 3}
+                  and c.search_role != "EXPLORATORY" and c.qualification != "REVIEW_REQUIRED"]
+        memberships = {c.candidate_id: candidate_region_membership(c, sectors) for c in ranked}
+        local = {}
+        for sector in sorted(sectors, key=lambda s: s.sector_id):
+            local[sector.sector_id] = {
+                c.candidate_id: regional_support(c, sector, surface_areas or {}, graph=graph)
+                for c in ranked if sector.sector_id in memberships[c.candidate_id]["region_ids"]}
+        output, seen, sites = [], set(), set()
+
+        def add(candidate):
+            output.append(candidate)
+            seen.add(candidate.candidate_id)
+            sites.add(site_signature(candidate))
+
+        def local_key(candidate, sector_id):
+            return spatial_priority(replace(candidate, geometry_support=local[sector_id][candidate.candidate_id]))
+
+        # One opportunity per region before any second opportunity.
+        for offset in range(2):
+            for sector in sorted(sectors, key=lambda s: s.sector_id):
+                pool = [c for c in ranked if memberships[c.candidate_id]["exclusive_region_id"] == sector.sector_id
+                        and c.candidate_id not in seen and site_signature(c) not in sites]
+                if offset == 0:
+                    pool = [c for c in pool if c.order == 2] or pool
+                if pool and len(output) < maximum:
+                    add(min(pool, key=lambda c: local_key(c, sector.sector_id)))
+        for offset in range(2):
+            for sector in sorted(sectors, key=lambda s: s.sector_id):
+                served = {site_signature(c) for c in output if sector.sector_id in memberships[c.candidate_id]["region_ids"]}
+                pool = [c for c in ranked if sector.sector_id in memberships[c.candidate_id]["region_ids"]
+                        and c.candidate_id not in seen and site_signature(c) not in sites]
+                if len(served) < offset + 1 and pool and len(output) < maximum:
+                    add(min(pool, key=lambda c: local_key(c, sector.sector_id)))
+        for hypothesis in sorted(hypotheses or [], key=lambda h: h.hypothesis_id):
+            pool = [c for c in ranked if hypothesis.hypothesis_id in c.targeted_hypotheses
+                    and c.candidate_id not in seen and site_signature(c) not in sites]
+            if pool and len(output) < maximum:
+                add(spatial_shortlist(pool, 1)[0])
+        remaining = spatial_shortlist([c for c in ranked if c.candidate_id not in seen], len(ranked))
+        remaining.sort(key=lambda c: site_signature(c) in sites)
+        for candidate in remaining:
+            if len(output) >= maximum:
+                break
+            add(candidate)
+        if diagnostics is not None:
+            diagnostics["foldx_region_resources"] = [{
+                "sector_id": sector.sector_id, "requested_exclusive_groups": 2,
+                "confirmable_exclusive_groups": len({site_signature(c) for c in ranked
+                    if memberships[c.candidate_id]["exclusive_region_id"] == sector.sector_id}),
+                "scheduled_exclusive_groups": len({site_signature(c) for c in output
+                    if memberships[c.candidate_id]["exclusive_region_id"] == sector.sector_id}),
+                "scheduled_associated_groups": len({site_signature(c) for c in output
+                    if sector.sector_id in memberships[c.candidate_id]["region_ids"]}),
+                "scheduled_candidate_ids": [c.candidate_id for c in output
+                    if sector.sector_id in memberships[c.candidate_id]["region_ids"]],
+            } for sector in sorted(sectors, key=lambda s: s.sector_id)]
+        return output
     if hypotheses:
         ranked = sorted((c for c in candidates if c.order < 4 and c.search_role != "EXPLORATORY" and c.qualification != "REVIEW_REQUIRED"),
                         key=lambda c: (c.order > 2, c.structural_risk, -c.epitope_score, c.candidate_id))
-        output, seen = [], set()
+        ranked = spatial_shortlist(ranked, len(ranked)) if any(c.geometry_support for c in ranked) else ranked
+        output, seen, seen_sites = [], set(), set()
         # Confirmation capacity is a hard worker budget, unlike the expanded
         # generation shortlist. Reserve across hypotheses before global fill.
         for offset in range(2):
             for hypothesis in sorted(hypotheses, key=lambda h: h.hypothesis_id):
                 pool = [c for c in ranked if hypothesis.hypothesis_id in c.targeted_hypotheses and c.candidate_id not in seen]
+                if any(c.geometry_support for c in pool):
+                    pool = [c for c in pool if site_signature(c) not in seen_sites] or pool
                 if pool and len(output) < maximum:
                     winner = pool[0]
                     output.append(winner)
                     seen.add(winner.candidate_id)
-        output.extend(c for c in ranked if c.candidate_id not in seen)
+                    seen_sites.add(site_signature(winner))
+        remaining = [c for c in ranked if c.candidate_id not in seen]
+        if any(c.geometry_support for c in remaining):
+            remaining.sort(key=lambda c: site_signature(c) in seen_sites)
+        output.extend(remaining)
         return output[:maximum]
     by_sector: dict[str, list[V4Candidate]] = {}
     for candidate in candidates:
@@ -256,6 +330,8 @@ def _foldx_shortlist(
                 item.candidate_id,
             )
         )
+        if any(c.geometry_support for c in ranked):
+            ranked = spatial_shortlist(ranked, len(ranked))
         prioritized = [
             item for item in ranked if item.recommendation_class == "EPITOPE_PRIORITIZED"
         ]
@@ -263,6 +339,9 @@ def _foldx_shortlist(
             item for item in ranked if item.recommendation_class == "STABILITY_FALLBACK"
         ]
         leading = (
+            (spatial_shortlist(prioritized, max(0, int(epitope_priority_per_sector)))
+             + spatial_shortlist(fallback, max(0, int(stability_fallback_per_sector))))
+            if any(c.geometry_support for c in ranked) else
             prioritized[: max(0, int(epitope_priority_per_sector))]
             + fallback[: max(0, int(stability_fallback_per_sector))]
         )
@@ -270,6 +349,13 @@ def _foldx_shortlist(
         by_sector[sector_id] = leading + [
             item for item in ranked if item.candidate_id not in leading_ids
         ]
+        if any(c.geometry_support for c in ranked):
+            first, variants, sites = [], [], set()
+            for candidate in by_sector[sector_id]:
+                signature = site_signature(candidate)
+                (variants if signature in sites else first).append(candidate)
+                sites.add(signature)
+            by_sector[sector_id] = first + variants
     output: list[V4Candidate] = []
     offset = 0
     while len(output) < maximum:
@@ -468,7 +554,8 @@ def _annotate_stability(
             consensus_status=status,
             disagreement=disagreement,
             provenance={"single_sum_used": single_sum is not None, "stability_contract": params.get("stability_contract", "legacy"),
-                        "epistasis_interpretation": "multi minus independently trained single sum; diagnostic only"},
+                        "epistasis_interpretation": "multi minus independently trained single sum; diagnostic only",
+                        "models": {"spurs_multi": dict(multi.provenance), "foldx": dict(foldx.provenance)}},
         )
 
 
@@ -479,6 +566,8 @@ def _formal_candidate_reasons(
     minimum_coverage_gain: float,
     lower_order_coverage: float,
     higher_order_information_gain: float | None = None,
+    regional_coverage_gain: float | None = None,
+    regional_gain_required: bool = False,
     physical_coverage_pending: bool = False,
     sasa_conflict_positions: set[int] | None = None,
     sasa_context_sensitive_positions: set[int] | None = None,
@@ -523,18 +612,26 @@ def _formal_candidate_reasons(
         reasons.append("COMBINATION_NOT_SCORED")
     elif stability.consensus_status == "CONSENSUS_PASS":
         pass
-    elif stability.consensus_status == "SPURS_ONLY_REVIEW_REQUIRED" and allow_spurs_only:
-        pass
     else:
         reasons.append(stability.consensus_status)
+    # A cached status or the former SPURS-only option cannot replace either model.
+    for name, value in (
+        ("SPURS", stability.spurs_multi_ddg_kcal_mol if stability else None),
+        ("FOLDX", stability.foldx_ddg_kcal_mol if stability else None),
+    ):
+        if value is None or not math.isfinite(value):
+            reasons.append(f"COMBINATION_{name}_MISSING")
     if candidate.order > 2:
-        candidate_gain = (
+        candidate_gain = regional_coverage_gain if regional_gain_required else (
             higher_order_information_gain
             if higher_order_information_gain is not None else
             max(candidate.coverage_by_scenario.values(), default=0.0) - lower_order_coverage
         )
-        if not physical_coverage_pending and candidate_gain < minimum_coverage_gain:
-            reasons.append("INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN")
+        if not physical_coverage_pending:
+            if candidate_gain is None or not math.isfinite(candidate_gain):
+                reasons.append("HIGHER_ORDER_COVERAGE_BASELINE_MISSING")
+            elif candidate_gain < minimum_coverage_gain:
+                reasons.append("INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN")
         if stability is None or stability.foldx_ddg_kcal_mol is None:
             reasons.append("HIGHER_ORDER_REQUIRES_FOLDX")
     return sorted(set(reasons))
@@ -611,7 +708,10 @@ def _legacy_designs(
     region_id = {sector.sector_id: index for index, sector in enumerate(sectors, 1)}
     output = []
     for index, candidate in enumerate(selected, 1):
-        patch_id = region_id.get(candidate.sector_id)
+        positions = {option.residue.uniprot_pos for option in candidate.mutations}
+        owners = [sector for sector in sectors if positions.intersection(sector.residue_positions)]
+        owner = min(owners, key=lambda sector: (-len(positions.intersection(sector.residue_positions)), sector.sector_id)) if owners else None
+        patch_id = region_id.get(owner.sector_id) if owner else None
         choices = [
             MutationChoice(
                 position=option.residue.uniprot_pos or 0,
@@ -684,6 +784,9 @@ def _legacy_designs(
                 score_origin="foldx" if energy is not None else "proxy",
                 foldx_diagnostics={
                     **(to_dict(candidate.stability) if candidate.stability else {}),
+                    "candidate_id": candidate.candidate_id,
+                    "formal_eligible": candidate.formal_eligible,
+                    "formal_exclusion_reasons": list(candidate.formal_exclusion_reasons),
                     "recommendation_class": candidate.recommendation_class,
                     "epitope_supported_sites": candidate.epitope_supported_sites,
                     "epitope_prior_score": candidate.epitope_score,
@@ -696,6 +799,43 @@ def _legacy_designs(
                 semantic_projection=True,
             )
         )
+    return output
+
+
+def _sector_recommendation_designs(panel, candidates, primary_designs, sectors, protein, original_cds):
+    """Reuse physical constructs across regions; review suggestions remain outside Stage 1."""
+    by_candidate = {design.foldx_diagnostics["candidate_id"]: design for design in primary_designs}
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
+    region_ids = {sector.sector_id: index for index, sector in enumerate(sectors, 1)}
+    output = []
+    rows = [item for primary in panel.sector_recommendations
+            for item in [primary, *primary.get("alternatives", [])]]
+    for row in rows:
+        candidate_id = row["candidate_id"]
+        row["design_id"] = None
+        if candidate_id is None:
+            continue
+        if candidate_id not in by_candidate:
+            candidate = candidates_by_id[candidate_id]
+            design = _legacy_designs([candidate], sectors, protein, original_cds,
+                                     "FORMAL_RECOMMENDATION" if candidate.formal_eligible else "BLOCKED_EXTERNAL_EVIDENCE")[0]
+            design.id = f"REGION_{candidate_id}"
+            design.region_id = region_ids[row["sector_id"]]
+            design.name = "Region combination " + "+".join(row["mutation_notations"])
+            design.design_role = "SECTOR_RECOMMENDATION" if candidate.formal_eligible else "SECTOR_REVIEW_CANDIDATE"
+            design.status = "PASSED_SECTOR_RECOMMENDATION" if candidate.formal_eligible else "NEAR_THRESHOLD_NOT_QUALIFIED"
+            design.foldx_diagnostics.update({"failed_gates": row["failed_gates"],
+                                            "gate_details": row["gate_details"],
+                                            "gate_distance": row["gate_distance"]})
+            if not candidate.formal_eligible:
+                design.rationale = "Closest available gate comparison for this region; failed gates require review."
+                design.warnings.extend(row["failed_gates"])
+                for mutation in design.mutations:
+                    mutation.allowed = False
+                    mutation.reasons.extend(row["failed_gates"])
+            by_candidate[candidate_id] = design
+            output.append(design)
+        row["design_id"] = by_candidate[candidate_id].id
     return output
 
 
@@ -828,6 +968,11 @@ def run_joint_v4_ml(
     if params.get("surface_strategy") not in {None, "legacy", STRATEGY_ID}:
         raise ValueError("Unknown surface_strategy")
     if physical_preview:
+        # Physical preview retains its frozen display policy independently of V4 defaults.
+        params["sectoring"] = {"policy": "connected_bounded_v3",
+            "maximum_geodesic_diameter_a": 26.0, "maximum_euclidean_diameter_a": 18.0,
+            "minimum_sector_residues": 4, "minimum_sector_area_a2": 50.0,
+            **(parameters or {}).get("sectoring", {})}
         from ..surface_perturbation.combo_contract import CONTRACT
         params['surface_perturbation']={**params.get('surface_perturbation',{}),'panel_contract':CONTRACT}
         params['surface_perturbation'].setdefault('candidate_route','unpartitioned_local')
@@ -1098,15 +1243,19 @@ def run_joint_v4_ml(
         search_hypotheses=candidate_hypotheses(params.get('surface_perturbation',{}).get(
             'candidate_route','overlapping_windows'),options,graph,params['candidate_search'],hypotheses)
     candidates = generate_candidates(
-        sectors, [option for option in options if not option.review_required], graph, params["candidate_search"],
+        sectors, [option for option in options if not option.review_required], graph,
+        {**params["candidate_search"], "sector_resource_guarantees": not physical_preview},
         hypotheses=search_hypotheses,
         diagnostics=candidate_pool_diagnostics,
+        surface_areas=areas if not physical_preview else None,
     )
     review_diagnostics = {}
     if any(option.review_required for option in options):
         candidates.extend(generate_candidates(
-            sectors, options, graph, {**params["candidate_search"], "require_review": True},
+            sectors, options, graph, {**params["candidate_search"], "require_review": True,
+                                    "sector_resource_guarantees": False},
             hypotheses=hypotheses or None, diagnostics=review_diagnostics,
+            surface_areas=areas if not physical_preview else None,
         ))
     priority_ids=[c.candidate_id for c in candidates]
     if coverage_preview:
@@ -1186,6 +1335,9 @@ def run_joint_v4_ml(
         candidates, hypotheses, graph,
         radius_a=response_radius, decay_length_a=response_decay,
     )
+    if not physical_preview:
+        from .spatial_support import annotate_higher_order_regional_gain
+        annotate_higher_order_regional_gain(candidates, sectors, areas)
     normalized_positions = {item.uniprot_pos: index for index, item in enumerate(records, 1)}
 
     def candidate_notation(candidate: V4Candidate) -> list[str]:
@@ -1230,20 +1382,63 @@ def run_joint_v4_ml(
     )
     # Confirm combinations that can still enter the formal panel. An unrelated
     # rejected/exploratory pool must not consume the limited FoldX budget.
+    if (mode == "strict" and not physical_preview and _complete_success(multi)
+            and prediction_results is None and params.get("candidate_ids") is None
+            and params.get("candidate_stage_limit") is None):
+        from .candidate_search import supplemental_exclusive_doubles
+        supplemental, supplemental_audit = supplemental_exclusive_doubles(
+            candidates, sectors, [o for o in options if not o.review_required],
+            graph, params["candidate_search"], areas)
+        candidate_pool_diagnostics["spurs_feedback_supplement"] = supplemental_audit
+        if supplemental:
+            extra = _prediction(adapters["spurs_multi"], prediction_structure, chain,
+                prediction_sequence, output_dir, structure_type, params.get("spurs_multi", {}),
+                None, "spurs_multi", [candidate_notation(c) for c in supplemental])
+            candidate_pool_diagnostics["spurs_feedback_worker"] = to_dict(extra)
+            # A failed optional round cannot erase successful original model evidence.
+            multi = PredictionResult(status=multi.status,
+                records=multi.records + (extra.records if _complete_success(extra) else []),
+                warnings=multi.warnings + extra.warnings, errors=multi.errors,
+                provenance={**multi.provenance, "supplemental_run": extra.provenance},
+                runtime_seconds=multi.runtime_seconds + extra.runtime_seconds)
+            attach_hypothesis_responses(supplemental, hypotheses, graph,
+                radius_a=response_radius, decay_length_a=response_decay)
+            candidates.extend(supplemental)
+            annotate_higher_order_regional_gain(candidates, sectors, areas)
+            _annotate_stability(candidates, spurs.records if _complete_success(spurs) else [],
+                multi, PredictionResult(status="failed"), params["spurs_multi"],
+                params["foldx_confirmation"], position_map)
     confirmable = [
         item for item in candidates
         if item.order < 4 and item.qualification != "REVIEW_REQUIRED" and item.stability is not None
         and item.stability.consensus_status == "SPURS_ONLY_REVIEW_REQUIRED"
     ] if mode == "strict" else [item for item in candidates if item.order < 4]
+    if mode == "strict" and not physical_preview:
+        threshold = float(params["panel_optimizer"].get("minimum_coverage_gain", .05))
+        rejected = [item for item in confirmable if item.order > 2 and (
+            item.risk_components.get("regional_higher_order_gain") is None
+            or not math.isfinite(item.risk_components["regional_higher_order_gain"])
+            or item.risk_components["regional_higher_order_gain"] < threshold)]
+        candidate_pool_diagnostics["foldx_preconfirmation_exclusions"] = [{
+            "candidate_id": item.candidate_id,
+            "reason": "HIGHER_ORDER_COVERAGE_BASELINE_MISSING" if item.risk_components.get("regional_higher_order_gain") is None
+                      else "INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN",
+            "observed": item.risk_components.get("regional_higher_order_gain"), "threshold": threshold,
+            "measurement_basis": "mean_regional_area_coverage_9_12_15",
+        } for item in sorted(rejected, key=lambda c: c.candidate_id)]
+        rejected_ids = {item.candidate_id for item in rejected}
+        confirmable = [item for item in confirmable if item.candidate_id not in rejected_ids]
     foldx_candidates = _foldx_shortlist(
         confirmable,
-        int(params["foldx_confirmation"].get("max_candidates", 42)),
+        int(params["foldx_confirmation"].get("max_candidates", 60)),
         int(params["panel_optimizer"].get("epitope_priority_per_sector", 3)),
         int(params["panel_optimizer"].get("stability_fallback_per_sector", 3)),
         hypotheses=hypotheses,
+        sectors=sectors if not physical_preview else None,
+        surface_areas=areas, graph=graph, diagnostics=candidate_pool_diagnostics,
     )
     if physical_preview and not coverage_preview:
-        maximum=int(params['foldx_confirmation'].get('max_candidates',42))
+        maximum=int(params['foldx_confirmation'].get('max_candidates',60))
         # Reserve most first-pass capacity for doubles. A few spatially distinct
         # triples retain all exact pair controls without consuming the entire queue.
         triples=_physical_confirmation_priority([c for c in confirmable if c.order==3],max(1,maximum//12),areas)
@@ -1257,7 +1452,7 @@ def run_joint_v4_ml(
     if coverage_preview:
         foldx_candidates = _physical_confirmation_priority(
             [c for c in confirmable if c.order == 2 or params.get("candidate_ids") is not None],
-            int(params['foldx_confirmation'].get('max_candidates',42)), areas)
+            int(params['foldx_confirmation'].get('max_candidates',60)), areas)
     foldx = (
         _prediction(
             adapters["foldx"],
@@ -1287,7 +1482,8 @@ def run_joint_v4_ml(
         position_map,
     )
     annotate_candidate_risks(candidates, records, hypotheses)
-    allow_spurs_only = bool(params.get("allow_spurs_only_final", False))
+    allow_spurs_only = False
+    params["allow_spurs_only_final"] = False
     minimum_gain = float(params["panel_optimizer"].get("minimum_coverage_gain", 0.05))
     by_sector: dict[str, list[V4Candidate]] = {}
     sector_flags = {sector.sector_id: set(sector.quality_flags) for sector in sectors}
@@ -1354,12 +1550,17 @@ def run_joint_v4_ml(
             minimum_coverage_gain=minimum_gain,
             lower_order_coverage=lower_coverage,
             higher_order_information_gain=information_gain,
+            regional_coverage_gain=candidate.risk_components.get("regional_higher_order_gain"),
+            regional_gain_required=not physical_preview,
             physical_coverage_pending=physical_preview,
             sasa_conflict_positions=sasa_conflicts,
             sasa_context_sensitive_positions=sasa_context_sensitive,
             sasa_method_unverified_positions=sasa_method_unverified,
             sector_quality_flags=sector_flags.get(candidate.sector_id),
         )
+        if candidate.order > 2 and not physical_preview:
+            candidate.risk_components["higher_order_information_gain"] = information_gain
+            candidate.risk_components["higher_order_coverage_gain"] = max(candidate.coverage_by_scenario.values(), default=0.) - lower_coverage
         candidate.formal_eligible = not candidate.formal_exclusion_reasons
         if physical_preview and candidate.order==3 and candidate.formal_eligible:
             candidate.warnings.append('REAL_HIGHER_ORDER_GAIN_PENDING')
@@ -1404,7 +1605,7 @@ def run_joint_v4_ml(
             _annotate_stability([candidate],spurs.records,multi,combined,params["spurs_multi"],params["foldx_confirmation"],position_map)
             passed=candidate.stability.consensus_status == "CONSENSUS_PASS"
             if passed:
-                cleared={'SPURS_ONLY_REVIEW_REQUIRED','HIGHER_ORDER_REQUIRES_FOLDX'}
+                cleared={'SPURS_ONLY_REVIEW_REQUIRED','HIGHER_ORDER_REQUIRES_FOLDX','COMBINATION_FOLDX_MISSING'}
                 if params.get('optimization_profile') == PROFILE_V3:cleared.add('STRUCTURAL_ENERGY_CONFLICT')
                 candidate.formal_exclusion_reasons=[r for r in candidate.formal_exclusion_reasons if r not in cleared]
                 candidate.formal_eligible=not candidate.formal_exclusion_reasons
@@ -1455,13 +1656,53 @@ def run_joint_v4_ml(
         panel.hierarchy_resolution = {"raw": raw_metrics, "family": panel_metrics(selected, family_hypotheses),
             "interpretation": "Unresolved raw/family hypotheses remain audited; connectivity groups are not equivalence classes."}
         attach_hypothesis_responses(selected, hypotheses, graph, radius_a=response_radius, decay_length_a=response_decay)
-    selected_sector_ids = {item.sector_id for item in selected}
-    reported_uncovered = {item["sector_id"] for item in panel.uncovered_components}
-    for sector in sectors:
-        if sector.sector_id not in selected_sector_ids | reported_uncovered:
-            panel.uncovered_components.append(
-                {"sector_id": sector.sector_id, "reason": "NO_FEASIBLE_CANDIDATE"}
-            )
+    recommendation_source = {**(source_provenance or {}), "models": {
+        name: {"provenance": worker.provenance, "status": worker.status}
+        for name, worker in (("spurs_single", spurs), ("spurs_multi", multi), ("discotope", discotope), ("foldx", foldx), ("procaliper", procaliper))}}
+    recommendation_source["resource_audits"] = {
+        row["sector_id"]: row for row in candidate_pool_diagnostics.get("foldx_region_resources", [])}
+    panel.sector_recommendations = build_sector_recommendations(candidates, sectors,
+        {item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface}, params, selected,
+        graph=graph, records=records, source_provenance=recommendation_source, epitope_evidence=epitope)
+    from .spatial_support import candidate_region_membership, site_signature
+    foldx_ids = {c.candidate_id for c in foldx_candidates}
+    for row in panel.sector_recommendations:
+        associated = [c for c in candidates if row["sector_id"] in candidate_region_membership(c, sectors)["region_ids"]]
+        exclusive = [c for c in associated if candidate_region_membership(c, sectors)["exclusive_region_id"] == row["sector_id"]]
+        generated = next((r for r in candidate_pool_diagnostics.get("sector_resources", [])
+                          if r["sector_id"] == row["sector_id"]), {})
+        confirmation = next((r for r in candidate_pool_diagnostics.get("foldx_region_resources", [])
+                             if r["sector_id"] == row["sector_id"]), {})
+        row["resource_audit"] = {**generated, **confirmation,
+            "pool_candidate_count": len(associated), "pool_exclusive_count": len(exclusive),
+            "pool_exclusive_groups": len({site_signature(c) for c in exclusive}),
+            "spurs_scored_count": sum(c.stability is not None and c.stability.spurs_multi_ddg_kcal_mol is not None for c in associated),
+            "foldx_scheduled_count": sum(c.candidate_id in foldx_ids for c in associated),
+            "foldx_success_count": sum(c.stability is not None and c.stability.foldx_ddg_kcal_mol is not None for c in associated),
+            "formal_eligible_count": sum(c.formal_eligible for c in associated),
+            "formal_exclusive_count": sum(c.formal_eligible for c in exclusive)}
+        audit = row["resource_audit"]
+        audit["reasons"] = []
+        if any(audit.get("quota_deficits", {}).values()):
+            audit["reasons"].append("现有搜索未找到足够的不同专属位点组；保留实际配额缺口，不放宽位点与几何规则。")
+        confirmable_count = audit.get("confirmable_exclusive_groups", 0)
+        scheduled_count = audit.get("scheduled_exclusive_groups", 0)
+        if confirmable_count < 2:
+            audit["reasons"].append("符合组合预审条件的专属位点组不足两个，无法安排完整的专属FoldX保障。")
+        elif scheduled_count < 2:
+            audit["reasons"].append("FoldX固定预算不足以安排两个专属位点组；剩余缺口如实报告。")
+        if audit["foldx_success_count"] < audit["foldx_scheduled_count"]:
+            audit["reasons"].append("部分已安排的FoldX组合没有返回有效评分，证据仍缺失。")
+        if audit["formal_exclusive_count"] == 0:
+            audit["reasons"].append("本区目前没有满足全部准入条件的专属组合；待审查建议不属于合格推荐。")
+    candidate_pool_diagnostics["sector_resources_final"] = [row["resource_audit"] for row in panel.sector_recommendations]
+    selected_positions = {option.residue.uniprot_pos for candidate in selected for option in candidate.mutations}
+    panel.uncovered_components = [
+        {"sector_id": row["sector_id"], "reason": (
+            "NO_SELECTED_FEASIBLE_CANDIDATE" if row["formal_eligible"] else "NO_FEASIBLE_CANDIDATE")}
+        for row in panel.sector_recommendations
+        if not selected_positions.intersection(next(s.residue_positions for s in sectors if s.sector_id == row["sector_id"]))
+    ]
     required = {"spurs_single": spurs, "spurs_multi": multi}
     missing = [name for name, result in required.items() if not _complete_success(result)]
     foldx_run_success = _complete_success(foldx)
@@ -1470,10 +1711,12 @@ def run_joint_v4_ml(
         for item in candidates
     )
     selected_panel_foldx_complete = bool(selected) and all(
-        item.stability and item.stability.foldx_ddg_kcal_mol is not None for item in selected
+        item.stability and item.stability.foldx_ddg_kcal_mol is not None
+        and math.isfinite(item.stability.foldx_ddg_kcal_mol) for item in selected
     )
     multi_ok = bool(selected) and all(
-        item.stability and item.stability.spurs_multi_ddg_kcal_mol is not None for item in selected
+        item.stability and item.stability.spurs_multi_ddg_kcal_mol is not None
+        and math.isfinite(item.stability.spurs_multi_ddg_kcal_mol) for item in selected
     )
     if physical_preview or mode == "preview":
         recommendation_status = "PREVIEW_NOT_FOR_FORMAL_RECOMMENDATION"
@@ -1536,7 +1779,7 @@ def run_joint_v4_ml(
     if any(sector.sector_type == "COVERAGE_ONLY" for sector in sectors):
         warnings.append("At least one sector has LOW_EPITOPE_PRIOR.")
     if len(sectors) > max(1, int(params.get("max_sectors", 7))):
-        warnings.append("Display region count was increased to preserve connectivity and diameter constraints; construct budget is unchanged.")
+        warnings.append("Display region count exceeds the soft target to balance surface residue counts while preserving connectivity and diameter constraints; construct budget is unchanged.")
     legacy_regions = _legacy_regions(sectors, records)
     legacy_designs = _legacy_designs(
         selected, sectors, protein, original_cds, recommendation_status
@@ -1544,6 +1787,9 @@ def run_joint_v4_ml(
     legacy_designs.extend(
         _deconvolution_presets(legacy_designs, records, protein, original_cds)
     )
+    legacy_designs.extend(_sector_recommendation_designs(panel, candidates,
+        [design for design in legacy_designs if design.design_role == "STAGE1_PROBE"],
+        sectors, protein, original_cds))
     result = JointV4Result(
         schema_version="4.0",
         recommendation_status=recommendation_status,
@@ -1573,6 +1819,15 @@ def run_joint_v4_ml(
             for error in result.errors
         ],
         provenance={
+            "sector_recommendation_policy": {
+                "version": "coverage_first_regions_v2_spatial_complementarity",
+                "membership": "actual_mutation_positions_in_final_display_region",
+                "coverage_basis": "geodesic_0_eligible_surface_area",
+                "regional_priority": "mean_9_12_15_sector_coverage_then_marginal_area_then_overlap_then_direct_area_then_risk",
+                "geometric_support_interpretation": "neighborhood proxy only; no biological perturbation or minimum distance gate",
+                "near_threshold": "independent_failed_gates_then_missing_evidence_then_known_normalized_excess",
+                "budget_scope": "selected_primary_constructs_only; regional suggestions are alternatives",
+            },
             "surface_perturbation": physical_summary,
             **dict(source_provenance or {}),
             "surface_graph": graph_provenance,
@@ -1623,6 +1878,8 @@ def run_joint_v4_ml(
             inventories[name].weights_sha256 = str(provenance["weights_sha256"])
         if provenance.get("version"):
             inventories[name].version = str(provenance["version"])
+        if provenance.get("git_revision"):
+            inventories[name].git_revision = str(provenance["git_revision"])
         if provenance.get("actual_device"):
             inventories[name].device = str(provenance["actual_device"])
     write_v4_outputs(

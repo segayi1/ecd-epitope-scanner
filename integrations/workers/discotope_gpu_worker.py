@@ -11,7 +11,7 @@ import time
 import traceback
 from pathlib import Path
 
-from gpu_runtime import is_cuda_oom, recovery_devices, serialized_gpu, sha256_model_files
+from gpu_runtime import is_cuda_oom, recovery_devices, serialized_gpu, sha256_model_files, software_identity
 
 
 def _project_root() -> Path:
@@ -120,6 +120,8 @@ def main() -> int:
             )
         device = actual_device
         provenance = {
+            **software_identity("discotope3", vendor),
+            "model_revision": "DiscoTope-3.0",
             "worker": "discotope_gpu_worker",
             "device": device,
             "torch_version": torch.__version__,

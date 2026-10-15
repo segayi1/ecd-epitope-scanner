@@ -646,6 +646,11 @@ def calculate_sasa(
     for residue in list(chain):
         if not is_aa(residue, standard=False):
             chain.detach_child(residue.id)
+            continue
+        # Match the heavy-atom prediction input and the maximum-ASA reference.
+        for atom in list(residue):
+            if atom.element.upper() in {"H", "D"}:
+                residue.detach_child(atom.id)
     calculator = ShrakeRupley(
         probe_radius=1.4,
         n_points=960,
@@ -663,7 +668,7 @@ def calculate_sasa(
         output[(chain.id, int(residue.id[1]), _clean_icode(residue.id[2]))] = (total, side)
     return output, (
         "Bio.PDB Shrake-Rupley 1.4A/960 points on the isolated selected protein chain "
-        "(solvent, ions, ligands and partner chains excluded), "
+        "(hydrogen, deuterium, solvent, ions, ligands and partner chains excluded), "
         "element radii pinned to the Tien-2013/DSSP set (C 1.80 N 1.60 O 1.40 S 1.85)"
     )
 

@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 build/
 .venv/
+.venv_pre_reinstall_*/
 .tool_envs/
 .tool_cache/
 .packages/

@@ -83,6 +83,9 @@ class JobCreate(BaseModel):
     case_time_budget_seconds: float | None = Field(default=None,gt=0,allow_inf_nan=False)
     case_byte_budget: int | None = Field(default=None,gt=0)
     max_sectors: int = 7
+    target_sector_residues: int | None = Field(default=None, ge=10, le=15)
+    maximum_sector_geodesic_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    maximum_sector_ca_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     max_primary_constructs: int | None = Field(default=None, ge=1, le=12)
     minimum_constructs: int | None = Field(default=None, ge=1, le=12)
     target_constructs: int | None = Field(default=None, ge=1, le=12)
@@ -353,13 +356,16 @@ def _job_or_404(job_id: str) -> dict[str, Any]:
         raise HTTPException(404, "Job not found") from exc
 
 
-def _public_job(job: dict[str, Any]) -> dict[str, Any]:
+def _public_job(job: dict[str, Any], *, view: str = "full") -> dict[str, Any]:
     result = job.get("result")
     if result and job["status"] == "COMPLETE":
         result = dict(result)
         result["structure_url"] = f"/api/jobs/{job['id']}/files/ecd_structure.cif"
         result["download_url"] = f"/api/jobs/{job['id']}/files/ecd_epitope_design.zip"
         result["job_id"] = job["id"]
+        if view == "display":
+            from .joint_design_v4.reporting import project_display_analysis
+            result = project_display_analysis(result)
     output = dict(job)
     output["result"] = result
     request = dict(output.get("request") or {})
@@ -450,6 +456,9 @@ async def create_upload_job(
     case_time_budget_seconds: float | None = Form(None,gt=0,allow_inf_nan=False),
     case_byte_budget: int | None = Form(None,gt=0),
     max_sectors: int = Form(7),
+    target_sector_residues: int | None = Form(None, ge=10, le=15),
+    maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
     max_primary_constructs: int | None = Form(None),
     minimum_constructs: int | None = Form(None),
     target_constructs: int | None = Form(None),
@@ -480,7 +489,10 @@ async def create_upload_job(
             case_time_budget_seconds=case_time_budget_seconds,case_byte_budget=case_byte_budget,
             surface_strategy=surface_strategy,minimum_constructs=minimum_constructs,
             target_constructs=target_constructs,maximum_constructs=maximum_constructs,
-            max_primary_constructs=max_primary_constructs,adaptive_budget=adaptive_budget)
+            max_primary_constructs=max_primary_constructs,adaptive_budget=adaptive_budget,
+            target_sector_residues=target_sector_residues,
+            maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+            maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a)
     except ValueError as exc:
         raise HTTPException(422,str(exc)) from exc
     placeholder = PipelineRequest(
@@ -504,6 +516,9 @@ async def create_upload_job(
         design_engine=design_engine,
         ml_mode=ml_mode,
         max_sectors=max_sectors,
+        target_sector_residues=target_sector_residues,
+        maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+        maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a,
         max_primary_constructs=max_primary_constructs,
         minimum_constructs=minimum_constructs, target_constructs=target_constructs,
         maximum_constructs=maximum_constructs, adaptive_budget=adaptive_budget,
@@ -521,8 +536,8 @@ async def create_upload_job(
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str) -> dict[str, Any]:
-    return _public_job(_job_or_404(job_id))
+def get_job(job_id: str, view: Literal["full", "display"] = "full") -> dict[str, Any]:
+    return _public_job(_job_or_404(job_id), view=view)
 
 
 @app.get("/api/jobs/{job_id}/events")

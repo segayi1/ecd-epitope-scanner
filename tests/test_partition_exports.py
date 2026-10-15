@@ -45,7 +45,7 @@ def test_partition_success_exports_share_membership_and_diagnostics(tmp_path, su
     )
     diagnostics = _read(tmp_path, "partition_diagnostics_v4.json")
     assert diagnostics["status"] == "COMPLETE"
-    assert diagnostics["version"] == "connected_bounded_v3"
+    assert diagnostics["version"] == "balanced_connected_v4"
     assert diagnostics["minimum_sector_residues"] == 4
     assert diagnostics["minimum_sector_area_a2"] == 50.0
     assert diagnostics["count_is_soft_target"] is True

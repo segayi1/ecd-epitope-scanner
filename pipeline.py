@@ -20,6 +20,7 @@ from .design import design_regions
 from .exporting import finalize_scientific_bundle, write_scientific_outputs
 from .joint_design import run_joint_v3
 from .joint_design_v4 import run_joint_v4_ml
+from .joint_design_v4.sector_recommendations import read_structure_evidence
 from .models import ProteinContext, StructureCandidate, to_dict
 from .partitioning import partition_surface
 from .retrieval import (
@@ -85,6 +86,9 @@ class PipelineRequest:
     ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
     surface_strategy: str = "legacy"
     max_sectors: int = 7
+    target_sector_residues: int | None = None
+    maximum_sector_geodesic_diameter_a: float | None = None
+    maximum_sector_ca_diameter_a: float | None = None
     max_primary_constructs: int | None = None
     minimum_constructs: int | None = None
     target_constructs: int | None = None
@@ -102,6 +106,27 @@ class PipelineRequest:
     case_byte_budget: int | None = None
 
     def __post_init__(self):
+        import math
+        sectoring = dict(self.metadata.get("joint_v4_ml", {}).get("sectoring", {}))
+        if self.target_sector_residues is not None:
+            if (isinstance(self.target_sector_residues, bool)
+                    or not isinstance(self.target_sector_residues, int)
+                    or not 10 <= self.target_sector_residues <= 15):
+                raise ValueError("Display target must be an integer from 10 to 15 residues")
+            sectoring["target_sector_residues"] = self.target_sector_residues
+        for field_name, parameter in (
+            ("maximum_sector_geodesic_diameter_a", "maximum_geodesic_diameter_a"),
+            ("maximum_sector_ca_diameter_a", "maximum_euclidean_diameter_a"),
+        ):
+            value = getattr(self, field_name)
+            if value is not None:
+                if not math.isfinite(value) or value <= 0:
+                    raise ValueError("Display diameter must be positive and finite")
+                sectoring[parameter] = value
+        if sectoring:
+            parameters = dict(self.metadata.get("joint_v4_ml", {}))
+            parameters["sectoring"] = sectoring
+            self.metadata["joint_v4_ml"] = parameters
         from .joint_design_v4.coverage_profile import PROFILES, resolve_threshold
         threshold = resolve_threshold(self.optimization_profile, self.metadata)
         if self.metadata.get('joint_v4_ml',{}).get('surface',{}).get('rsasa_threshold') is not None:
@@ -1095,6 +1120,7 @@ def _run_pipeline(
                 "identifier": source.get("identifier"), "provider": source.get("provider"),
                 "structure_sha256": sha256_file(parsed.path), "selected_chain": mapping.chain_id,
                 "biological_context_mode": request.biological_context_mode,
+                "structure_evidence": read_structure_evidence(parsed.path, predicted=predicted),
             },
             disable_external_engines=bool(request.metadata.get("disable_external_engines")),
         )
@@ -1131,6 +1157,9 @@ def _run_pipeline(
             "candidate_count": len(joint_result.candidates),
             "selected_candidate_ids": joint_result.panel.selected_candidate_ids,
             "panel_budget_decision": to_dict(joint_result.panel.budget_decision),
+            "sector_recommendations": to_dict(joint_result.panel.sector_recommendations),
+            "sector_recommendation_count": sum(row["candidate_id"] is not None for row in joint_result.panel.sector_recommendations),
+            "sector_review_count": sum(row["status"] == "NEAR_THRESHOLD" for row in joint_result.panel.sector_recommendations),
             "surface_complexity": to_dict(joint_result.complexity),
             "review_candidate_ids": [c.candidate_id for c in joint_result.candidates if c.qualification == "REVIEW_REQUIRED"],
             "recommended_by_class": {
@@ -1494,7 +1523,7 @@ def _run_pipeline(
                 "maximum": effective_max,
                 "adaptive_budget": panel_budget["adaptive_budget"],
                 "fixed_by_assay_profile": bool(assay_profile) and not panel_budget["adaptive_budget"],
-                "policy": "independent construct budget; minimum and target do not authorize forced filling",
+                "policy": "independent primary budget; minimum uses permitted candidates only; sector review suggestions do not occupy primary slots",
             },
             "patch_engine": patch_engine,
             "joint_v3": config.JOINT_V3_PARAMETERS if patch_engine == "joint_v3" else None,
@@ -1567,7 +1596,7 @@ def _run_pipeline(
         ],
         "files": {},
     }
-    if request.optimization_profile in {'coverage_scan_v2_preview', 'coverage_scan_v3_preview'} and request.export_mode=='checkpoint':
+    if joint_v4_payload is not None:
         from .joint_design_v4.reporting import externalize_checkpoint_pair_diagnostics
         externalize_checkpoint_pair_diagnostics(analysis,output_dir)
     progress("EXPORTING", 0.91, "Writing auditable JSON, CSV, FASTA, GenBank and methods outputs")
@@ -1607,6 +1636,7 @@ def _run_pipeline(
             "mutation_menu_v2.json", "mutation_menu_v2.csv", "candidate_pool_v2.json",
             "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
             "selected_panel_v4.json", "surface_hypotheses_v4.json",
+            "sector_recommendations_v4.json", "sector_recommendations_v4.csv",
             "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_manifest_v41.json", "v4_scientific_report.md",
             "surface_graph_v41.json", "surface_display_regions_v41.json",
             "epitope_hypotheses_v41.json", "hypothesis_membership_v41.csv",

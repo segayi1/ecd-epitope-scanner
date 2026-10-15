@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -40,19 +41,30 @@ def _run_engine(command: list[str], cwd: Path, timeout: int) -> subprocess.Compl
     opt-in note below).  A hung engine must cost a degraded score, never the
     whole job, so TimeoutExpired is caught here at every call site.
     """
+    from .util import write_json
+    started = time.perf_counter()
     try:
         if "--timeSeedRotabase=true" in command:
             from .surface_perturbation.sampling_v3 import seeded_run
-            return seeded_run(command, cwd, timeout)
-        return subprocess.run(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
+            result = seeded_run(command, cwd, timeout)
+        else:
+            result = subprocess.run(
+                command, cwd=cwd, capture_output=True, text=True,
+                timeout=timeout, check=False,
+            )
+        write_json(cwd / 'engine_execution.json', {
+            'command': command, 'timeout_seconds': timeout,
+            'runtime_seconds': time.perf_counter() - started,
+            'status': 'SUCCESS' if result.returncode == 0 else 'NONZERO_EXIT',
+            'returncode': result.returncode,
+        })
+        return result
     except subprocess.TimeoutExpired:
+        write_json(cwd / 'engine_execution.json', {
+            'command': command, 'timeout_seconds': timeout,
+            'runtime_seconds': time.perf_counter() - started,
+            'status': 'TIMEOUT', 'returncode': None,
+        })
         return None
 
 
@@ -377,11 +389,11 @@ def _parse_dif_fxout(path: Path) -> list[float]:
 def _buildmodel_timeout(constructs: int, runs: int) -> int:
     """Scale the BuildModel wall-clock guard with the batch size.
 
-    Measured on the bundled FoldX: ~4 s per construct-run.  A fixed guard
-    either kills large legitimate batches or leaves a hung engine unchecked;
-    scale at 60 s per construct-run, floor 30 min, cap 4 h.
+    PD-L1 bulky substitutions can exceed the earlier 30-minute batch guard
+    while still producing valid models. Allow 120 s per construct-run, with
+    a one-hour floor and four-hour cap. This changes execution time only.
     """
-    return int(min(max(1800, constructs * runs * 60), 4 * 3600))
+    return int(min(max(3600, constructs * runs * 120), 4 * 3600))
 
 
 def score_with_foldx(

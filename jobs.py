@@ -264,7 +264,8 @@ class JobRunner:
                 shutil.rmtree(engine_runs)
 
             def progress(stage: str, value: float, message: str) -> None:
-                status = "COMPLETE" if stage == "COMPLETE" else "RUNNING"
+                # Publish terminal state only with the result below.
+                status = "RUNNING"
                 self.store.update(
                     job_id,
                     status=status,

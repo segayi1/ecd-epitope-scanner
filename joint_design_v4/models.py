@@ -186,6 +186,7 @@ class V4Candidate:
     coupling_class: str = 'NOT_EVALUATED'
     positive_lower_bound_qualified: bool = False
     footprint_characterization_status: str = 'NOT_EVALUATED'
+    geometry_support: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -261,6 +262,7 @@ class V4Panel:
     budget_decision: PanelBudgetDecision | None = None
     nearby_hypothesis_pairs: list[dict[str, Any]] = field(default_factory=list)
     hierarchy_resolution: dict[str, Any] = field(default_factory=dict)
+    sector_recommendations: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -312,6 +314,8 @@ class PanelBudgetDecision:
     budget_curve: list[dict[str, Any]] = field(default_factory=list)
     minimum_target_met: bool = False
     normalization: str = "fixed_sqrt_8"
+    selection_priority: str = "coverage_then_information_then_risk"
+    coverage_basis: str = "hypothesis_response_proxy"
 
 
 @dataclass

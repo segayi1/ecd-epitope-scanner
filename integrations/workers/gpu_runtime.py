@@ -71,3 +71,31 @@ def sha256_model_files(paths: list[Path], root: Path) -> tuple[str | None, dict[
         combined.update(name.encode("utf-8"))
         combined.update(bytes.fromhex(individual[name]))
     return combined.hexdigest(), individual
+
+
+def software_identity(package_name: str, repository: Path) -> dict:
+    """Record the installed package separately from Torch and model weights."""
+    from importlib.metadata import PackageNotFoundError, version
+    import subprocess
+
+    try:
+        package_version = version(package_name)
+    except PackageNotFoundError:
+        package_version = None
+    identity = {"package_name": package_name, "version": package_version,
+                "version_source": "installed_distribution_metadata",
+                "git_revision": None, "git_tracked_modifications": None}
+    # Without a vendor .git, git would identify the enclosing workbench instead.
+    if (repository / ".git").exists():
+        try:
+            identity["git_revision"] = subprocess.run(
+                ["git", "-C", str(repository), "rev-parse", "HEAD"],
+                check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+            identity["git_tracked_modifications"] = subprocess.run(
+                ["git", "-C", str(repository), "status", "--porcelain", "--untracked-files=no"],
+                check=True, capture_output=True, text=True, timeout=5).stdout.splitlines()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    identity["source_sha256"], identity["source_files_sha256"] = sha256_model_files(
+        list(repository.rglob("*.py")), repository)
+    return identity
