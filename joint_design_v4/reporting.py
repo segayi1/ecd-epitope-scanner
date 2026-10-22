@@ -685,5 +685,14 @@ def project_display_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
                 compact[name] = compact_identity(item, (*path, name))
         return compact
 
+    af3 = (projected.get("methods") or {}).get("af3_preprocessing")
+    if af3:
+        projected["methods"] = dict(projected["methods"])
+        compact = projected["methods"]["af3_preprocessing"] = dict(af3)
+        artifact = (projected.get("source", {}).get("af3_preprocessing") or {}).get("report", "af3_selection_report.json")
+        for name in ("Rcore", "Rdiag", "Ecore", "diagnostic_edges", "pair_rmsd",
+                     "per_residue_diagnostics", "domain_pae", "minority_contacts"):
+            if name in compact:
+                compact[name + "_reference"] = reference(artifact, [name], compact.pop(name))
     return compact_identity(projected)
 

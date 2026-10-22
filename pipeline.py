@@ -70,6 +70,7 @@ class PipelineRequest:
     chain: str | None = None
     structure_path: str | None = None
     confidence_path: str | None = None
+    af3_manifest_path: str | None = None
     sequence: str | None = None
     ecd_start: int | None = None
     ecd_end: int | None = None
@@ -104,15 +105,25 @@ class PipelineRequest:
     model_assets_root: str | None = None
     case_time_budget_seconds: float | None = None
     case_byte_budget: int | None = None
+    analysis_target: str = "antigen"
 
     def __post_init__(self):
         import math
+        if self.af3_manifest_path and self.input_type != "af3_upload":
+            raise ValueError("AF3 directory manifests require input_type=af3_upload")
+        if self.analysis_target not in {"antigen", "binder"}:
+            raise ValueError("analysis_target must be antigen or binder")
+        if self.analysis_target == "binder":
+            if self.input_type not in {"structure", "af3_upload"}:
+                raise ValueError("Binder analysis requires an uploaded structure")
+            self.assay_profile = None
+            self.assay_format = "unspecified"
         sectoring = dict(self.metadata.get("joint_v4_ml", {}).get("sectoring", {}))
         if self.target_sector_residues is not None:
             if (isinstance(self.target_sector_residues, bool)
                     or not isinstance(self.target_sector_residues, int)
-                    or not 10 <= self.target_sector_residues <= 15):
-                raise ValueError("Display target must be an integer from 10 to 15 residues")
+                    or not 7 <= self.target_sector_residues <= 15):
+                raise ValueError("Display target must be an integer from 7 to 15 residues")
             sectoring["target_sector_residues"] = self.target_sector_residues
         for field_name, parameter in (
             ("maximum_sector_geodesic_diameter_a", "maximum_geodesic_diameter_a"),
@@ -189,6 +200,30 @@ def _noop(stage: str, progress: float, message: str) -> None:
     del stage, progress, message
 
 
+def _preserve_uploaded_inputs(request, output_dir):
+    identity = {"input_type": request.input_type, "files": {}}
+    paths = [("confidence", request.confidence_path, "source_confidence.json")]
+    if request.af3_manifest_path:
+        paths.append(("af3_manifest", request.af3_manifest_path, "af3_inputs/manifest.json"))
+    structure = Path(request.structure_path or request.identifier or "")
+    suffix = structure.suffix.lower()
+    if structure.is_file() and suffix in {".pdb", ".cif", ".mmcif"}:
+        paths.append(("structure", str(structure), "native_input" + (".cif" if suffix == ".mmcif" else suffix)))
+    for role, value, name in paths:
+        if not value:
+            continue
+        original, destination = Path(value), output_dir / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        digest = sha256_file(original)
+        if original.resolve() != destination.resolve():
+            shutil.copyfile(original, destination)
+        if sha256_file(original) != digest or sha256_file(destination) != digest:
+            raise PipelineError("Uploaded input changed while preserving evidence: " + role)
+        identity["files"][role] = {"original_path": str(original.resolve()), "artifact": name, "sha256": digest}
+    write_json(output_dir / "source_input_identity.json", identity)
+    return identity
+
+
 def _synthetic_context(request: PipelineRequest) -> ProteinContext:
     sequence = (request.sequence or "").strip().upper()
     if not sequence or request.ecd_start is None or request.ecd_end is None:
@@ -213,9 +248,9 @@ def _synthetic_context(request: PipelineRequest) -> ProteinContext:
 def _pdb_only_context(
     parsed: ParsedStructure,
     request: PipelineRequest,
-    assay_profile: dict[str, Any],
+    assay_profile: dict[str, Any] | None,
 ) -> tuple[ProteinContext, str]:
-    """Build an ECD-only context from observed coordinates.
+    """Build a selected-chain context from observed coordinates.
 
     No canonical numbering or unobserved residues are invented.  When no
     chain is specified, a complex-aware antigen-chain heuristic is used and
@@ -228,18 +263,23 @@ def _pdb_only_context(
     }
     if not chains:
         raise PipelineError("Uploaded structure contains no protein chain with at least 8 residues")
+    binder = request.analysis_target == "binder"
+    if binder and len(chains) > 1 and not request.chain:
+        raise PipelineError("Binder complexes require an explicit binder chain; available chains: "
+                            + ", ".join(sorted(chains)))
     chain_selection = infer_antigen_chain(parsed, request.chain)
     chain_id = str(chain_selection["chain_id"])
     sequence = chains[chain_id]
     return ProteinContext(
         accession=f"PDB_ONLY_CHAIN_{chain_id}",
-        protein_name="Coordinate-derived antigen ECD",
+        protein_name="Coordinate-derived binder" if binder else "Coordinate-derived antigen ECD",
         organism="unspecified",
         sequence=sequence,
         ecd_start=1,
         ecd_end=len(sequence),
         membrane_anchor_position=len(sequence),
-        topology="K562 display: N-terminal extracellular antigen ECD, C-terminal PDGFRB membrane anchor",
+        topology=("Binder coordinate chain; membrane orientation and assay context unspecified" if binder else
+                  "K562 display: N-terminal extracellular antigen ECD, C-terminal PDGFRB membrane anchor"),
         source_url="user-provided coordinate file",
         raw={
             "sequence_source": "observed coordinate residues",
@@ -247,7 +287,8 @@ def _pdb_only_context(
             "auto_selected_chain": request.chain is None,
             "chain_selection": chain_selection,
             "available_chain_lengths": {key: len(value) for key, value in sorted(chains.items())},
-            "assay_profile": assay_profile["id"],
+            "assay_profile": assay_profile["id"] if assay_profile else None,
+            "analysis_target": request.analysis_target,
         },
     ), chain_id
 
@@ -670,6 +711,7 @@ def _run_pipeline(
     predicted = False
     source: dict[str, Any] = {}
     chain_selection: dict[str, Any] = {}
+    af3_preprocessing = None
     input_type = request.input_type.lower()
     if input_type == "uniprot":
         accession = request.identifier or request.accession or ""
@@ -776,23 +818,56 @@ def _run_pipeline(
             "chain_selection": chain_selection,
         }
     elif input_type in {"structure", "af3_upload"}:
-        structure_path = Path(request.structure_path or request.identifier)
+        if request.af3_manifest_path:
+            from .af3_preprocessing import first_af3_structure, preserve_af3_manifest
+            request.af3_manifest_path = str(preserve_af3_manifest(Path(request.af3_manifest_path), output_dir))
+            structure_path = first_af3_structure(Path(request.af3_manifest_path))
+        else:
+            structure_path = Path(request.structure_path or request.identifier)
         parsed = load_structure(structure_path)
         preferred_chain = request.chain
+        if request.analysis_target == "binder" and not preferred_chain:
+            usable_chains = [str(chain.id) for chain in parsed.model
+                             if len(standard_residues(chain)) >= 8]
+            if len(usable_chains) != 1:
+                raise PipelineError("Binder complexes require an explicit binder chain; available chains: "
+                                    + ", ".join(usable_chains))
+            preferred_chain = usable_chains[0]
         if request.accession:
             protein = fetch_protein_context(request.accession, client, output_dir, ecd_override)
         elif request.sequence:
             protein = _synthetic_context(request)
-        elif assay_profile:
+        elif assay_profile or request.analysis_target == "binder":
             protein, preferred_chain = _pdb_only_context(parsed, request, assay_profile)
         else:
             protein = _synthetic_context(request)
-        mapping = best_chain_mapping(
-            parsed,
-            protein,
-            [preferred_chain] if preferred_chain else None,
-            allowed_chains=[preferred_chain] if preferred_chain else None,
-        )
+        if request.af3_manifest_path:
+            from .af3_preprocessing import select_af3_model
+
+            def af3_admission(model, model_mapping):
+                candidate = StructureCandidate(identifier=model.path.stem, category="AB-INITIO",
+                    provider="AF3 preprocessing", model_url=str(model.path), explicit_af3=True)
+                _apply_admission_gate(candidate, protein, model_mapping)
+                if not candidate.eligible and not request.allow_partial:
+                    raise PipelineError("; ".join(candidate.rejection_reasons))
+
+            progress("ANALYZING", 0.36, "Validating AF3 samples and selecting a confidence-supported consensus representative")
+            af3_preprocessing = select_af3_model(Path(request.af3_manifest_path), protein,
+                chain=preferred_chain, allow_partial=request.allow_partial,
+                admission=af3_admission, output_dir=output_dir)
+            parsed, mapping = af3_preprocessing.parsed, af3_preprocessing.mapping
+            structure_path = af3_preprocessing.structure_path
+            request.structure_path = str(structure_path)
+            request.confidence_path = str(af3_preprocessing.confidence_path)
+            request.af3_manifest_path = str(output_dir / "af3_inputs" / "manifest.json")
+            write_json(output_dir / "request.json", request.as_dict())
+        else:
+            mapping = best_chain_mapping(
+                parsed,
+                protein,
+                [preferred_chain] if preferred_chain else None,
+                allowed_chains=[preferred_chain] if preferred_chain else None,
+            )
         predicted = input_type == "af3_upload" or bool(request.confidence_path)
         selected = StructureCandidate(
             identifier=structure_path.stem,
@@ -819,13 +894,14 @@ def _run_pipeline(
         selected.metadata["chain_selection"] = chain_selection
         candidates = [selected]
         source = {
-            "kind": "AF3 upload" if predicted else "downloaded structure upload",
+            "kind": "AF3 upload" if input_type == "af3_upload" else "user binder coordinates" if request.analysis_target == "binder" else "downloaded structure upload",
             "provider": "user",
             "identifier": structure_path.name,
             "original_path": str(structure_path.resolve()),
             "explicit_af3": input_type == "af3_upload",
             "sequence_source": protein.raw.get("sequence_source", "provided or canonical sequence"),
             "chain_selection": chain_selection,
+            "analysis_target": request.analysis_target,
         }
     else:
         raise PipelineError(f"Unsupported input_type: {request.input_type}")
@@ -834,22 +910,14 @@ def _run_pipeline(
         write_json(output_dir / "structure_candidates.json", candidate_manifest(candidates))
 
     progress("ANALYZING", 0.42, "Computing residue-level SASA, interfaces and folding-risk features")
+    source["input_identity"] = _preserve_uploaded_inputs(request, output_dir)
     structure_cif = _standardize_cif(parsed, output_dir / "structure.cif")
     write_mapped_ecd_cif(parsed, mapping, protein, output_dir / "ecd_structure.cif")
     # Folding ΔΔG is calculated for the mapped ECD heavy atoms alone. Other chains
     # remain in structure.cif for interface annotation and visual inspection.
     structure_pdb = write_mapped_ecd_pdb(parsed, mapping, protein, output_dir / "structure_for_energy.pdb")
-    confidence = read_json(Path(request.confidence_path)) if request.confidence_path else None
-    if request.surface_strategy == 'surface_perturbation_v1_preview':
-        if request.confidence_path:
-            confidence_source=Path(request.confidence_path);confidence_destination=output_dir/'source_confidence.json'
-            if confidence_source.resolve()!=confidence_destination.resolve():shutil.copyfile(confidence_source,confidence_destination)
-        if request.structure_path and Path(request.structure_path).is_file():
-            original=Path(request.structure_path)
-            suffix=original.suffix.lower()
-            if suffix in {'.cif','.pdb'}:
-                destination=output_dir/('native_input'+suffix)
-                if original.resolve()!=destination.resolve():shutil.copyfile(original,destination)
+    confidence = (af3_preprocessing.confidence if af3_preprocessing is not None else
+                  read_json(Path(request.confidence_path)) if request.confidence_path else None)
     records, methods = analyze_residues(
         parsed,
         mapping,
@@ -860,6 +928,18 @@ def _run_pipeline(
         ignored_positions=set(mapping.mismatch_positions),
         rsasa_threshold=float(request.metadata.get("surface_rsasa_threshold", config.RSASA_THRESHOLD)),
     )
+    if af3_preprocessing is not None:
+        methods["af3_preprocessing"] = af3_preprocessing.report
+        source["af3_preprocessing"] = {
+            "manifest": "af3_inputs/manifest.json",
+            "report": af3_preprocessing.report_path.resolve().relative_to(output_dir.resolve()).as_posix(),
+            "selected_model_id": af3_preprocessing.report["selected_model_id"],
+            "files": af3_preprocessing.files,
+        }
+    if request.analysis_target == "binder":
+        methods["analysis_target"] = "binder"
+        methods["confidence_method"] = "Not supplied; PDB B-factor semantics unverified" if not predicted else "Uploaded confidence evidence"
+        methods["coordinate_quality_status"] = "NOT_ASSESSED" if not predicted else "CONFIDENCE_GATES_APPLIED"
     mismatch_positions = list(getattr(mapping, "mismatch_positions", []) or [])
     mismatch_coordinates = [
         (position, residue["CA"].coord)
@@ -918,7 +998,8 @@ def _run_pipeline(
                 f"Conservation computation failed ({type(exc).__name__}); continuing without it."
             )
 
-    progress("PARTITIONING", 0.62, "Building Fab-footprint surface patches with epitope priors")
+    progress("PARTITIONING", 0.62, "Building binder surface patches" if request.analysis_target == "binder"
+             else "Building Fab-footprint surface patches with epitope priors")
     from .joint_design_v4.budget import resolve_budget, optimizer_budget
     panel_budget = resolve_budget(
         minimum=request.minimum_constructs, target=request.target_constructs,
@@ -944,7 +1025,8 @@ def _run_pipeline(
     effective_min = panel_budget["minimum_constructs"]
     stage1_target = panel_budget["target_constructs"]
     effective_max = panel_budget["maximum_constructs"]
-    membrane_anchor, membrane_normal = _transmembrane_geometry(mapping, protein)
+    membrane_anchor, membrane_normal = ((None, None) if request.analysis_target == "binder"
+                                        else _transmembrane_geometry(mapping, protein))
     assay_geometry = _profile_orientation_geometry(mapping, protein) if assay_profile else None
     patch_engine = str(
         request.metadata.get("patch_engine", request.design_engine or config.PATCH_ENGINE_VERSION)
@@ -1084,6 +1166,8 @@ def _run_pipeline(
             parameters=config.SURFACE_V2_PARAMETERS, reliability=reliability,
         )
         v4_params = dict(request.metadata.get("joint_v4_ml", {}))
+        if request.analysis_target == "binder":
+            v4_params["discotope"] = {**v4_params.get("discotope", {}), "enabled": False}
         if request.surface_strategy == "surface_perturbation_v1_preview":
             v4_params['surface_perturbation']={**v4_params.get('surface_perturbation',{}),
                 'reference_input':{'input_type':request.input_type,
@@ -1108,7 +1192,7 @@ def _run_pipeline(
         joint_result = run_joint_v4_ml(
             records, protein, output_dir, original_cds=request.original_cds,
             chain_id=mapping.chain_id, structure_pdb=structure_pdb,
-            structure_type="alphafold" if predicted else "solved",
+            structure_type="alphafold" if predicted else "unknown" if request.analysis_target == "binder" else "solved",
             parameters=v4_params, surface_geometry=v4_surface_result.surface,
             surface_v2_result=v4_surface_result,
             membrane_anchor=membrane_anchor,
@@ -1119,6 +1203,7 @@ def _run_pipeline(
             source_provenance={
                 "identifier": source.get("identifier"), "provider": source.get("provider"),
                 "structure_sha256": sha256_file(parsed.path), "selected_chain": mapping.chain_id,
+                "analysis_target": request.analysis_target,
                 "biological_context_mode": request.biological_context_mode,
                 "structure_evidence": read_structure_evidence(parsed.path, predicted=predicted),
             },
@@ -1441,6 +1526,13 @@ def _run_pipeline(
             "coordinates from the selected chain."
         )
     warnings.append("Production SASA uses Bio.PDB Shrake-Rupley with pinned Tien/DSSP radii.")
+    if request.analysis_target == "binder":
+        warnings.append("Binder surface scan uses the selected isolated chain; partner contacts are annotations. "
+                        "Membrane orientation, receptor binding and experimental folding are not established. "
+                        "DiscoTope antibody-epitope priors are disabled for binder design.")
+        if not predicted:
+            warnings.append("Binder coordinate confidence is unassessed; B factors were not interpreted as pLDDT. "
+                            "Structural and stability scores remain computational design evidence.")
     if patch_engine == "joint_v3":
         warnings.extend([
             "Joint V3 sectors are coarse localization areas; they are not exact antibody footprints.",
@@ -1480,6 +1572,7 @@ def _run_pipeline(
         "request": request.as_dict(),
         "source": source,
         "assay_profile": assay_profile,
+        "analysis_target": request.analysis_target,
         "assay_geometry": assay_geometry,
         "protein": {
             "accession": protein.accession,
@@ -1494,7 +1587,7 @@ def _run_pipeline(
             "ecd_coding_sequence": wt_coding_sequence,
             "ecd_coding_source": wt_coding_source,
             "topology": protein.topology,
-            "membrane_anchor_position": protein.membrane_anchor_position,
+            "membrane_anchor_position": None if request.analysis_target == "binder" else protein.membrane_anchor_position,
             "features": [to_dict(item) for item in protein.features],
         },
         "structure_selection": selection,
@@ -1550,7 +1643,9 @@ def _run_pipeline(
                 "directed alphabet + anchor mutation; exhaustive enumeration of cleared menus"
             ),
             "functional_interfaces": "included with persistent risk flag",
-            "output_sequence": "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region",
+            "output_sequence": ("Selected binder chain fragment only; coordinate-derived positions unless a reference sequence was supplied"
+                                if request.analysis_target == "binder" else
+                                "ECD coding fragment only; no start/stop/signal peptide/tag/TM/cytoplasmic region"),
             "random_seed": None,
         },
         "methods": methods,
@@ -1588,6 +1683,10 @@ def _run_pipeline(
         "designs": [to_dict(item) for item in designs],
         "warnings": warnings,
         "validation_gates": [
+            "Verify binder construct identity and residue mapping against the intended sequence",
+            "Independently measure binder expression, folding and aggregation",
+            "Measure receptor binding or the intended functional readout with matched WT and negative controls",
+        ] if request.analysis_target == "binder" else [
             "K562 antigen surface-display normalization to WT using N-terminal Myc",
             "independent non-competing conformation-sensitive antibody or ligand-binding control",
             "Jurkat Fab surface-expression and H/L assembly control",

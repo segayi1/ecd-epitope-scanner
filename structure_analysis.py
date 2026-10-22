@@ -715,6 +715,19 @@ def _mean_bfactor(residue: Any) -> float | None:
 def _af3_atom_plddt(parsed: ParsedStructure, confidence: dict[str, Any] | None) -> dict[int, float]:
     if not confidence:
         return {}
+    if "_validated_atom_plddts" in confidence:
+        from .util import sha256_file
+        if confidence.get("_source_structure_sha256") != sha256_file(parsed.path):
+            raise PipelineError("Validated AF3 confidence belongs to a different structure")
+        values = confidence["_validated_atom_plddts"]
+        result = {}
+        for chain in parsed.model:
+            for residue in chain:
+                key = (str(chain.id), int(residue.id[1]), _clean_icode(residue.id[2]))
+                stored = key if key in values else "|".join((key[0], str(key[1]), key[2]))
+                if stored in values:
+                    result[id(residue)] = float(values[stored])
+        return result
     values = confidence.get("atom_plddts") or confidence.get("atom_plddt")
     if not isinstance(values, list):
         return {}

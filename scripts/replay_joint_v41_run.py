@@ -25,7 +25,20 @@ def replay_request_data(source: Path, output: Path, analysis: dict, request_data
     data = dict(request_data)
     predicted_upload = data.get("input_type") == "af3_upload"
     structure_path = source / "structure.cif"
-    if predicted_upload:
+    if predicted_upload and data.get("af3_manifest_path"):
+        from ecd_epitope_scanner.af3_preprocessing import preserve_af3_manifest, first_af3_structure
+        manifest_path = source / "af3_inputs" / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError("AF3 replay requires the frozen multi-model manifest")
+        data["af3_manifest_path"] = str(preserve_af3_manifest(manifest_path, output))
+        structure_path = source / "native_input.cif"
+        if not structure_path.is_file():
+            structure_path = first_af3_structure(Path(data["af3_manifest_path"]))
+        confidence_path = source / "source_confidence.json"
+        if not confidence_path.is_file():
+            raise ValueError("AF3 replay requires the selected original confidence file")
+        data["confidence_path"] = str(confidence_path)
+    elif predicted_upload:
         structure_path = source / "af3_upload" / "official_af3_model.cif"
         confidence_path = source / "af3_upload" / "official_af3_confidences.json"
         if not structure_path.is_file() or not confidence_path.is_file():

@@ -4,10 +4,11 @@ import asyncio
 import csv
 import json
 import os
+import re
 import subprocess
 import uuid
 from dataclasses import asdict
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -435,9 +436,90 @@ async def _save_upload(upload: UploadFile, path: Path, maximum: int = 80 * 1024 
             handle.write(chunk)
 
 
+def _af3_upload_paths(files: list[UploadFile]) -> list[tuple[UploadFile, str]]:
+    if not files:
+        raise HTTPException(422, "Select an extracted AF3 folder")
+    paths: list[tuple[UploadFile, str]] = []
+    seen: set[str] = set()
+    models = confidences = 0
+    for upload in files:
+        raw = upload.filename or ""
+        if not raw or "\\" in raw or "\x00" in raw or raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
+            raise HTTPException(422, "AF3 folder contains an unsafe relative path")
+        path = PurePosixPath(raw)
+        normalized = path.as_posix()
+        if (not path.parts or path.is_absolute() or raw != normalized
+                or any(part in {"", ".", ".."} for part in path.parts) or ":" in path.parts[0]):
+            raise HTTPException(422, "AF3 folder contains an unsafe relative path")
+        key = normalized.casefold()
+        if key in seen:
+            raise HTTPException(422, "AF3 folder contains duplicate normalized paths")
+        seen.add(key)
+        name = path.name.lower()
+        if (re.fullmatch(r"(?:.*_)?model_\d+\.cif", name) or name == "model.cif"
+                or name.endswith("_model.cif")):
+            models += 1
+        elif (re.fullmatch(r"(?:.*_)?full_data_\d+\.json", name) or name in {"full_data.json", "confidences.json"}
+                or name.endswith("_confidences.json")):
+            confidences += 1
+        paths.append((upload, normalized))
+    if models < 1 or models > 101:
+        raise HTTPException(422, "AF3 folder must contain at most 100 models plus an optional root alias")
+    if not confidences:
+        raise HTTPException(422, "AF3 folder must contain confidence JSON files")
+    return paths
+
+
+async def _import_af3_folder(files: list[UploadFile], workdir: Path) -> Path:
+    paths = _af3_upload_paths(files)  # Reject all unsafe names before writing any bytes.
+    staging = workdir / "af3_directory_upload"
+    if staging.exists() or staging.is_symlink():
+        raise HTTPException(409, "AF3 upload staging path already exists")
+    total = 0
+    created_staging = False
+    try:
+        try:
+            staging.mkdir(parents=True, exist_ok=False)
+            created_staging = True
+        except FileExistsError as exc:
+            raise HTTPException(409, "AF3 upload staging path already exists") from exc
+        for upload, relative in paths:
+            target = staging.joinpath(*PurePosixPath(relative).parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            name = target.name.lower()
+            confidence_file = (re.fullmatch(r"(?:.*_)?full_data_\d+\.json", name) is not None
+                               or name in {"full_data.json", "confidences.json"}
+                               or name.endswith("_confidences.json"))
+            model_file = (re.fullmatch(r"(?:.*_)?model_\d+\.cif", name) is not None
+                          or name == "model.cif" or name.endswith("_model.cif"))
+            maximum = 64 * 1024 * 1024 if confidence_file else 80 * 1024 * 1024 if model_file else 1024 * 1024 * 1024
+            written = 0
+            with target.open("xb") as handle:
+                while chunk := await upload.read(1024 * 1024):
+                    written += len(chunk)
+                    total += len(chunk)
+                    if written > maximum or total > 1024 * 1024 * 1024:
+                        raise HTTPException(413, "AF3 folder exceeds its upload size limit")
+                    handle.write(chunk)
+        from .af3_preprocessing import import_af3_directory
+
+        manifest = import_af3_directory(staging, workdir)
+        import shutil
+
+        shutil.rmtree(staging)
+        return manifest
+    except Exception:
+        if created_staging and staging.exists():
+            import shutil
+
+            shutil.rmtree(staging)
+        raise
+
+
 @app.post("/api/jobs/upload", status_code=202)
 async def create_upload_job(
     structure: UploadFile = File(...),
+    analysis_target: Literal["antigen", "binder"] = Form("antigen"),
     accession: str | None = Form(None),
     chain: str | None = Form(None),
     sequence: str | None = Form(None),
@@ -456,7 +538,7 @@ async def create_upload_job(
     case_time_budget_seconds: float | None = Form(None,gt=0,allow_inf_nan=False),
     case_byte_budget: int | None = Form(None,gt=0),
     max_sectors: int = Form(7),
-    target_sector_residues: int | None = Form(None, ge=10, le=15),
+    target_sector_residues: int | None = Form(None, ge=7, le=15),
     maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
     maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
     max_primary_constructs: int | None = Form(None),
@@ -502,6 +584,7 @@ async def create_upload_job(
         case_time_budget_seconds=case_time_budget_seconds, case_byte_budget=case_byte_budget,
         surface_strategy=surface_strategy,
         input_type="structure",
+        analysis_target=analysis_target,
         identifier=structure.filename or "structure",
         accession=accession or None,
         chain=chain or None,
@@ -510,7 +593,13 @@ async def create_upload_job(
         ecd_end=ecd_end,
         original_cds=original_cds or None,
         allow_partial=allow_partial,
-        assay_profile=None if optimization_profile in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"} else DEFAULT_ASSAY_PROFILE_ID,
+        assay_profile=(
+            None
+            if analysis_target == "binder"
+            or optimization_profile in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}
+            else DEFAULT_ASSAY_PROFILE_ID
+        ),
+        assay_format="unspecified" if analysis_target == "binder" else "cell_surface",
         minimum_regions=1,
         maximum_regions=6,
         design_engine=design_engine,
@@ -532,6 +621,89 @@ async def create_upload_job(
     request.structure_path = str(target)
     STORE.update(job["id"], request_json=request.as_dict() | {"original_cds": request.original_cds})
     RUNNER.submit(job["id"])
+    return _public_job(STORE.get(job["id"]))
+
+
+@app.post("/api/jobs/af3-directory", status_code=202)
+async def create_af3_directory_job(
+    files: list[UploadFile] = File(...),
+    analysis_target: Literal["antigen", "binder"] = Form("antigen"),
+    official_source_confirmed: bool = Form(...),
+    accession: str | None = Form(None),
+    chain: str | None = Form(None),
+    sequence: str | None = Form(None),
+    ecd_start: int | None = Form(None),
+    ecd_end: int | None = Form(None),
+    design_engine: Literal["joint_v4_ml"] = Form("joint_v4_ml"),
+    ml_mode: Literal["strict", "preview"] = Form("strict"),
+    surface_strategy: Literal["legacy", "surface_perturbation_v1_preview"] = Form("legacy"),
+    optimization_profile: Literal["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"] = Form("legacy"),
+    candidate_ids: list[str] | None = Form(None),
+    calibration_repeat_schedule: list[int] | None = Form(None),
+    export_mode: Literal["checkpoint", "deliverable"] = Form("deliverable"),
+    model_assets_root: str | None = Form(None),
+    case_time_budget_seconds: float | None = Form(None, gt=0, allow_inf_nan=False),
+    case_byte_budget: int | None = Form(None, gt=0),
+    max_sectors: int = Form(7),
+    target_sector_residues: int | None = Form(None, ge=7, le=15),
+    maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    max_primary_constructs: int | None = Form(None),
+    minimum_constructs: int | None = Form(None),
+    target_constructs: int | None = Form(None),
+    maximum_constructs: int | None = Form(None),
+    adaptive_budget: bool | None = Form(None),
+    allow_spurs_only_final: bool = Form(False),
+    biological_context_mode: str = Form("provided_structure"),
+) -> dict[str, Any]:
+    if not official_source_confirmed:
+        raise HTTPException(422, "Official AF3 source confirmation is required")
+    _af3_upload_paths(files)
+    if optimization_profile in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
+        surface_strategy = "surface_perturbation_v1_preview"
+        if maximum_constructs is None and max_primary_constructs is None:
+            maximum_constructs = 12
+    try:
+        from .joint_design_v4.budget import resolve_budget
+
+        resolve_budget(minimum=minimum_constructs, target=target_constructs,
+                       maximum=maximum_constructs, adaptive=adaptive_budget,
+                       legacy_max=max_primary_constructs,
+                       maximum_limit=12 if surface_strategy == "surface_perturbation_v1_preview" else 8)
+        request = PipelineRequest(
+            input_type="af3_upload", identifier=accession or "AF3_UPLOAD", accession=accession or None,
+            analysis_target=analysis_target, chain=chain or None, sequence=sequence or None,
+            ecd_start=ecd_start, ecd_end=ecd_end, strict_af3=True, allow_partial=False,
+            minimum_regions=1, maximum_regions=6,
+            design_engine=design_engine, ml_mode=ml_mode, surface_strategy=surface_strategy,
+            optimization_profile=optimization_profile, candidate_ids=candidate_ids,
+            calibration_repeat_schedule=calibration_repeat_schedule, export_mode=export_mode,
+            model_assets_root=model_assets_root, case_time_budget_seconds=case_time_budget_seconds,
+            case_byte_budget=case_byte_budget, max_sectors=max_sectors,
+            target_sector_residues=target_sector_residues,
+            maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+            maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a,
+            max_primary_constructs=max_primary_constructs, minimum_constructs=minimum_constructs,
+            target_constructs=target_constructs, maximum_constructs=maximum_constructs,
+            adaptive_budget=adaptive_budget, allow_spurs_only_final=allow_spurs_only_final,
+            biological_context_mode=biological_context_mode,
+            assay_profile=None if analysis_target == "binder" else DEFAULT_ASSAY_PROFILE_ID,
+            assay_format="unspecified" if analysis_target == "binder" else "cell_surface",
+            metadata={"official_af3_source_confirmed": True},
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    job = STORE.create(request)
+    try:
+        manifest = await _import_af3_folder(files, Path(job["workdir"]))
+        request.af3_manifest_path = str(manifest)
+        STORE.update(job["id"], request_json=request.as_dict() | {"original_cds": request.original_cds})
+        RUNNER.submit(job["id"])
+    except Exception as exc:
+        STORE.update(job["id"], status="FAILED", stage="FAILED", message="AF3 folder import failed", error=f"{type(exc).__name__}: {exc}")
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(422, f"Invalid AF3 folder: {exc}") from exc
     return _public_job(STORE.get(job["id"]))
 
 
@@ -605,6 +777,28 @@ async def upload_af3(
     ):
         raise HTTPException(422, "Confidence JSON lacks AF3 PAE/pLDDT arrays")
     RUNNER.resume_with_af3(job_id, structure_path, confidence_path)
+    return _public_job(STORE.get(job_id))
+
+
+@app.post("/api/jobs/{job_id}/af3-directory", status_code=202)
+async def upload_af3_directory(
+    job_id: str,
+    files: list[UploadFile] = File(...),
+    official_source_confirmed: bool = Form(...),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id)
+    if job["status"] != "WAITING_FOR_AF3_UPLOAD":
+        raise HTTPException(409, "Job is not waiting for AF3 files")
+    if not official_source_confirmed:
+        raise HTTPException(422, "Official AF3 source confirmation is required")
+    _af3_upload_paths(files)
+    try:
+        manifest = await _import_af3_folder(files, Path(job["workdir"]))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(422, f"Invalid AF3 folder: {exc}") from exc
+    RUNNER.resume_with_af3_manifest(job_id, manifest)
     return _public_job(STORE.get(job_id))
 
 

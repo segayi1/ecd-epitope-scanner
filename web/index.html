@@ -132,18 +132,23 @@
 <dialog id="upload-dialog" class="dlg">
   <form id="upload-form" method="dialog">
     <h3 data-i18n="upload.title">上传已下载结构</h3>
+    <label class="fld"><span data-i18n="upload.analysisTarget">分析对象</span><select id="upload-analysis-target" aria-describedby="upload-target-hint"><option value="antigen" data-i18n="upload.targetAntigen">抗原 ECD</option><option value="binder" data-i18n="upload.targetBinder">Binder 本体</option></select></label>
+    <p id="upload-target-hint" class="muted" aria-live="polite"></p>
+    <label class="fld"><span data-i18n="upload.sourceMode">输入类型</span><select id="upload-source-mode"><option value="structure" data-i18n="upload.singleStructure">单个结构文件</option><option value="af3-directory" data-i18n="upload.af3Directory">AF3 解压文件夹</option></select></label>
     <p class="muted" data-i18n="upload.hint">仅需抗原 ECD 的 PDB / mmCIF；固定使用 Jurkat-Fab × K562-抗原膜方位并输出最多 6 个粗定位探针。</p>
-    <label class="fld"><span data-i18n="upload.structureFile">结构文件</span>
+    <label class="fld" id="upload-structure-field"><span data-i18n="upload.structureFile">结构文件</span>
       <input id="upload-structure" type="file" accept=".pdb,.ent,.cif,.mmcif" required></label>
+    <label class="fld" id="upload-af3-directory-field" hidden><span data-i18n="upload.af3Directory">AF3 解压文件夹</span><input id="upload-af3-directory" type="file" webkitdirectory directory multiple></label>
+    <label class="chk" id="upload-af3-confirm-field" hidden><input id="upload-af3-confirm" type="checkbox"><span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
     <div class="grid2">
-      <label class="fld"><span data-i18n="upload.accession">UniProt accession</span><input id="upload-accession" data-i18n-placeholder="upload.accessionHint" placeholder="推荐填写"></label>
-      <label class="fld"><span data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
+      <label class="fld"><span id="upload-accession-label" data-i18n="upload.accession">UniProt accession</span><input id="upload-accession" data-i18n-placeholder="upload.accessionHint" placeholder="推荐填写"></label>
+      <label class="fld"><span id="upload-chain-label" data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
     </div>
     <label class="fld"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="upload-ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
     <label class="fld fld-sm"><span>表面策略</span><select id="upload-surface-strategy"><option value="legacy">现有V4</option><option value="surface_perturbation_v1_preview">真实扰动预览</option></select></label>
     <label class="fld fld-sm"><span>优化配置</span><select id="upload-optimization-profile"><option value="legacy">兼容配置</option><option value="coverage_scan_v2_preview">覆盖优先预览v2</option><option value="coverage_scan_v3_preview">覆盖与信息预览v3</option></select></label>
-    <details>
+    <details id="upload-antigen-advanced">
       <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
       <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>
       <div class="grid2">
@@ -161,11 +166,15 @@
 <dialog id="af3-dialog" class="dlg">
   <form id="af3-form" method="dialog">
     <h3 data-i18n="af3.title">补充官方 AF3 输出</h3>
+    <label class="fld"><span data-i18n="af3.sourceMode">AF3 输入</span><select id="af3-source-mode"><option value="pair" data-i18n="af3.modelPair">单个模型 + 置信度</option><option value="directory" data-i18n="af3.directory">AF3 解压文件夹</option></select></label>
+    <div id="af3-pair-fields">
     <p class="muted" data-i18n="af3.hint">需要 top-ranked mmCIF 与对应 confidences JSON。系统不会把 AFDB/AF2 当作 AF3。</p>
     <label class="fld"><span>AF3 model CIF</span>
       <input id="af3-structure" type="file" accept=".cif,.mmcif" required></label>
     <label class="fld"><span>AF3 confidences JSON</span>
       <input id="af3-confidence" type="file" accept=".json" required></label>
+    </div>
+      <label class="fld" id="af3-directory-field" hidden><span data-i18n="af3.directory">AF3 解压文件夹</span><input id="af3-directory" type="file" webkitdirectory directory multiple></label>
     <label class="chk"><input id="af3-confirm" type="checkbox" required>
       <span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
     <div class="dlg-actions">
@@ -180,6 +189,6 @@
 <script src="/assets/vendor/3Dmol-min.js"></script>
 <script src="/assets/vendor/pdbe-molstar-plugin-3.10.1.js"></script>
 <script src="/assets/renderer.js"></script>
-<script type="module" src="/assets/app.js"></script>
+<script type="module" src="/assets/app.js?v=af3-folder-upload-20261021-v1"></script>
 </body>
 </html>

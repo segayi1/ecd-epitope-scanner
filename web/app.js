@@ -114,7 +114,7 @@ async function api(url, options = {}) {
 
 async function loadI18n() {
   for (const lang of ["zh", "en"]) {
-    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json`); }
+    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=af3-folder-upload-20261021-v1`); }
     catch (e) { console.error(`i18n load failed for ${lang}`, e); state.i18n[lang] = {}; }
   }
   const saved = localStorage.getItem("ecd.lang");
@@ -375,37 +375,59 @@ async function submitRun(event) {
 
 async function submitUpload(event) {
   event.preventDefault();
-  const structure = $("upload-structure").files[0];
-  if (!structure) return;
-  $("upload-dialog").close();
-  const form = new FormData();
-  form.append("structure", structure);
+  const folderMode = $("upload-source-mode").value === "af3-directory";
+  const structure = $("upload-structure").files[0], folderFiles = [...$("upload-af3-directory").files];
+  if (folderMode ? (!folderFiles.length || !$("upload-af3-confirm").checked) : !structure) return;
+  $("upload-dialog").close(); const form = new FormData();
+  const analysisTarget = $("upload-analysis-target").value;
+  if (folderMode) { folderFiles.forEach(file => form.append("files", file, file.webkitRelativePath || file.name)); form.append("official_source_confirmed", "true"); }
+  else form.append("structure", structure);
+  form.append("analysis_target", analysisTarget);
   if ($("upload-accession").value.trim()) form.append("accession", $("upload-accession").value.trim());
   if ($("upload-chain2").value.trim()) form.append("chain", $("upload-chain2").value.trim());
-  if ($("upload-sequence").value.trim()) form.append("sequence", $("upload-sequence").value.trim());
-  if ($("upload-ecd-start").value) form.append("ecd_start", $("upload-ecd-start").value);
-  if ($("upload-ecd-end").value) form.append("ecd_end", $("upload-ecd-end").value);
-  form.append("design_engine", "joint_v4_ml");
-  form.append("ml_mode", $("upload-ml-mode").value);
-  form.append("surface_strategy", $("upload-surface-strategy").value);
-  form.append("optimization_profile", $("upload-optimization-profile").value);
-  form.append("max_sectors", "7");
-  try {
-    Object.entries(displayPartitionInput()).forEach(([key, value]) => form.append(key, String(value)));
-    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key, value]) => form.append(key, String(value)));
-    setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
-    const job = await api("/api/jobs/upload", { method: "POST", body: form });
-    state.jobId = job.id;
-    state.demo = false;
-    setJob(job.status, job.message, job.progress);
-    watchJob(job.id);
-  } catch (error) {
-    setJob("FAILED", t("msg.uploadFail", "上传失败"), 0, error.message);
+  if (analysisTarget === "antigen") {
+    if ($("upload-sequence").value.trim()) form.append("sequence", $("upload-sequence").value.trim());
+    if ($("upload-ecd-start").value) form.append("ecd_start", $("upload-ecd-start").value);
+    if ($("upload-ecd-end").value) form.append("ecd_end", $("upload-ecd-end").value);
   }
+  form.append("design_engine", "joint_v4_ml"); form.append("ml_mode", $("upload-ml-mode").value);
+  form.append("surface_strategy", $("upload-surface-strategy").value); form.append("optimization_profile", $("upload-optimization-profile").value); form.append("max_sectors", "7");
+  try {
+    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key,value]) => form.append(key,String(value)));
+    setJob("QUEUED",t("msg.uploading","上传结构并创建作业…"),0.02);
+    const job=await api(folderMode?"/api/jobs/af3-directory":"/api/jobs/upload",{method:"POST",body:form});
+    state.jobId=job.id; state.demo=false; setJob(job.status,job.message,job.progress); watchJob(job.id);
+  } catch(error) { setJob("FAILED",t("msg.uploadFail","上传失败"),0,error.message); }
+}
+
+function updateUploadTargetUI() {
+  const folderMode=$("upload-source-mode").value==="af3-directory";
+  $("upload-structure-field").hidden=folderMode; $("upload-structure").required=!folderMode;
+  $("upload-af3-directory-field").hidden=!folderMode; $("upload-af3-directory").required=folderMode;
+  $("upload-af3-confirm-field").hidden=!folderMode; $("upload-af3-confirm").required=folderMode;
+  const binder=$("upload-analysis-target").value==="binder";
+  $("upload-target-hint").textContent=t(binder?"upload.binderHint":"upload.hint",binder?"Analyze the binder surface. Monomers use their only chain automatically; for complexes, enter the binder chain ID. Antigen membrane orientation is not applied, and B-factors are not assumed to be pLDDT.":"Only an antigen ECD PDB/mmCIF is required.");
+  $("upload-accession-label").textContent=t(binder?"upload.accessionBinder":"upload.accession",binder?"UniProt accession (optional)":"UniProt accession");
+  $("upload-chain-label").textContent=t(binder?"upload.chainBinder":"upload.chain",binder?"Binder chain (optional)":"Target chain");
+  $("upload-chain2").placeholder=t(binder?"upload.chainBinderHint":"form.chainPlaceholder",binder?"e.g. A; blank for a monomer":"auto");
+  $("upload-accession").placeholder=t(binder?"upload.accessionBinderHint":"upload.accessionHint",binder?"optional; blank is OK":"recommended");
+  $("upload-antigen-advanced").hidden=binder;
 }
 
 async function submitAf3(event) {
   event.preventDefault();
+  if ($("af3-source-mode").value === "directory") {
+    const files = [...$("af3-directory").files];
+    if (!files.length || !$("af3-confirm").checked) {
+      toast(t("msg.af3FilesRequired", "请选择官方 AF3 文件夹并确认来源。"));
+      return;
+    }
+    const form = new FormData();
+    files.forEach((file) => form.append("files", file, file.webkitRelativePath || file.name));
+    form.append("official_source_confirmed", "true");
+    await submitAf3Form(form, "/af3-directory");
+    return;
+  }
   const structure = $("af3-structure").files[0];
   const confidence = $("af3-confidence").files[0];
   if (!structure || !confidence || !$("af3-confirm").checked) {
@@ -418,12 +440,16 @@ async function submitAf3(event) {
   // FastAPI declares this as a required Form field.  The checkbox alone is
   // browser state; it must be explicitly included in multipart data.
   form.append("official_source_confirmed", "true");
+  await submitAf3Form(form, "/af3");
+}
+
+async function submitAf3Form(form, endpoint) {
   const submit = $("af3-submit");
   const originalLabel = submit.textContent;
   try {
     submit.disabled = true;
     submit.textContent = t("msg.af3Uploading", "正在上传…");
-    const job = await api(`/api/jobs/${state.jobId}/af3`, { method: "POST", body: form });
+    const job = await api(`/api/jobs/${state.jobId}${endpoint}`, { method: "POST", body: form });
     $("af3-dialog").close();
     setJob(job.status, job.message, job.progress);
     watchJob(state.jobId);
@@ -434,6 +460,15 @@ async function submitAf3(event) {
     submit.disabled = false;
     submit.textContent = originalLabel;
   }
+}
+
+function updateAf3SourceUI() {
+  const directory = $("af3-source-mode").value === "directory";
+  $("af3-pair-fields").hidden = directory;
+  $("af3-structure").required = !directory;
+  $("af3-confidence").required = !directory;
+  $("af3-directory-field").hidden = !directory;
+  $("af3-directory").required = directory;
 }
 
 /* ---------------- viewport (3D) ---------------- */
@@ -1075,12 +1110,26 @@ function renderStep2() {
 
 function renderMethods() {
   const stability = state.result.stability || {};
-  $("methods-card").innerHTML = [
+  const rows = [
     `<strong>SASA</strong>　${h(state.result.methods.sasa_method)}`,
     `<strong>${h(t("s2.partition", "分区"))}</strong>　${h(state.result.partitioning.method)}`,
     `<strong>${h(t("s2.engineLabel", "稳定性引擎"))}</strong>　${h(stability.primary || t("s2.notRecorded", "未记录"))}；${h(stability.proxy_units || "")}`,
     `<strong>${h(t("s2.boundary", "结论边界"))}</strong>　${h(t("s2.boundaryBody", "计算预筛不等于实验确认；表位归因仍需表达、构象抗体、稳定性与功能读出。"))}`,
-  ].join("<br>");
+  ];
+  const af3 = state.result.methods?.af3_preprocessing;
+  if (af3) {
+    const baselines = Object.entries(af3.baselines || {}).map(([key, value]) =>
+      `${h(key)}: ${h(Array.isArray(value) ? value.join(", ") : typeof value === "object" ? value?.model_id ?? "—" : value ?? "—")}`
+    ).join(" · ");
+    const models = (af3.models || []).map((model) =>
+      `${h(model.model_id)}${model.model_id === af3.selected_model_id ? ` (${h(t("af3.selected", "selected"))})` : ""}: ${h(model.eligible ? t("af3.eligible", "eligible") : (model.exclusion_reasons || []).join(", ") || t("af3.ineligible", "ineligible"))}`
+    );
+    rows.push(`<strong>${h(t("af3.preprocessing", "AF3 model preprocessing"))}</strong>　${h(af3.method || af3.status || "—")} · ${h(t("af3.selectedModel", "Selected model"))}: ${h(af3.selected_model_id || "—")}${baselines ? `<br><span>${h(t("af3.baselines", "Baselines"))}: ${baselines}</span>` : ""}${models.length ? `<br><span>${h(t("af3.models", "Models"))}: ${models.join(" · ")}</span>` : ""}`);
+    const columns = ["model_id", "coverage", "f70", "mean_plddt", "ptm", "ranking_score", "consensus_score"];
+    rows.push(`<div class="table-wrap"><table class="audit"><thead><tr>${columns.map(key => `<th>${h(key)}</th>`).join("")}</tr></thead><tbody>${(af3.models || []).map(model => `<tr>${columns.map(key => `<td>${h(typeof model[key] === "number" ? model[key].toFixed(4) : model[key] ?? "—")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+    rows.push(h([...(af3.warnings || []), af3.core_max_rmsd_flag ? "Reliable core pairwise RMSD > 2 Å" : ""].filter(Boolean).join(" · ")));
+  }
+  $("methods-card").innerHTML = rows.join("<br>");
   const warnings = state.result.warnings?.length ? state.result.warnings : [t("s2.noWarnings", "没有运行级警告。")];
   $("warning-list").innerHTML = warnings.map((w) => `<li>${h(w)}</li>`).join("");
   $("criterion").textContent = criteriaText();
@@ -1834,11 +1883,15 @@ function bindEvents() {
   $("retry-viewer").addEventListener("click", () => {
     if (state.result) ensureViewers(state.result.structure_url || "/assets/demo/ecd_structure.cif");
   });
-  $("open-upload").addEventListener("click", () => $("upload-dialog").showModal());
+  $("open-upload").addEventListener("click", () => { updateUploadTargetUI(); $("upload-dialog").showModal(); });
   $("close-upload").addEventListener("click", () => $("upload-dialog").close());
   $("upload-form").addEventListener("submit", submitUpload);
+  $("upload-source-mode").addEventListener("change", updateUploadTargetUI);
+  $("upload-analysis-target").addEventListener("change", updateUploadTargetUI);
   $("close-af3").addEventListener("click", () => $("af3-dialog").close());
   $("af3-form").addEventListener("submit", submitAf3);
+  $("af3-source-mode").addEventListener("change", updateAf3SourceUI);
+  updateAf3SourceUI();
   /* CLICK ONLY.  Binding mouseover here used to re-render the residue panel on
      every hover, destroying <select> elements mid-interaction (the "custom
      design can't pick anything" bug).  Tooltips cover hover already. */

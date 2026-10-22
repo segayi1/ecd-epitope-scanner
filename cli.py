@@ -28,8 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--uniprot")
     source.add_argument("--pdb-id")
     source.add_argument("--structure")
+    source.add_argument("--af3-directory", help="Extracted official AlphaFold 3 output folder")
     analyze.add_argument("--accession")
     analyze.add_argument("--chain")
+    analyze.add_argument("--analysis-target", choices=["antigen", "binder"], default="antigen")
     analyze.add_argument("--sequence")
     analyze.add_argument("--ecd", help="Override ECD as inclusive UniProt start:end")
     analyze.add_argument("--confidence-json")
@@ -118,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         input_type, identifier = "uniprot", args.uniprot
     elif args.pdb_id:
         input_type, identifier = "pdb_id", args.pdb_id
+    elif args.af3_directory:
+        if args.confidence_json:
+            raise SystemExit("--confidence-json cannot be combined with --af3-directory")
+        input_type, identifier = "af3_upload", args.af3_directory
     else:
         input_type, identifier = (
             ("af3_upload" if args.confidence_json else "structure"),
@@ -146,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         case_time_budget_seconds=args.case_time_budget_seconds,
         case_byte_budget=args.case_byte_budget,
         input_type=input_type,
+        analysis_target=args.analysis_target,
         identifier=identifier,
         accession=args.accession,
         chain=args.chain,
@@ -189,6 +196,13 @@ def main(argv: list[str] | None = None) -> int:
             },
         },
     )
+
+    if args.af3_directory:
+        from .af3_preprocessing import import_af3_directory
+
+        output_dir = Path(args.output)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        request.af3_manifest_path = str(import_af3_directory(Path(args.af3_directory), output_dir))
 
     def progress(stage: str, value: float, message: str) -> None:
         print(f"[{value:6.1%}] {stage}: {message}", file=sys.stderr)

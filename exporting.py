@@ -438,6 +438,25 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
             "down-weighted. N-terminal Myc controls antigen display but does not prove native "
             "folding; require an independent conformation-sensitive control.\n"
         )
+    af3 = (analysis.get("methods") or {}).get("af3_preprocessing")
+    if af3:
+        baselines = af3.get("baselines", {})
+        report += ("\n## AF3 multi-model preprocessing\n\n"
+            f"Selected original sample: `{af3.get('selected_model_id')}`. "
+            f"Selection status: `{af3.get('status')}`.\n\n"
+            f"Original top rank: `{baselines.get('original_rank1')}`; "
+            f"best chain pTM: `{baselines.get('ptm_best')}`; "
+            f"raw weighted medoid: `{baselines.get('raw_medoid')}`.\n\n"
+            "Original coordinates and the paired confidence file are retained. "
+            "Core consensus, global disagreement and local diagnostics are recorded separately; "
+            "these diagnostics do not add residue exclusion rules or change scoring budgets.\n")
+        report += ("\n| Model | Coverage | f70 | Mean pLDDT | pTM | Original ranking | Consensus (Å) | Status |\n"
+                   "|---|---:|---:|---:|---:|---:|---:|---|\n")
+        for model in af3.get("models", []):
+            cells = [model.get(key) for key in ("model_id", "coverage", "f70", "mean_plddt", "ptm", "ranking_score", "consensus_score")]
+            cells.append("eligible" if model.get("eligible") else "; ".join(model.get("exclusion_reasons", [])))
+            report += "| " + " | ".join("—" if value is None else str(value).replace("|", "\\|") for value in cells) + " |\n"
+        report += "\nFull diagnostics and input identities: `af3_selection_report.json` and `af3_inputs/manifest.json`.\n"
     (output_dir / "methods_report.md").write_text(report, encoding="utf-8")
 
     export_names = [
@@ -541,10 +560,16 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "frozen_input_manifest.json",
         "launch_source_manifest.json",
         "source_confidence.json",
+        "source_input_identity.json",
         "native_input.cif",
         "native_input.pdb",
         "structure_for_energy.pdb",
     ]
+    if af3:
+        export_names.extend((analysis.get("source", {}).get("af3_preprocessing") or {}).get("files", []))
+        export_names.extend(path.relative_to(output_dir).as_posix()
+            for path in sorted((output_dir / "af3_inputs").rglob("*")) if path.is_file())
+        export_names.extend(path.name for path in sorted(output_dir.glob("af3_preprocessing*")) if path.is_file())
     manifest = {
         "schema_version": "1.0",
         "created_at": dt.datetime.now(dt.UTC).isoformat(),
@@ -585,7 +610,7 @@ def _write_bundle_archive(output_dir: Path,names) -> None:
     pending=destination.with_name(destination.name+f'.{os.getpid()}.pending')
     try:
         with zipfile.ZipFile(pending,'w',compression=zipfile.ZIP_DEFLATED) as archive:
-            for name in names:
+            for name in dict.fromkeys(names):
                 path=output_dir/name
                 if path.exists():
                     compression=zipfile.ZIP_STORED if path.suffix in {'.zip','.npz','.gz'} else zipfile.ZIP_DEFLATED
@@ -600,8 +625,14 @@ def finalize_scientific_bundle(output_dir: Path) -> None:
     manifest_path = output_dir / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     for name in manifest["files"]:
-        if Path(name).name != name:
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
             raise ValueError(f"Invalid bundle artifact name: {name}")
-        manifest["files"][name] = sha256_file(output_dir / name)
+        artifact = output_dir / relative
+        if not artifact.resolve().is_relative_to(output_dir.resolve()) or artifact.is_symlink():
+            raise ValueError(f"Bundle artifact escapes output directory: {name}")
+        if not artifact.is_file():
+            raise FileNotFoundError(f"Bundle artifact missing at finalization: {name}")
+        manifest["files"][name] = sha256_file(artifact)
     write_json(manifest_path, manifest)
     _write_bundle_archive(output_dir,[*manifest['files'],'run_manifest.json'])

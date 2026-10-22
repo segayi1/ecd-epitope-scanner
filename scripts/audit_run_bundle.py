@@ -1,6 +1,6 @@
 """Verify the delivered outer manifest, ZIP and on-disk file identities."""
 import argparse,hashlib,json,zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from ..util import sha256_file,write_json
 from ..surface_perturbation.case_status import case_status
 
@@ -9,12 +9,24 @@ def audit_run_bundle(folder):
     folder=Path(folder);manifest_path=folder/'run_manifest.json'
     manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
     expected=set(manifest['files'])|{'run_manifest.json'}
-    if any(Path(name).name!=name or '\\' in name for name in expected):raise ValueError('unsafe artifact name')
+    root=folder.resolve()
+    paths={}
+    for name in expected:
+        relative=PurePosixPath(name)
+        if (not name or relative.as_posix()!=name or relative.is_absolute()
+                or PureWindowsPath(name).drive or "\\" in name
+                or any(part in {"", ".", ".."} for part in relative.parts)):
+            raise ValueError('unsafe artifact name')
+        path=folder.joinpath(*relative.parts).resolve()
+        if not path.is_relative_to(root):raise ValueError('unsafe artifact name')
+        paths[name]=path
     with zipfile.ZipFile(folder/'ecd_epitope_design.zip') as archive:
         names=archive.namelist()
         if len(names)!=len(set(names)) or set(names)!=expected:raise ValueError('bundle membership differs')
+        damaged=archive.testzip()
+        if damaged:raise ValueError('ZIP CRC failure: '+damaged)
         for name in expected:
-            digest=sha256_file(folder/name)
+            digest=sha256_file(paths[name])
             if hashlib.sha256(archive.read(name)).hexdigest()!=digest:raise ValueError('ZIP differs from disk: '+name)
             if name!='run_manifest.json' and manifest['files'][name]!=digest:raise ValueError('manifest differs: '+name)
     return {'status':'PASS','members':len(expected),'case_status':case_status(folder),

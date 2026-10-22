@@ -338,3 +338,26 @@ class JobRunner:
             error=None,
         )
         self.submit(job_id)
+
+    def resume_with_af3_manifest(self, job_id: str, manifest_path: Path) -> None:
+        request = self.store.request_for(job_id)
+        if not request.accession and request.input_type == "uniprot":
+            request.accession = request.identifier
+        request.input_type = "af3_upload"
+        request.af3_manifest_path = str(manifest_path)
+        request.metadata["official_af3_source_confirmed"] = True
+        request.structure_path = None
+        request.confidence_path = None
+        request.allow_partial = False
+        request.output_dir = self.store.get(job_id)["workdir"]
+        self.store.update(
+            job_id,
+            status="QUEUED",
+            stage="QUEUED",
+            progress=0.0,
+            message="AF3 folder uploaded; job queued for resume",
+            request_json=request.as_dict() | {"original_cds": request.original_cds},
+            result_json=None,
+            error=None,
+        )
+        self.submit(job_id)

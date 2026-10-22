@@ -371,7 +371,14 @@ function stepOverview(){
   ];
   var recommendations = (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]);
   if (recommendations.length) rows.push(['逐区建议（通过 / 待审查 / 无组合） / Sector suggestions', ['PASSED','NEAR_THRESHOLD','NO_COMBINATION'].map(function(status){ return recommendations.filter(function(item){return item.status===status;}).length; }).join(' / ')]);
-  return '<div class="box"><h3>'+esc((protein.protein_name||protein.accession||'ECD Epitope Workbench'))+'</h3><div class="grid2">'+rows.map(function(r){return '<span class="k">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+'</div></div>';
+  var af3=(D.methods||{}).af3_preprocessing, af3Table='';
+  if(af3){
+    rows.push([t('af3.preprocessing'),[af3.method||af3.status,t('af3.selectedModel')+': '+(af3.selected_model_id||'—'),t('af3.baselines')+': '+Object.entries(af3.baselines||{}).map(function(entry){return entry[0]+': '+(Array.isArray(entry[1])?entry[1].join(', '):entry[1]==null?'—':entry[1]);}).join(' · ')].join(' · ')]);
+    if((af3.models||[]).length) rows.push([t('af3.models'),af3.models.map(function(model){return (model.model_id||'—')+(model.model_id===af3.selected_model_id?' ('+t('af3.selected')+')':'')+' '+(model.eligible?t('af3.eligible'):(model.exclusion_reasons||[]).join(', '));}).join(' · ')]);
+    var columns=['model_id','coverage','f70','mean_plddt','ptm','ranking_score','consensus_score'];
+    af3Table='<table><thead><tr>'+columns.map(function(key){return '<th>'+esc(key)+'</th>';}).join('')+'</tr></thead><tbody>'+(af3.models||[]).map(function(model){return '<tr>'+columns.map(function(key){return '<td>'+esc(typeof model[key]==='number'?model[key].toFixed(4):model[key]==null?'—':model[key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table><p>'+esc((af3.warnings||[]).concat(af3.core_max_rmsd_flag?['Reliable core pairwise RMSD > 2 Å']:[]).join(' · '))+'</p>';
+  }
+  return '<div class="box"><h3>'+esc((protein.protein_name||protein.accession||'ECD Epitope Workbench'))+'</h3><div class="grid2">'+rows.map(function(r){return '<span class="k">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+'</div>'+af3Table+'</div>';
 }
 function stepSurface(){
   var surf = residues.filter(function(r){ return r.surface_accessible; });

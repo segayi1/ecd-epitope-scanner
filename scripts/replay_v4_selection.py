@@ -54,8 +54,16 @@ def main():
     source_names = ("analysis.json", "run_manifest.json", "panel_candidates.json", "probe_sectors_v4.json",
                     "surface_graph_v41.json", "inference_hypotheses_v411.json", "structure.cif",
                     "residue_mapping.csv", "single_mutation_options.csv")
-    source_names += tuple(name for name in ("v4_manifest.json", "structure_contexts.json", "prediction_context.pdb", "structure_for_energy.pdb")
+    source_names += tuple(name for name in ("v4_manifest.json", "structure_contexts.json", "prediction_context.pdb", "structure_for_energy.pdb",
+                                           "source_confidence.json", "source_input_identity.json", "native_input.cif", "native_input.pdb")
                           if (source / name).is_file())
+    af3_names = tuple(path.relative_to(source).as_posix()
+        for path in sorted((source / "af3_inputs").rglob("*")) if path.is_file())
+    af3_names += tuple(path.name for path in sorted(source.glob("af3_preprocessing*")) if path.is_file())
+    saved_analysis = json.loads((source / "analysis.json").read_text(encoding="utf-8"))
+    af3_names += tuple((saved_analysis.get("source", {}).get("af3_preprocessing") or {}).get("files", []))
+    af3_names = tuple(dict.fromkeys(af3_names))
+    source_names += af3_names
     hashes = {name: sha256_file(source / name) for name in source_names}
     analysis = read("analysis.json")
     records = [load(ResidueRecord, row) for row in analysis["residues"]]
@@ -194,12 +202,19 @@ def main():
         replay_manifest["version_identification"] = version_identification
         write_json(output / "model_version_identification.json", version_identification)
     write_json(output / "v4_manifest.json", replay_manifest)
-    for name in ("structure.cif", "ecd_structure.cif", "prediction_context.pdb", "structure_for_energy.pdb",
+    for name in ("source_confidence.json", "source_input_identity.json", "native_input.cif", "native_input.pdb",
+                 "structure.cif", "ecd_structure.cif", "prediction_context.pdb", "structure_for_energy.pdb",
                  "uniprot.json", "residue_mapping.csv", "surface_graph_v4.json", "surface_graph_v41.json",
                  "surface_display_regions_v41.json", "partition_diagnostics_v4.json", "native_surface_rows.json",
                  "raw_surface_footprints_v411.json", "single_mutation_options.csv", "spurs_single_matrix.csv.gz"):
         if (source / name).is_file():
             shutil.copy2(source / name, output / name)
+    for name in af3_names:
+        original, destination = source / name, output / name
+        if not original.resolve().is_relative_to(source):
+            raise ValueError("AF3 replay artifact escapes the frozen source run")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, destination)
     analysis["request"]["output_dir"] = str(output)
     analysis["parameters"]["joint_v4_ml"] = updated_params
     analysis["selection_replay"] = provenance

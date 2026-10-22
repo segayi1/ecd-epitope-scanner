@@ -382,6 +382,7 @@ def _adapter(
     disabled: bool = False,
 ) -> Any:
     tool_name = tool_name or name
+    disabled = disabled or settings.get("enabled") is False
     if disabled:
         command: list[str] = []
     else:
