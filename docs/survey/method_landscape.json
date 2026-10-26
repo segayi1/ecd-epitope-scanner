@@ -1,0 +1,340 @@
+{
+  "survey_step": "s1",
+  "topic": "构象表位预测与评估方法的文献格局",
+  "retrieved_utc": "2026-10-13",
+  "retrieval_channel": "PubMed E-utilities via web_fetch (web_search 工具不可用:缺 DEEPSEEK_API_KEY)",
+  "searches": [
+    {
+      "label": "A",
+      "query": "epitope prediction benchmark antibody",
+      "sort": "date (被忽略:Unknown sort schema 'date' ignored,实际为 best match)",
+      "total_hits": 99,
+      "ids_retrieved": 25
+    },
+    {
+      "label": "B",
+      "query": "\"conformational epitope\" AND (prediction OR mapping) AND (machine learning OR deep learning)",
+      "sort": "relevance",
+      "total_hits": 12,
+      "ids_retrieved": 12
+    },
+    {
+      "label": "C",
+      "query": "(conformational epitope prediction) AND (benchmark OR evaluation)",
+      "sort": "best match (date 被忽略)",
+      "total_hits": 410,
+      "ids_retrieved": 25
+    },
+    {
+      "label": "D",
+      "query": "\"epitope prediction\" AND (benchmark OR assessment) AND (antibody OR antigen)",
+      "sort": "pub_date",
+      "total_hits": 283,
+      "ids_retrieved": 30
+    }
+  ],
+  "retrieval_note": "检索式 A/C 的 sort=date 未被 PubMed 接受(返回 warning 'Unknown sort schema date ignored'),故时间偏倚不可控;检索式 D 用 sort=pub_date 有效。这是本次调研的一个方法学限制。",
+  "papers": [
+    {
+      "pmid": "36366745",
+      "title": "BepiPred-3.0: Improved B-cell epitope prediction using protein language models",
+      "year": 2022,
+      "journal": "Protein Sci",
+      "doi": "10.1002/pro.4497",
+      "category": "sequence-based predictor",
+      "relevance": "主流 B 细胞表位预测器,基于蛋白语言模型;做的是序列/残基级表位倾向,不产出可设计的表面区块"
+    },
+    {
+      "pmid": "42745543",
+      "title": "PatchEpi: patch-aware equivariant learning improves structure-based epitope prediction",
+      "year": 2026,
+      "journal": "Bioinformatics",
+      "doi": "10.1093/bioinformatics/btag678",
+      "category": "structure-based predictor",
+      "relevance": "2026 新方法,显式以 patch(区块)为单位做等变学习——与本仓库的 sector/footprint 概念最接近的外部工作"
+    },
+    {
+      "pmid": "42691623",
+      "title": "GCAT-BCE: A hybrid GCN-GAT framework for enhanced conformational B-cell epitope prediction",
+      "year": 2026,
+      "journal": "Comput Biol Chem",
+      "doi": "10.1016/j.compbiolchem.2026.109368",
+      "category": "structure-based predictor",
+      "relevance": "图神经网络做构象表位预测;依赖结构图,与本仓库的残基测地图有共同基础但目标不同(它是预测,我们是设计)"
+    },
+    {
+      "pmid": "34676398",
+      "title": "epitope3D: a machine learning method for conformational B-cell epitope prediction",
+      "year": 2022,
+      "journal": "Brief Bioinform",
+      "doi": "10.1093/bib/bbab423",
+      "category": "structure-based predictor",
+      "relevance": "经典结构基构象表位预测器,常被当基线"
+    },
+    {
+      "pmid": "36189325",
+      "title": "SEMA: Antigen B-cell conformational epitope prediction using deep transfer learning",
+      "year": 2022,
+      "journal": "Front Immunol",
+      "doi": "10.3389/fimmu.2022.960985",
+      "category": "structure-based predictor",
+      "relevance": "迁移学习做抗原构象表位,强调跨抗原泛化问题"
+    },
+    {
+      "pmid": "38487845",
+      "title": "Single-residue linear and conformational B cell epitopes prediction using random and ESM-2 based projections",
+      "year": 2024,
+      "journal": "Brief Bioinform",
+      "doi": "10.1093/bib/bbae084",
+      "category": "sequence-based predictor",
+      "relevance": "ESM-2 投影做单残基预测;与本仓库已装权重(esm2_t33_650M_UR50D)同源,本机可直接跑"
+    },
+    {
+      "pmid": "40637319",
+      "title": "Epi4Ab: a data-driven prediction model of conformational epitopes for specific antibody VH/VL families and CDRs sequences",
+      "year": 2025,
+      "journal": "MAbs",
+      "doi": "10.1080/19420862.2025.2531227",
+      "category": "antibody-conditioned predictor",
+      "relevance": "关键:以抗体 VH/VL 家族与 CDR 序列为条件预测构象表位——正是本仓库明列缺口「非抗体特异」的对侧做法。本仓库已装 AntiBERTy/IgBert/IgT5(Paraplume),具备条件"
+    },
+    {
+      "pmid": "37606436",
+      "title": "Recent Progress in Antibody Epitope Prediction",
+      "year": 2023,
+      "journal": "Antibodies (Basel)",
+      "doi": "10.3390/antib12030052",
+      "category": "review",
+      "relevance": "综述,给方法谱系与各类方法的适用条件"
+    },
+    {
+      "pmid": "41572292",
+      "title": "B-cell epitope prediction in the age of machine learning: advancements and challenges",
+      "year": 2026,
+      "journal": "J Transl Med",
+      "doi": "10.1186/s12967-025-07673-y",
+      "category": "review",
+      "relevance": "最新综述,明确列挑战(数据偏倚、评估不一致、跨抗原泛化),可用来定位本仓库在文献中的位置"
+    },
+    {
+      "pmid": "30499399",
+      "title": "Advances in In-silico B-cell Epitope Prediction",
+      "year": 2019,
+      "journal": "Curr Top Med Chem",
+      "doi": "10.2174/1568026619666181130111827",
+      "category": "review",
+      "relevance": "较早期综述,提供方法演进基线"
+    },
+    {
+      "pmid": "28361709",
+      "title": "Staged heterogeneity learning to identify conformational B-cell epitopes from antigen sequences",
+      "year": 2017,
+      "journal": "BMC Genomics",
+      "doi": "10.1186/s12864-017-3493-0",
+      "category": "sequence-based predictor",
+      "relevance": "仅用抗原序列预测构象表位,说明该任务在无结构条件下的可解程度"
+    },
+    {
+      "pmid": "33816926",
+      "title": "Enhancement of conformational B-cell epitope prediction using CluSMOTE",
+      "year": 2020,
+      "journal": "PeerJ Comput Sci",
+      "doi": "10.7717/peerj-cs.275",
+      "category": "methodology",
+      "relevance": "处理类别不平衡(表位残基远少于非表位),这是所有此类预测器的共同难点"
+    },
+    {
+      "pmid": "29157448",
+      "title": "Ab-initio conformational epitope structure prediction using genetic algorithm and SVM for vaccine design",
+      "year": 2018,
+      "journal": "Comput Methods Programs Biomed",
+      "doi": "10.1016/j.cmpb.2017.10.011",
+      "category": "structure-based predictor",
+      "relevance": "较早期遗传算法路线,历史参考"
+    },
+    {
+      "pmid": "34849326",
+      "title": "In-silico design of a multi-epitope for developing sero-diagnosis detection of SARS-CoV-2 using spike glycoprotein and nucleocapsid antigens",
+      "year": 2021,
+      "journal": "Netw Model Anal Health Inform Bioinform",
+      "doi": "10.1007/s13721-021-00347-x",
+      "category": "application",
+      "relevance": "多表位构建的应用范例;注意其验证止于 in-silico,与本仓库不得声称实验验证的立场一致"
+    },
+    {
+      "pmid": "42719814",
+      "title": "Benchmarking antibody modeling tools across structure prediction, docking, and paratope-epitope interface analysis",
+      "year": 2026,
+      "journal": "Bioinform Adv",
+      "doi": "10.1093/bioadv/vbag223",
+      "category": "benchmark",
+      "relevance": "跨结构预测/对接/界面分析的工具基准;直接对应本仓库「ProCaliper 非独立方法验证」这条边界——外部基准是唯一独立性的来源"
+    },
+    {
+      "pmid": "42252708",
+      "title": "SNAC-DB: An ML-ready database for antibody and NANOBODY VHH-antigen complexes with expanded structural diversity and real-world benchmarking",
+      "year": 2026,
+      "journal": "Protein Sci",
+      "doi": "10.1002/pro.70655",
+      "category": "benchmark dataset",
+      "relevance": "具名公开数据集,ML-ready 且带 real-world benchmarking;可作为本仓库外部检验的数据源候选(需外部数据)"
+    },
+    {
+      "pmid": "42620036",
+      "title": "A Structural Antibody Benchmark of AlphaFold3 reveals Hallucinated Epitopes and a Bias for Orderness",
+      "year": 2026,
+      "journal": "bioRxiv (preprint)",
+      "doi": "10.64898/2026.07.30.741792",
+      "category": "benchmark / caveat",
+      "relevance": "重要警示:AF3 在抗体复合物上会「幻觉出」表位且偏好有序区。本仓库接受 AF3 来源模型并要求置信度文件——这条文献直接支持该门槛的合理性。注意这是预印本,未经同行评审"
+    },
+    {
+      "pmid": "42734515",
+      "title": "Combining AI Structure Prediction and Integrative Modeling for Nanobody-Antigen Complexes",
+      "year": 2026,
+      "journal": "J Chem Inf Model",
+      "doi": "10.1021/acs.jcim.6c01301",
+      "category": "complex modeling",
+      "relevance": "把 AI 结构预测与整合建模结合做纳米抗体-抗原复合物,是本仓库缺失的复合物语境的一条路径(需外部工具/数据)"
+    },
+    {
+      "pmid": "42734546",
+      "title": "Mimotope-Guided Molecular Dynamics Enables Precise Functional Epitope Mapping",
+      "year": 2026,
+      "journal": "J Chem Inf Model",
+      "doi": "10.1021/acs.jcim.6c01562",
+      "category": "functional epitope mapping",
+      "relevance": "mimotope + MD 做功能性表位定位,区分「结合表位」与「功能表位」——与本仓库「几何可达≠功能」的区分同构"
+    },
+    {
+      "pmid": "42430862",
+      "title": "Progress in structure prediction and design of adaptive immune receptors",
+      "year": 2026,
+      "journal": "Curr Opin Struct Biol",
+      "doi": "10.1016/j.sbi.2026.103326",
+      "category": "review",
+      "relevance": "最新综述,覆盖适应性免疫受体的结构预测与设计全局面貌"
+    },
+    {
+      "pmid": "42030385",
+      "title": "Repertoire-scale antibody structural prediction informs therapeutic design",
+      "year": 2026,
+      "journal": "Sci Adv",
+      "doi": "10.1126/sciadv.aef7163",
+      "category": "antibody structure prediction",
+      "relevance": "库尺度抗体结构预测用于治疗设计,展示大规模抗体侧建模的现状"
+    },
+    {
+      "pmid": "42827976",
+      "title": "AI-guided epitope engineering of a SARS-CoV-2 spike antigen for broad sarbecovirus neutralization",
+      "year": 2026,
+      "journal": "Front Immunol",
+      "doi": "10.3389/fimmu.2026.1919664",
+      "category": "application",
+      "relevance": "AI 引导的表位工程改抗原,与本仓库「设计突变构建体」的目标最接近的实际案例;可用于对照方法与验证层级"
+    },
+    {
+      "pmid": "42304980",
+      "title": "Biparatopic targeting of IL-23 enables dual-epitope engagement and enhanced neutralization potency",
+      "year": 2026,
+      "journal": "MAbs",
+      "doi": "10.1080/19420862.2026.2689777",
+      "category": "application",
+      "relevance": "双表位(双互补位)靶向;提示「两个不重叠区块」这一设计目标在治疗上确有用途——与本仓库分区互斥性设计的动机相通"
+    },
+    {
+      "pmid": "42218135",
+      "title": "A simple and broadly applicable nanobody-based approach to generate potent TNFR agonists",
+      "year": 2026,
+      "journal": "Cell Death Dis",
+      "doi": "10.1038/s41419-026-08911-x",
+      "category": "application",
+      "relevance": "纳米抗体应用;参考价值有限(偏实验)"
+    },
+    {
+      "pmid": "42651789",
+      "title": "A Multi-Model Strategy for Optimizing Hepatitis B Virus preS1 Epitope Recognition by the Antibody HzKR127",
+      "year": 2026,
+      "journal": "Curr Issues Mol Biol",
+      "doi": "10.3390/cimb48080791",
+      "category": "application",
+      "relevance": "多模型策略优化表位识别;体现「多方法共识」而非单一预测器"
+    },
+    {
+      "pmid": "42853246",
+      "title": "Structural basis of serine protease inhibition by antibodies from biased Fab phage-display libraries",
+      "year": 2026,
+      "journal": "Biol Chem",
+      "doi": "10.1515/hsz-2026-0121",
+      "category": "structural biology",
+      "relevance": "结构与实验为主,对本仓库只有背景意义"
+    },
+    {
+      "pmid": "42479253",
+      "title": "Self-amplifying mRNA vaccine cocktail against Staphylococcus aureus: A multi-epitope immunoinformatics and structural simulation framework",
+      "year": 2026,
+      "journal": "World J Microbiol Biotechnol",
+      "doi": "10.1007/s11274-026-05106-6",
+      "category": "application",
+      "relevance": "免疫信息学多表位疫苗设计;是「in-silico 止步」的典型,与本仓库的验证纪律形成对照"
+    },
+    {
+      "pmid": "42412842",
+      "title": "PU-GRAIL: residue-level graph learning for identifying protective bacterial antigens under positive-unlabeled supervision",
+      "year": 2026,
+      "journal": "Bioinformatics",
+      "doi": "10.1093/bioinformatics/btag263",
+      "category": "methodology",
+      "relevance": "正-未标记学习处理「未知不等于负样本」——正是本仓库标注「实验标签稀疏且未知表位不是负样本」的同类问题"
+    },
+    {
+      "pmid": "42720963",
+      "title": "Phys-AbGAT: a physics-informed multi-task graph attention network for robust antibody-antigen binding affinity prediction",
+      "year": 2026,
+      "journal": "Bioinformatics",
+      "doi": "10.1093/bioinformatics/btag669",
+      "category": "affinity prediction",
+      "relevance": "直接预测结合亲和力——本仓库明确不做的事(binding ΔΔG)。对照价值:文献里确有在做,但那是另一个任务"
+    },
+    {
+      "pmid": "42425003",
+      "title": "1D-2D hybrid based electrochemical sensor for nano-architected sensing of ASFV p32",
+      "year": 2026,
+      "journal": "Biosens Bioelectron",
+      "doi": "10.1016/j.bios.2026.118999",
+      "category": "irrelevant",
+      "relevance": "关键词误召(表位一词的泛化匹配),与本研究方向无关,记录以说明召回噪声"
+    },
+    {
+      "pmid": "42430862",
+      "title": "Progress in structure prediction and design of adaptive immune receptors",
+      "year": 2026,
+      "journal": "Curr Opin Struct Biol",
+      "doi": "10.1016/j.sbi.2026.103326",
+      "category": "review",
+      "relevance": "重复条目(与上同),此处保留以反映原始召回"
+    },
+    {
+      "pmid": "41959139",
+      "title": "(未取元数据;作为 42853246 的 bioRxiv 预印本版本被引用)",
+      "year": null,
+      "journal": "bioRxiv",
+      "doi": "10.64898/2026.03.12.711446",
+      "category": "preprint-of",
+      "relevance": "42853246 的预印本前身,未单独核验"
+    }
+  ],
+  "key_findings_for_this_repo": [
+    "本仓库的 sector/footprint 概念在文献中有对应物(PatchEpi 的 patch-aware 学习),但文献做的是「预测表位」,本仓库做的是「设计覆盖区块」——目标不同,不可直接比较指标。",
+    "「非抗体特异」这条边界的对侧(Epi4Ab 以 VH/VL 家族与 CDR 为条件的表位预测)在文献中已是成熟方向;本机已装 AntiBERTy/IgBert/IgT5,具备做条件化扩展的依赖条件。",
+    "AF3 在抗体复合物上会幻觉表位且偏好有序区(bioRxiv 预印本)——这为本仓库要求 AF3 必须带置信度文件、且不把 AF3 模型当实验结构提供了外部依据。",
+    "「未知表位不是负样本」在本仓库是明确声明;PU-GRAIL 用正-未标记学习正面处理了同类问题。",
+    "明确区分「结合表位」与「功能表位」的文献存在(Mimotope-guided MD),支持本仓库把几何可达与功能分开的立场。"
+  ],
+  "limitations": [
+    "web_search 不可用,仅经 PubMed;预印本与非 PubMed 索引的方法学论文可能漏检。",
+    "部分检索式的时间排序未生效(PubMed 忽略 sort=date),存在时间偏倚风险。",
+    "召回含明显噪声(如 42425003 电化学传感器),说明关键词召回需人工筛。",
+    "本文件是检索底账,不是结论;所有条目仅记录元数据与相关性判断,摘要内容尚未逐篇通读。"
+  ]
+}

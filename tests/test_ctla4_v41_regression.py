@@ -164,6 +164,7 @@ def test_v41_diagnostics_and_hypothesis_artifacts_are_delivered_in_zip(tmp_path,
     }
     for name in names:
         (tmp_path / name).write_text("{}\n", encoding="utf-8")
+    (tmp_path / "structure_for_energy.pdb").write_text("END\n", encoding="ascii")
     monkeypatch.setattr(exporting, "build_offline_html", lambda *args: "<html></html>")
     protein = ProteinContext("P16410", "CTLA4", "human", "AC", 1, 2, 2, "single_pass")
     files = exporting.write_scientific_outputs(tmp_path, {}, protein, [], [], [])

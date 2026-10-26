@@ -76,11 +76,16 @@ def _predict_once(request: dict, root: Path, torch, device: str) -> tuple[list[d
     mutations = request.get("mutations") or []
     mode = "multi" if mutations else "single"
     model_dir = root / "models" / "spurs" / ("spurs_multi" if mutations else "spurs")
+    timings = {}
+    stage_started = time.perf_counter()
     if mutations:
         model, cfg = _load_multi(model_dir, device)
     else:
         model, cfg = get_SPURS(str(model_dir), device=device)
+    timings["model_load_seconds"] = time.perf_counter() - stage_started
+    stage_started = time.perf_counter()
     pdb = parse_pdb(str(structure), structure.stem, chain, cfg, device=device)
+    timings["structure_parse_seconds"] = time.perf_counter() - stage_started
     model.eval()
     with torch.inference_mode():
         if mutations:
@@ -88,13 +93,23 @@ def _predict_once(request: dict, root: Path, torch, device: str) -> tuple[list[d
             for index, mutation_list in enumerate(mutations):
                 groups.setdefault(len(mutation_list), []).append((index, mutation_list))
             ordered_values: list[float | None] = [None] * len(mutations)
+            reuse = bool(request.get("parameters", {}).get("reuse_wt_encoding", True))
+            representation = None
+            if reuse:
+                stage_started = time.perf_counter()
+                representation = model.encode_wt(pdb)
+                if device == "cuda":
+                    torch.cuda.synchronize()
+                timings["wt_encoding_seconds"] = time.perf_counter() - stage_started
+            stage_started = time.perf_counter()
             for mutation_order in sorted(groups):
                 indexed_group = groups[mutation_order]
                 group_mutations = [item for _, item in indexed_group]
                 mut_ids, append_tensors = parse_pdb_for_mutation(group_mutations)
                 pdb["mut_ids"] = mut_ids.to(device)
                 pdb["append_tensors"] = append_tensors.to(device)
-                values = model(pdb).detach().float().cpu().reshape(-1)
+                values = (model.decode_mutations(pdb, representation) if reuse else model(pdb))
+                values = values.detach().float().cpu().reshape(-1)
                 if len(values) != len(indexed_group):
                     raise RuntimeError(
                         f"SPURS multi returned {len(values)} scores for "
@@ -104,6 +119,9 @@ def _predict_once(request: dict, root: Path, torch, device: str) -> tuple[list[d
                     indexed_group, values.tolist(), strict=True
                 ):
                     ordered_values[original_index] = float(value)
+            timings["combination_decode_seconds"] = time.perf_counter() - stage_started
+            timings["wt_encoding_calls"] = 1 if reuse else len(groups)
+            timings["mutation_orders"] = sorted(groups)
             if any(value is None for value in ordered_values):
                 raise RuntimeError("SPURS multi did not score every requested combination")
             records = [
@@ -111,7 +129,9 @@ def _predict_once(request: dict, root: Path, torch, device: str) -> tuple[list[d
                 for index, mutation_list in enumerate(mutations)
             ]
         else:
+            stage_started = time.perf_counter()
             values = model(pdb, return_logist=True).detach().float().cpu().squeeze()
+            timings["single_inference_seconds"] = time.perf_counter() - stage_started
             if values.ndim != 2 or values.shape != (
                 len(request["sequence"]),
                 len(ALPHABET),
@@ -133,6 +153,7 @@ def _predict_once(request: dict, root: Path, torch, device: str) -> tuple[list[d
                         },
                     }
                 )
+    request["_worker_stage_timings"] = timings
     return records, mode
 
 
@@ -197,6 +218,7 @@ def main() -> int:
                         "gpu_lock_wait_seconds": gpu_lock_wait_seconds,
                         "weights_sha256": weights_sha256,
                         "model_files_sha256": model_files,
+                        "stage_timings": request.get("_worker_stage_timings", {}),
                     },
                     "runtime_seconds": time.perf_counter() - started,
                 },

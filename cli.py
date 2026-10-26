@@ -31,7 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--af3-directory", help="Extracted official AlphaFold 3 output folder")
     analyze.add_argument("--accession")
     analyze.add_argument("--chain")
-    analyze.add_argument("--analysis-target", choices=["antigen", "binder"], default="antigen")
+    analyze.add_argument("--analysis-target", choices=["antigen", "binder"], default="antigen",
+                         help="Analyze an antigen ECD or a binder chain (complexes require --chain)")
     analyze.add_argument("--sequence")
     analyze.add_argument("--ecd", help="Override ECD as inclusive UniProt start:end")
     analyze.add_argument("--confidence-json")

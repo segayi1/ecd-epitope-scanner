@@ -66,6 +66,22 @@ GLYCAN_RESNAMES = {
 }
 POSITIVE_ATOMS = {"ARG": {"NH1", "NH2", "NE"}, "LYS": {"NZ"}, "HIS": {"ND1", "NE2"}}
 NEGATIVE_ATOMS = {"ASP": {"OD1", "OD2"}, "GLU": {"OE1", "OE2"}}
+SIDECHAIN_HEAVY_ATOMS = {
+    "ALA": {"CB"}, "ARG": {"CB", "CG", "CD", "NE", "CZ", "NH1", "NH2"},
+    "ASN": {"CB", "CG", "OD1", "ND2"}, "ASP": {"CB", "CG", "OD1", "OD2"},
+    "CYS": {"CB", "SG"}, "GLN": {"CB", "CG", "CD", "OE1", "NE2"},
+    "GLU": {"CB", "CG", "CD", "OE1", "OE2"}, "GLY": set(),
+    "HIS": {"CB", "CG", "ND1", "CD2", "CE1", "NE2"},
+    "ILE": {"CB", "CG1", "CG2", "CD1"}, "LEU": {"CB", "CG", "CD1", "CD2"},
+    "LYS": {"CB", "CG", "CD", "CE", "NZ"}, "MET": {"CB", "CG", "SD", "CE"},
+    "MSE": {"CB", "CG", "SE", "CE"},
+    "PHE": {"CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ"},
+    "PRO": {"CB", "CG", "CD"}, "SER": {"CB", "OG"},
+    "THR": {"CB", "OG1", "CG2"},
+    "TRP": {"CB", "CG", "CD1", "CD2", "NE1", "CE2", "CE3", "CZ2", "CZ3", "CH2"},
+    "TYR": {"CB", "CG", "CD1", "CD2", "CE1", "CE2", "CZ", "OH"},
+    "VAL": {"CB", "CG1", "CG2"},
+}
 
 
 def _one_letter(resname: str) -> str:
@@ -673,6 +689,83 @@ def calculate_sasa(
     )
 
 
+def calculate_sidechain_exposure(
+    parsed: ParsedStructure,
+    target_chain_id: str,
+    native_sasa: dict[tuple[str, int, str], tuple[float, float]] | None = None,
+) -> dict[tuple[str, int, str], dict[str, Any]]:
+    """Return side-chain SASA as a fraction of the same residue alone."""
+    # Entity.copy detaches parents; deepcopy would duplicate every NMR model per residue.
+    chain = parsed.model[target_chain_id].copy()
+    for residue in list(chain):
+        if not is_aa(residue, standard=False):
+            chain.detach_child(residue.id)
+            continue
+        for atom in list(residue):
+            if atom.element.upper() in {"H", "D"}:
+                residue.detach_child(atom.id)
+
+    calculator = ShrakeRupley(
+        probe_radius=1.4,
+        n_points=960,
+        radii_dict=dict(TIEN_DSSP_RADII),
+    )
+    if native_sasa is None:
+        calculator.compute(chain, level="A")
+        numerator_by_key = {
+            (chain.id, int(residue.id[1]), _clean_icode(residue.id[2])): sum(
+                float(getattr(atom, "sasa", 0.0))
+                for atom in residue if atom.name not in BACKBONE_ATOMS
+            )
+            for residue in chain
+        }
+    else:
+        numerator_by_key = {key: values[1] for key, values in native_sasa.items()}
+
+    result: dict[tuple[str, int, str], dict[str, Any]] = {}
+    method = "sidechain SASA / isolated-residue sidechain SASA; Shrake-Rupley 1.4A/960 points; Tien-2013/DSSP radii; heavy atoms only"
+    for residue in chain:
+        key = (chain.id, int(residue.id[1]), _clean_icode(residue.id[2]))
+        expected = SIDECHAIN_HEAVY_ATOMS.get(residue.resname.upper())
+        observed = {
+            atom.name for atom in residue
+            if atom.element.upper() not in {"H", "D"} and atom.name not in BACKBONE_ATOMS
+        }
+        entry: dict[str, Any] = {
+            "value": None,
+            "numerator_a2": None,
+            "denominator_a2": None,
+            "status": "UNKNOWN",
+            "method": method,
+        }
+        if expected is None:
+            entry["status"] = "UNKNOWN_UNSUPPORTED_RESIDUE"
+        elif not expected:
+            entry["status"] = "UNKNOWN_NO_SIDECHAIN_HEAVY_ATOMS"
+        elif not expected.issubset(observed):
+            entry["status"] = "UNKNOWN_INCOMPLETE_SIDECHAIN"
+        else:
+            numerator = numerator_by_key.get(key)
+            isolated = residue.copy()
+            calculator.compute(isolated, level="A")
+            denominator = sum(
+                float(getattr(atom, "sasa", 0.0))
+                for atom in isolated if atom.name not in BACKBONE_ATOMS
+            )
+            if (numerator is not None and np.isfinite(numerator) and numerator >= 0.0
+                    and np.isfinite(denominator) and denominator > 0.0):
+                entry.update({
+                    "value": float(numerator / denominator),
+                    "numerator_a2": float(numerator),
+                    "denominator_a2": float(denominator),
+                    "status": "KNOWN",
+                })
+            else:
+                entry["status"] = "UNKNOWN_MISSING_SASA"
+        result[key] = entry
+    return result
+
+
 def _sequon_positions(sequence: str) -> set[int]:
     positions: set[int] = set()
     for index in range(len(sequence) - 2):
@@ -830,6 +923,7 @@ def analyze_residues(
 ) -> tuple[list[ResidueRecord], dict[str, Any]]:
     ignored = set(ignored_positions or ())
     sasa, sasa_method = calculate_sasa(parsed, workdir, mapping.chain_id)
+    sidechain_exposure = calculate_sidechain_exposure(parsed, mapping.chain_id, sasa)
     af3_plddt = _af3_atom_plddt(parsed, confidence)
     target_residue_ids = {
         id(residue)
@@ -895,6 +989,16 @@ def analyze_residues(
             (mapping.chain_id, auth_seq, icode), (mapping.chain_id, None)
         )
         total_sasa, side_sasa = sasa.get((mapping.chain_id, auth_seq, icode), (0.0, 0.0))
+        sidechain_exposure_evidence = sidechain_exposure.get(
+            (mapping.chain_id, auth_seq, icode),
+            {
+                "value": None,
+                "numerator_a2": None,
+                "denominator_a2": None,
+                "status": "UNKNOWN_MISSING_RESIDUE",
+                "method": "sidechain SASA / isolated-residue sidechain SASA; Shrake-Rupley 1.4A/960 points; Tien-2013/DSSP radii; heavy atoms only",
+            },
+        )
         ca = tuple(float(value) for value in residue["CA"].coord) if residue.has_id("CA") else None
         contacts = 0
         if ca is not None:
@@ -1006,6 +1110,7 @@ def analyze_residues(
                 + hard
             ),
             token_index=query_index,
+            sidechain_exposure=sidechain_exposure_evidence,
         )
         records.append(record)
         position_to_record[uniprot_pos] = record

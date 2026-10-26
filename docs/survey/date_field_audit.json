@@ -1,0 +1,792 @@
+{
+  "date_policy": {
+    "publication_year_source": "PubDate (fall back to JournalIssue Year, then ArticleDate)",
+    "never_use": "DateCompleted -- this is the MEDLINE processing date, not the publication date",
+    "reason": "PMID 27401684 was cited as 2017 because DateCompleted 2017-10-30 was read as the publication year; its PubDate is 2016 Jul 11."
+  },
+  "per_file_counts": {
+    "esummary_A_lit_resnapshot_20261016.xml": {
+      "file": "lit_resnapshot_20261016.xml",
+      "record_kind": "DocSum",
+      "record_count": 19,
+      "pmids": [
+        "42620036",
+        "42412842",
+        "27216816",
+        "38197311",
+        "38844044",
+        "32761082",
+        "39455825",
+        "39872490",
+        "31243847",
+        "38227011",
+        "36611255",
+        "42252708",
+        "42719814",
+        "25048123",
+        "38177393",
+        "42824475",
+        "19055730",
+        "21846404",
+        "1537828"
+      ]
+    },
+    "esummary_B_lit_resnapshot_gap_20261016.xml": {
+      "file": "lit_resnapshot_gap_20261016.xml",
+      "record_kind": "DocSum",
+      "record_count": 4,
+      "pmids": [
+        "31675414",
+        "38496213",
+        "39915771",
+        "42241701"
+      ]
+    },
+    "esummary_C_tmp_retry_esummary2.xml": {
+      "file": "_tmp_retry_esummary2.xml",
+      "record_kind": "DocSum",
+      "record_count": 10,
+      "pmids": [
+        "38514204",
+        "27401684",
+        "32286507",
+        "35483271",
+        "33205122",
+        "30971826",
+        "41107899",
+        "35277501",
+        "29141660",
+        "31240330"
+      ]
+    },
+    "efetch_D_tmp_retry_efetch.xml": {
+      "file": "_tmp_retry_efetch.xml",
+      "record_kind": "PubmedArticle",
+      "record_count": 5,
+      "pmids": [
+        "27401684",
+        "33205122",
+        "35277501",
+        "35483271",
+        "42800986"
+      ]
+    }
+  },
+  "by_pmid": {
+    "1537828": {
+      "pmid": "1537828",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "A new RNA helicase isolated from HeLa cells that catalytically translocates in the 3' to 5' direction.",
+          "journal": "The Journal of biological chemistry",
+          "pubdate_esummary": "1992 Mar 5",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "1992",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "19055730": {
+      "pmid": "19055730",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "ElliPro: a new structure-based tool for the prediction of antibody epitopes.",
+          "journal": "BMC bioinformatics",
+          "pubdate_esummary": "2008 Dec 2",
+          "epubdate_esummary": "2008 Dec 2"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2008",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "21846404": {
+      "pmid": "21846404",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Prediction of conformational B-cell epitopes from 3D structures by random forests with a distance-based feature.",
+          "journal": "BMC bioinformatics",
+          "pubdate_esummary": "2011 Aug 17",
+          "epubdate_esummary": "2011 Aug 17"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2011",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "25048123": {
+      "pmid": "25048123",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Antigen-Antibody Interaction Database (AgAbDb): a compendium of antigen-antibody interactions.",
+          "journal": "Methods in molecular biology (Clifton, N.J.)",
+          "pubdate_esummary": "2014",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2014",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "27216816": {
+      "pmid": "27216816",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "mCSM-AB: a web server for predicting antibody-antigen affinity changes upon mutation with graph-based signatures.",
+          "journal": "Nucleic acids research",
+          "pubdate_esummary": "2016 Jul 8",
+          "epubdate_esummary": "2016 May 23"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2016",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "27401684": {
+      "pmid": "27401684",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml",
+        "efetch_D_tmp_retry_efetch.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Tools and techniques for computational reproducibility.",
+          "journal": "GigaScience",
+          "pubdate_esummary": "2016 Jul 11",
+          "epubdate_esummary": "2016 Jul 11"
+        }
+      ],
+      "efetch": {
+        "pmid": "27401684",
+        "title": "Tools and techniques for computational reproducibility.",
+        "journal": "GigaScience",
+        "volume": "5",
+        "issue": "1",
+        "pages": "30",
+        "journal_issue_year": null,
+        "journal_issue_month": null,
+        "journal_issue_day": null,
+        "doi": "10.1186/s13742-016-0135-4",
+        "pub_date_raw": "<Year>2016</Year><Month>Jul</Month><Day>11</Day>",
+        "article_date_raw": "<Year>2016</Year><Month>07</Month><Day>11</Day>",
+        "date_completed_raw": "<Year>2017</Year><Month>10</Month><Day>30</Day>"
+      },
+      "chosen_publication_year": "2016",
+      "chosen_publication_year_source": "efetch PubDate"
+    },
+    "29141660": {
+      "pmid": "29141660",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "xCell: digitally portraying the tissue cellular heterogeneity landscape.",
+          "journal": "Genome biology",
+          "pubdate_esummary": "2017 Nov 15",
+          "epubdate_esummary": "2017 Nov 15"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2017",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "30971826": {
+      "pmid": "30971826",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Prioritization of cancer therapeutic targets using CRISPR-Cas9 screens.",
+          "journal": "Nature",
+          "pubdate_esummary": "2019 Apr",
+          "epubdate_esummary": "2019 Apr 10"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2019",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "31240330": {
+      "pmid": "31240330",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Radiomics in nuclear medicine: robustness, reproducibility, standardization, and how to avoid data analysis traps and replication crisis.",
+          "journal": "European journal of nuclear medicine and molecular imaging",
+          "pubdate_esummary": "2019 Dec",
+          "epubdate_esummary": "2019 Jun 25"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2019",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "31243847": {
+      "pmid": "31243847",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Predicting changes in protein stability caused by mutation using sequence-and structure-based methods in a CAGI5 blind challenge.",
+          "journal": "Human mutation",
+          "pubdate_esummary": "2019 Sep",
+          "epubdate_esummary": "2019 Aug 7"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2019",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "31675414": {
+      "pmid": "31675414",
+      "seen_in": [
+        "esummary_B_lit_resnapshot_gap_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_B_lit_resnapshot_gap_20261016.xml",
+          "title": "Sharing interoperable workflow provenance: A review of best practices and their practical application in CWLProv.",
+          "journal": "GigaScience",
+          "pubdate_esummary": "2019 Nov 1",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2019",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "32286507": {
+      "pmid": "32286507",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Precision medicine: Statistical methods for estimating adaptive treatment strategies.",
+          "journal": "Bone marrow transplantation",
+          "pubdate_esummary": "2020 Oct",
+          "epubdate_esummary": "2020 Apr 14"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2020",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "32761082": {
+      "pmid": "32761082",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "UEP: an open-source and fast classifier for predicting the impact of mutations in protein-protein complexes.",
+          "journal": "Bioinformatics (Oxford, England)",
+          "pubdate_esummary": "2021 Apr 20",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2021",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "33205122": {
+      "pmid": "33205122",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml",
+        "efetch_D_tmp_retry_efetch.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "dtoolAI: Reproducibility for Deep Learning.",
+          "journal": "Patterns (New York, N.Y.)",
+          "pubdate_esummary": "2020 Aug 14",
+          "epubdate_esummary": "2020 Jul 23"
+        }
+      ],
+      "efetch": {
+        "pmid": "33205122",
+        "title": "dtoolAI: Reproducibility for Deep Learning.",
+        "journal": "Patterns (New York, N.Y.)",
+        "volume": "1",
+        "issue": "5",
+        "pages": "100073",
+        "journal_issue_year": null,
+        "journal_issue_month": null,
+        "journal_issue_day": null,
+        "doi": "10.1016/j.patter.2020.100073",
+        "pub_date_raw": "<Year>2020</Year><Month>Aug</Month><Day>14</Day>",
+        "article_date_raw": "<Year>2020</Year><Month>07</Month><Day>23</Day>",
+        "date_completed_raw": null
+      },
+      "chosen_publication_year": "2020",
+      "chosen_publication_year_source": "efetch PubDate"
+    },
+    "35277501": {
+      "pmid": "35277501",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml",
+        "efetch_D_tmp_retry_efetch.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "FAIRly big: A framework for computationally reproducible processing of large-scale data.",
+          "journal": "Scientific data",
+          "pubdate_esummary": "2022 Mar 11",
+          "epubdate_esummary": "2022 Mar 11"
+        }
+      ],
+      "efetch": {
+        "pmid": "35277501",
+        "title": "FAIRly big: A framework for computationally reproducible processing of large-scale data.",
+        "journal": "Scientific data",
+        "volume": "9",
+        "issue": "1",
+        "pages": "80",
+        "journal_issue_year": null,
+        "journal_issue_month": null,
+        "journal_issue_day": null,
+        "doi": "10.1038/s41597-022-01163-2",
+        "pub_date_raw": "<Year>2022</Year><Month>Mar</Month><Day>11</Day>",
+        "article_date_raw": "<Year>2022</Year><Month>03</Month><Day>11</Day>",
+        "date_completed_raw": "<Year>2022</Year><Month>04</Month><Day>18</Day>"
+      },
+      "chosen_publication_year": "2022",
+      "chosen_publication_year_source": "efetch PubDate"
+    },
+    "35483271": {
+      "pmid": "35483271",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml",
+        "efetch_D_tmp_retry_efetch.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "ClinicaDL: An open-source deep learning software for reproducible neuroimaging processing.",
+          "journal": "Computer methods and programs in biomedicine",
+          "pubdate_esummary": "2022 Jun",
+          "epubdate_esummary": "2022 Apr 19"
+        }
+      ],
+      "efetch": {
+        "pmid": "35483271",
+        "title": "ClinicaDL: An open-source deep learning software for reproducible neuroimaging processing.",
+        "journal": "Computer methods and programs in biomedicine",
+        "volume": "220",
+        "issue": null,
+        "pages": "106818",
+        "journal_issue_year": null,
+        "journal_issue_month": null,
+        "journal_issue_day": null,
+        "doi": "10.1016/j.cmpb.2022.106818",
+        "pub_date_raw": "<Year>2022</Year><Month>Jun</Month>",
+        "article_date_raw": "<Year>2022</Year><Month>04</Month><Day>19</Day>",
+        "date_completed_raw": "<Year>2022</Year><Month>05</Month><Day>30</Day>"
+      },
+      "chosen_publication_year": "2022",
+      "chosen_publication_year_source": "efetch PubDate"
+    },
+    "36611255": {
+      "pmid": "36611255",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Critical review of conformational B-cell epitope prediction methods.",
+          "journal": "Briefings in bioinformatics",
+          "pubdate_esummary": "2023 Jan 19",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2023",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38177393": {
+      "pmid": "38177393",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Unconstrained generation of synthetic antibody-antigen structures to guide machine learning methodology for antibody specificity prediction.",
+          "journal": "Nature computational science",
+          "pubdate_esummary": "2022 Dec",
+          "epubdate_esummary": "2022 Dec 19"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2022",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38197311": {
+      "pmid": "38197311",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Quantification of biases in predictions of protein-protein binding affinity changes upon mutations.",
+          "journal": "Briefings in bioinformatics",
+          "pubdate_esummary": "2023 Nov 22",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2023",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38227011": {
+      "pmid": "38227011",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Exploring the effects of missense mutations on protein thermodynamics through structure-based approaches: findings from the CAGI6 challenges.",
+          "journal": "Human genetics",
+          "pubdate_esummary": "2025 Mar",
+          "epubdate_esummary": "2024 Jan 16"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2025",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38496213": {
+      "pmid": "38496213",
+      "seen_in": [
+        "esummary_B_lit_resnapshot_gap_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_B_lit_resnapshot_gap_20261016.xml",
+          "title": "Julearn: an easy-to-use library for leakage-free evaluation and inspection of ML models.",
+          "journal": "GigaByte (Hong Kong, China)",
+          "pubdate_esummary": "2024",
+          "epubdate_esummary": "2024 Mar 7"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2024",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38514204": {
+      "pmid": "38514204",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Robust chromatin state annotation.",
+          "journal": "Genome research",
+          "pubdate_esummary": "2024 Apr 25",
+          "epubdate_esummary": "2024 Apr 25"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2024",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "38844044": {
+      "pmid": "38844044",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Robust Prediction of Relative Binding Energies for Protein-Protein Complex Mutations Using Free Energy Perturbation Calculations.",
+          "journal": "Journal of molecular biology",
+          "pubdate_esummary": "2024 Aug 15",
+          "epubdate_esummary": "2024 Jun 4"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2024",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "39455825": {
+      "pmid": "39455825",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Improving the prediction of protein stability changes upon mutations by geometric learning and a pre-training strategy.",
+          "journal": "Nature computational science",
+          "pubdate_esummary": "2024 Nov",
+          "epubdate_esummary": "2024 Oct 25"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2024",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "39872490": {
+      "pmid": "39872490",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Structure-based self-supervised learning enables ultrafast protein stability prediction upon mutation.",
+          "journal": "Innovation (Cambridge (Mass.))",
+          "pubdate_esummary": "2025 Jan 6",
+          "epubdate_esummary": "2025 Jan 6"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2025",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "39915771": {
+      "pmid": "39915771",
+      "seen_in": [
+        "esummary_B_lit_resnapshot_gap_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_B_lit_resnapshot_gap_20261016.xml",
+          "title": "Same data, different analysts: variation in effect sizes due to analytical decisions in ecology and evolutionary biology.",
+          "journal": "BMC biology",
+          "pubdate_esummary": "2025 Feb 6",
+          "epubdate_esummary": "2025 Feb 6"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2025",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "41107899": {
+      "pmid": "41107899",
+      "seen_in": [
+        "esummary_C_tmp_retry_esummary2.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_C_tmp_retry_esummary2.xml",
+          "title": "Recommendations for bioinformatics in clinical practice.",
+          "journal": "Genome medicine",
+          "pubdate_esummary": "2025 Oct 17",
+          "epubdate_esummary": "2025 Oct 17"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2025",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42241701": {
+      "pmid": "42241701",
+      "seen_in": [
+        "esummary_B_lit_resnapshot_gap_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_B_lit_resnapshot_gap_20261016.xml",
+          "title": "Detecting Uncoded Self-Harm in Veterans' Electronic Health Records Using Positive and Unlabeled Learning: Retrospective Cohort Study.",
+          "journal": "Journal of medical Internet research",
+          "pubdate_esummary": "2026 Jun 4",
+          "epubdate_esummary": "2026 Jun 4"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42252708": {
+      "pmid": "42252708",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "SNAC-DB: An ML-ready database for antibody and NANOBODY® VHH-antigen complexes with expanded structural diversity and real-world benchmarking.",
+          "journal": "Protein science : a publication of the Protein Society",
+          "pubdate_esummary": "2026 Jul",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42412842": {
+      "pmid": "42412842",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "PU-GRAIL: residue-level graph learning for identifying protective bacterial antigens under positive-unlabeled supervision.",
+          "journal": "Bioinformatics (Oxford, England)",
+          "pubdate_esummary": "2026 Jul 1",
+          "epubdate_esummary": null
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42620036": {
+      "pmid": "42620036",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "A Structural Antibody Benchmark of AlphaFold3 reveals Hallucinated Epitopes and a Bias for Orderness.",
+          "journal": "bioRxiv : the preprint server for biology",
+          "pubdate_esummary": "2026 Jul 31",
+          "epubdate_esummary": "2026 Jul 31"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42719814": {
+      "pmid": "42719814",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Benchmarking antibody modeling tools across structure prediction, docking, and paratope-epitope interface analysis.",
+          "journal": "Bioinformatics advances",
+          "pubdate_esummary": "2026",
+          "epubdate_esummary": "2026 Aug 11"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    },
+    "42800986": {
+      "pmid": "42800986",
+      "seen_in": [
+        "efetch_D_tmp_retry_efetch.xml"
+      ],
+      "esummary": [],
+      "efetch": {
+        "pmid": "42800986",
+        "title": "FairFlow: A transparency-first framework for verifiable and reproducible bioinformatics.",
+        "journal": "Array (New York, N.Y.)",
+        "volume": "31",
+        "issue": null,
+        "pages": "None",
+        "journal_issue_year": null,
+        "journal_issue_month": null,
+        "journal_issue_day": null,
+        "doi": "10.1016/j.array.2026.101150",
+        "pub_date_raw": "<Year>2026</Year><Month>Sep</Month>",
+        "article_date_raw": null,
+        "date_completed_raw": null
+      },
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "efetch PubDate"
+    },
+    "42824475": {
+      "pmid": "42824475",
+      "seen_in": [
+        "esummary_A_lit_resnapshot_20261016.xml"
+      ],
+      "esummary": [
+        {
+          "source": "esummary_A_lit_resnapshot_20261016.xml",
+          "title": "Computational identification of B- and T-cell epitopes: a unified task taxonomy and review of databases, datasets, predictive pipelines, and gaps.",
+          "journal": "Frontiers in immunology",
+          "pubdate_esummary": "2026",
+          "epubdate_esummary": "2026 Sep 17"
+        }
+      ],
+      "efetch": null,
+      "chosen_publication_year": "2026",
+      "chosen_publication_year_source": "esummary PubDate"
+    }
+  },
+  "summary": {
+    "distinct_pmids": 34,
+    "efetch_only": [
+      "42800986"
+    ],
+    "esummary_only": [
+      "1537828",
+      "19055730",
+      "21846404",
+      "25048123",
+      "27216816",
+      "29141660",
+      "30971826",
+      "31240330",
+      "31243847",
+      "31675414",
+      "32286507",
+      "32761082",
+      "36611255",
+      "38177393",
+      "38197311",
+      "38227011",
+      "38496213",
+      "38514204",
+      "38844044",
+      "39455825",
+      "39872490",
+      "39915771",
+      "41107899",
+      "42241701",
+      "42252708",
+      "42412842",
+      "42620036",
+      "42719814",
+      "42824475"
+    ]
+  }
+}

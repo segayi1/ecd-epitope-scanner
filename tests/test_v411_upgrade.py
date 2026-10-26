@@ -173,6 +173,16 @@ def test_exhaustive_small_matrix_and_pending_group_semantics():
     assert len(metrics["near_pairs"])==2
 
 
+def test_identifiability_diagnostics_separate_near_from_exact_pairs():
+    hypotheses=[V4SurfaceHypothesis(f"H{i}",{i:1}) for i in range(8)]
+    pool=[candidate(1,[0.]*8),candidate(2,[.05]+[0.]*7),candidate(3,[0.]*8)]
+    diagnostics=panel_metrics(pool,hypotheses)["identifiability_diagnostics"]
+    assert diagnostics["pair_count"]==28
+    assert diagnostics["near_pair_count_rms_lt_0_1"]==28
+    assert diagnostics["exact_response_vector_pair_count"]==21
+    assert diagnostics["rms_distance_distribution"]["maximum"]==pytest.approx(.05/np.sqrt(8))
+
+
 @pytest.mark.parametrize("values",[dict(minimum=5,target=4),dict(maximum=9),dict(minimum=0),dict(target=8,maximum=7)])
 def test_budget_rejects_invalid_order(values):
     with pytest.raises(ValueError): resolve_budget(**values)

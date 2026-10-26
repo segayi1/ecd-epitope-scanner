@@ -1,0 +1,171 @@
+{
+  "schema": "survey.benchmark_landscape/1",
+  "purpose": "步骤 s2 底账:构象表位预测的公开基准集、评估指标定义、独立评测文献与已知局限。服务于 docs/extension_directions.md 的后续撰写。",
+  "retrieval": {
+    "channel": "NCBI E-utilities (esearch + esummary + efetch), HTTP 200",
+    "date_utc": "2026-10-13",
+    "query": "conformational+epitope+benchmark+dataset",
+    "hit_count": 20,
+    "note": "esearch 返回 20 条;另有 7 篇经 efetch 取全文 XML 摘要核对。摘要 XML 快照保留在同目录 _tmp_abstracts.xml。"
+  },
+  "datasets": [
+    {
+      "name": "SNAC-DB",
+      "kind": "ML-ready 抗体/纳米抗体 VHH-抗原复合物数据库 + 再标定管线",
+      "scale": "相较 SAbDab 等既有资源,结构多样性提升 31–37%;含多阈值结构聚类以支持训练样本加权",
+      "pmid": "42252708",
+      "doi": "10.1002/pro.70655",
+      "year": 2026,
+      "journal": "Protein Science",
+      "verified_title": "SNAC-DB: An ML-ready database for antibody and NANOBODY VHH-antigen complexes with expanded structural diversity and real-world benchmarking.",
+      "known_limitations": [
+        "论文自述用 post-May-2024 的 PDB 条目 + 保密治疗性结构做基准,通用性受该时段与来源限制",
+        "对七个 SOTA 模型的评测显示成功率很少超过 25%,且基于置信度的排序无法挑出最佳预测——说明该基准本身揭示了方法缺陷,不能当作「已达标的金标准」使用",
+        "本次仅取到摘要(efetch 返回的 AbstractText 在 NLM 侧被截断),未核全文表格中的具体划分与样本量"
+      ],
+      "relevance_to_this_repo": "可作为未来「抗体特异性/复合物层面」扩展的外部数据源;本仓库当前不做抗体-抗原对接,故不能直接消费。"
+    },
+    {
+      "name": "Absolut! suite",
+      "kind": "参数化无约束生成的合成抗体-抗原三维晶格结构套件",
+      "scale": "可无约束生成任意规模样本;带构象 paratope / epitope / 亲和力真值(ground truth)",
+      "pmid": "38177393",
+      "doi": "10.1038/s43588-022-00372-4",
+      "year": 2024,
+      "journal": "Nature Computational Science",
+      "verified_title": "Unconstrained generation of synthetic antibody-antigen structures to guide machine learning methodology for antibody specificity prediction.",
+      "known_limitations": [
+        "晶格(lattice-based)模型,非原子分辨率真实结构;结论可迁移性限于方法学排序,不能替代实验结构",
+        "论文自身的结论是「在实验数据上训练的 ML 方法排序,在 Absolut! 生成数据上同样成立」——这是方法学等价性主张,不是对真实亲和力的验证",
+        "真值来自生成参数,不是测量值"
+      ],
+      "relevance_to_this_repo": "提供了「大规模合成真值数据」这一思路的现成实现。本仓库的干实验验证若要扩充样本量而又不引入湿实验,这是可比照的方法学范式。"
+    },
+    {
+      "name": "AgAbDb (Antigen-Antibody Interaction Database)",
+      "kind": "抗原-抗体相互作用汇编数据库",
+      "scale": "由抗体-抗原复合物结构推断的相互作用条目汇编",
+      "pmid": "25048123",
+      "doi": "10.1007/978-1-62703-992-5_20",
+      "year": 2014,
+      "journal": "Methods in Molecular Biology",
+      "verified_title": "Antigen-Antibody Interaction Database (AgAbDb): a compendium of antigen-antibody interactions.",
+      "known_limitations": [
+        "2014 年资源,未含此后大量新增结构;本次未核其当前是否仍在维护",
+        "以已知复合物结构为准,因此天然偏向「已被解析的抗体-抗原对」,对未知表位不提供负样本"
+      ],
+      "relevance_to_this_repo": "与本仓库 project_memory 中「实验标签稀疏且未知表位不是负样本」这一科学边界直接相关——这类数据库恰恰说明负样本要从哪里来。"
+    },
+    {
+      "name": "250+ 抗体-抗原结构 benchmark(独立评测用)",
+      "kind": "用于对九个 SOTA 构象表位预测 webserver 做严格基准的结构集",
+      "scale": "超过 250 个抗体-抗原结构;含通用型与抗体特异型方法;另附 SARS-CoV-2 spike 独立案例",
+      "pmid": "36611255",
+      "doi": "10.1093/bib/bbac567",
+      "year": 2023,
+      "journal": "Briefings in Bioinformatics",
+      "verified_title": "Critical review of conformational B-cell epitope prediction methods.",
+      "known_limitations": [
+        "该评测本身即是「批评」:所有方法性能都很低,部分不比随机生成的表面残基区块更好;常用的多 webserver consensus 策略最好也只是略微优于随机",
+        "对 SARS-CoV-2 spike 的独立案例同样表现很差",
+        "因此该 benchmark 的价值在于暴露缺陷,不是给出可用的性能上界"
+      ],
+      "relevance_to_this_repo": "本仓库若要用 DiscoTope-3.0 软先验,必须知道同尺度上的公开评测结论是「接近随机」。这是把软先验写成软先验、而不是写成证据的直接文献依据。"
+    },
+    {
+      "name": "ElliPro benchmark dataset of discontinuous epitopes",
+      "kind": "由抗体-蛋白复合物三维结构推断的不连续表位基准集",
+      "scale": "论文报告对比六种基于结构的方法,ElliPro 表现最好,AUC 0.732(每个蛋白取最显著预测时)",
+      "pmid": "19055730",
+      "doi": "10.1186/1471-2105-9-514",
+      "year": 2009,
+      "journal": "BMC Bioinformatics",
+      "verified_title": "ElliPro: a new structure-based tool for the prediction of antibody epitopes.",
+      "known_limitations": [
+        "2009 年的基准与指标口径(AUC 0.732)已成历史基线;此后评测(36611255)显示同尺度方法整体仍接近随机",
+        "「每个蛋白取最显著预测」的取法会系统性抬高指标——这是该论文自述的口径,不是通用口径"
+      ],
+      "relevance_to_this_repo": "提供「区域级表示 + 取最显著预测」的历史先例,与本仓库按扇区/区块评估的思路同源,可作为指标口径的历史对照。"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "AUC (ROC-AUC)",
+      "definition": "以残基(或区块)为单位的二分类真阳性率对假阳性率的曲线下面积;衡量「随机取一个正样本与一个负样本,正样本得分更高的概率」。",
+      "imbalance_sensitivity": "对类别不平衡不敏感(这也是它在表位预测中被广泛使用的部分原因),但正因如此,在正例极少时高 AUC 可能对应极低的精确率。",
+      "when_misleading": "AUC 是全局排序指标,不反映阈值处的实际可用性;当真实可用性由 precision 决定时(筛选场景),高 AUC 会给出过于乐观的印象。"
+    },
+    {
+      "name": "AP (Average Precision / PR 曲线下面积)",
+      "definition": "精确率-召回率曲线下面积,等价于在不同阈值下对精确率按召回率增量加权平均。",
+      "imbalance_sensitivity": "对类别不平衡高度敏感,正例稀少时数值显著低于 AUC;因此更能反映筛选场景的真实难度。",
+      "when_misleading": "不同数据集的基率(正例比例)不同会导致 AP 不可直接横向比较——跨数据集比 AP 而不报基率是常见错误。"
+    },
+    {
+      "name": "MCC (Matthews correlation coefficient)",
+      "definition": "考虑全部四格(TP/TN/FP/FN)的相关系数,取值 [-1,1];平衡了各类错误。",
+      "imbalance_sensitivity": "对不平衡相对稳健,是二分类中较被推荐的综合指标。",
+      "when_misleading": "依赖单一阈值;阈值选取会显著改变数值,因此必须同时报告阈值口径。"
+    },
+    {
+      "name": "F1 / F1-score",
+      "definition": "精确率与召回率的调和平均。",
+      "imbalance_sensitivity": "忽略真阴性,因此在不平衡数据上数值可能虚高(大量真阴性不被计入)。",
+      "when_misleading": "当负例占绝大多数时,F1 会掩盖模型把大部分正例漏掉的情况。"
+    },
+    {
+      "name": "残基级准确率 (accuracy)",
+      "definition": "正确分类的残基比例。",
+      "imbalance_sensitivity": "对不平衡极不稳健:表位残基通常只占表面残基的少数,全预测为负例即可得高准确率。",
+      "when_misleading": "在表位预测中基本不应单独使用;必须与 AP/MCC 等同时报告。"
+    }
+  ],
+  "evaluation_controversies": [
+    {
+      "claim": "所有被评测的九种 SOTA 方法性能都很低,部分不比随机生成的表面残基区块更好;多 webserver consensus 策略最好也只是略微优于随机。",
+      "source_pmid": "36611255",
+      "source_doi": "10.1093/bib/bbac567",
+      "implication": "任何把此类预测器输出当作证据的做法都缺乏依据;只能当作软先验。"
+    },
+    {
+      "claim": "2015–2026 年间识别出 148 个 AI 表位预测模型,但评测实践碎片化:模型很少在覆盖性数据集上测试、与既有预测器比较不足、公共数据库系统性未被充分利用。",
+      "source_pmid": "42824475",
+      "source_doi": "10.3389/fimmu.2026.1873135",
+      "implication": "跨方法比较的文献基础本身不可靠;自建可控评测比引用他人报告更有价值。"
+    },
+    {
+      "claim": "在七个领先结构预测模型上,即使准确结构存在于采样集合中,基于置信度的排序也无法挑出最佳预测;成功率很少超过 25%。",
+      "source_pmid": "42252708",
+      "source_doi": "10.1002/pro.70655",
+      "implication": "置信度分数不能替代几何核验——与本仓库「结构可靠性分类与坐标资格分开」的设计一致。"
+    },
+    {
+      "claim": "AlphaFold3 在 50 个非冗余人源化抗体-抗原复合物上可为 46% 的复合物产出中等或高质量结合界面,但整体界面精度仍有限;氢键与精细接触强度的复现一致性更差。",
+      "source_pmid": "42719814",
+      "source_doi": "10.1093/bioadv/vbag223",
+      "implication": "复合物层面的几何精度已成瓶颈;依赖精细界面特征的下游设计需谨慎。"
+    }
+  ],
+  "contrast_with_this_repo": {
+    "this_repo_evaluates": "区块/扇区层面的几何与覆盖合规:显示区域必须空间连通、满足配置的直径上限(geodesic 30 Å / Cα 22 Å,见 joint_design_v4/sectors.py)、最小面积 50 Å²、且显示成员对合格表面残基图完整唯一;覆盖以并集与面积加权核算。",
+    "public_benchmarks_evaluate": "残基级二分类的排序质量(AUC/AP/MCC)或复合物层面的结构精度(RMSD/界面质量)。",
+    "why_not_comparable": [
+      "对象不同:扇区是连通且直径有界的表面区块,不是独立标签的残基集合。",
+      "指标不同:覆盖并集与几何合规不是排序质量;把覆盖率高写成 AUC 高属于跨口径换算。",
+      "基率不同:本仓库的主分母特意保留所有可靠暴露表面(含保护位点),而公开基准的表位正例比例由复合物结构决定。",
+      "结论方向不同:公开基准给出「接近随机」的性能上界,因此本仓库把 DiscoTope 当软先验而非证据,是恰当的保守设计。"
+    ],
+    "safe_use": "公开基准的数值只能用于说明「同类方法的性能水平」,不得用来为任一 V4 面板候选的生物学有效性背书。"
+  },
+  "limitations": [
+    "PMID 42252708 与 42719814 的摘要文本在 NLM 返回的 XML 中被截断,故其细节描述限于摘要可见部分,未核全文。",
+    "本次检索以 PubMed 为唯一通道,未检索 bioRxiv/arXiv 预印本,也未检索非英文文献;晚期方法可能未覆盖。",
+    "未实测任何公开基准数据集本身(未下载数据集文件、未在本地重算指标),因此上述指标口径来自文献叙述而非本机复算。",
+    "未检索 2026 年之后文献(当前检索时点为 2026-10-13)。"
+  ],
+  "cross_check": {
+    "method": "对每条文献用 eutils esummary 取标题/年份/DOI,并对关键 7 篇用 efetch 取摘要原文核对;核对结果与引用一致。",
+    "mismatches_found": 0,
+    "note": "ElliPro 的 DOI 在 esummary 中为 10.1186/1471-2105-9-514,与论文 2009 年卷期一致(PMID 19055730 的 pubdate 记为 2008 Dec 2 为在线先发,正式卷期为 2009)——此差异已在文献条目中标注,不视为矛盾。"
+  }
+}

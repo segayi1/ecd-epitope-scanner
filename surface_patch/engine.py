@@ -57,6 +57,7 @@ def run_surface_patch_v2(
     backend = SRPointCloudBackend()
     excluded_objects = set()
     reliability_rows = {}
+    diagnostic_excluded_positions = {}
     if reliability and reliability['qc']['enabled']:
         reliability_rows = {r['residue_id']: r for r in reliability['residues']}
         excluded = set(reliability['qc']['excluded_positions'])
@@ -68,7 +69,17 @@ def run_surface_patch_v2(
             p for p, row in reliability_rows.items()
             if not row.get('use_for_3d_footprint', True)
         }
+        diagnostic_excluded_positions = {
+            str(position): {
+                "status": "OMITTED_BEFORE_POINT_SAMPLING",
+                "observed_reliability_state": reliability_rows.get(position, {}).get("state"),
+                "observed_exclusion": position in excluded,
+                "observed_boundary": position in set(reliability['qc']['boundary_positions']),
+            }
+            for position in sorted(omitted)
+        }
         ecd_residues = {p: r for p, r in ecd_residues.items() if p not in omitted}
+    geometry_config["diagnostic_excluded_positions"] = diagnostic_excluded_positions
     surface = backend.build(
         structure,
         chain_id,
@@ -143,6 +154,7 @@ def run_surface_patch_v2(
         "surface_vertices": len(surface.vertices),
         "surface_edges": len(surface.edges),
         "surface_components": len(component_areas),
+        "geometry_owner_diagnostics": surface.metadata.get("owner_diagnostics", {}),
         "surface_component_area_A2": component_areas,
         "eligible_center_vertices": len(eligible),
         "center_count": len(centers),

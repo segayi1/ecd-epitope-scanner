@@ -508,6 +508,216 @@ def _coverage_from_distances(
     return covered, covered_positions
 
 
+def select_v4_foldx_first_pass(
+    candidates,
+    sectors,
+    *,
+    local_budget=60,
+    global_budget=20,
+    local_exploration_budget=16,
+    exploration_min_exclusive=0.5,
+    exploration_max_inclusive=1.0,
+    mechanism_percentile=0.25,
+    priority_candidate_ids=(),
+):
+    """Allocate ordinary V4 first-pass FoldX slots without duplicating constructs.
+
+    Local candidates have one exclusive display-region owner. Global candidates
+    cross region boundaries or cannot be assigned to one display region. The
+    16 local exploration slots are reserved for SPURS-multi values in
+    (0.5, 1.0] and the top mechanism-rank quartile within each region/order.
+    The remaining local slots prefer values <=0.5. Shortfalls are explicit.
+    """
+    from .spatial_support import candidate_region_membership
+    from .regional_perturbation import rank_impacts
+
+    local_budget = max(0, int(local_budget))
+    global_budget = max(0, int(global_budget))
+    local_exploration_budget = min(local_budget, max(0, int(local_exploration_budget)))
+    percentile = min(1.0, max(0.0, float(mechanism_percentile)))
+    unique = {}
+    valid_input_count = 0
+    for candidate in candidates:
+        if candidate.order not in (2, 3) or candidate.qualification == "REVIEW_REQUIRED":
+            continue
+        valid_input_count += 1
+        identity = tuple(sorted(option.notation for option in candidate.mutations))
+        if not any(tuple(sorted(o.notation for o in c.mutations)) == identity for c in unique.values()):
+            unique[candidate.candidate_id] = candidate
+    members = {cid: candidate_region_membership(item, sectors) for cid, item in unique.items()}
+
+    def score(item):
+        value = getattr(getattr(item, "stability", None), "spurs_multi_ddg_kcal_mol", None)
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) else None
+
+    regional_groups = {}
+    for item in unique.values():
+        owner = members[item.candidate_id]["exclusive_region_id"]
+        value = score(item)
+        if owner is not None and value is not None:
+            regional_groups.setdefault((owner, item.order), []).append(item)
+    exploration_ids = set()
+    exploration_group_audit = []
+    for (owner, order), rows in sorted(regional_groups.items()):
+        ranked = rank_impacts(rows)
+        quartile_size = max(1, math.ceil(len(ranked) * percentile))
+        top_ids = {item.candidate_id for item in ranked[:quartile_size]}
+        eligible = [item for item in ranked if item.candidate_id in top_ids
+                    and exploration_min_exclusive < score(item) <= exploration_max_inclusive]
+        exploration_ids.update(item.candidate_id for item in eligible)
+        exploration_group_audit.append({
+            "sector_id": owner, "order": order, "candidate_count": len(ranked),
+            "mechanism_top_quartile_count": quartile_size,
+            "spurs_window_count": sum(exploration_min_exclusive < score(item) <= exploration_max_inclusive
+                                       for item in ranked),
+            "eligible_exploration_count": len(eligible),
+        })
+
+    def base_key(item):
+        value = score(item)
+        impact = item.impact_evidence if isinstance(item.impact_evidence, dict) else {}
+        return (value is None or value > 0.5,
+                item.order != 2,
+                (impact.get("selection_rank") or math.inf),
+                value if value is not None else math.inf,
+                item.candidate_id)
+
+    def round_robin(pool, limit, prior=()):
+        remaining = {item.candidate_id: item for item in pool}
+        selected = []
+        used_sites = {tuple(sorted(o.residue.uniprot_pos for o in c.mutations)) for c in prior}
+        owners = sorted({members[cid]["exclusive_region_id"] or "GLOBAL" for cid in remaining})
+        while remaining and len(selected) < limit:
+            progressed = False
+            for owner in owners:
+                group = [item for cid, item in remaining.items()
+                         if (members[cid]["exclusive_region_id"] or "GLOBAL") == owner]
+                if not group:
+                    continue
+                winner = min(group, key=lambda c: (
+                    tuple(sorted(o.residue.uniprot_pos for o in c.mutations)) in used_sites,
+                    any(p.order == c.order and members[p.candidate_id]["exclusive_region_id"] == members[c.candidate_id]["exclusive_region_id"] for p in [*prior, *selected]),
+                    *base_key(c)))
+                used_sites.add(tuple(sorted(o.residue.uniprot_pos for o in winner.mutations)))
+                selected.append(winner)
+                del remaining[winner.candidate_id]
+                progressed = True
+                if len(selected) >= limit:
+                    break
+            if not progressed:
+                break
+        return selected
+
+    local = [item for item in unique.values() if members[item.candidate_id]["exclusive_region_id"] is not None
+             and score(item) is not None and score(item) <= exploration_max_inclusive]
+    global_rows = [item for item in unique.values() if members[item.candidate_id]["exclusive_region_id"] is None
+                   and score(item) is not None and score(item) <= exploration_max_inclusive]
+    priorities = set(priority_candidate_ids)
+    forced_local = sorted((item for item in local if item.candidate_id in priorities), key=base_key)[:local_budget]
+    forced_exploration_count = sum(c.candidate_id in exploration_ids for c in forced_local)
+    explore = round_robin([item for item in local if item.candidate_id in exploration_ids
+                           and item.candidate_id not in {c.candidate_id for c in forced_local}],
+                          max(0, min(local_budget - len(forced_local),
+                                     local_exploration_budget - forced_exploration_count)),
+                          prior=forced_local)
+    used = {item.candidate_id for item in explore}
+    used.update(item.candidate_id for item in forced_local)
+    local_main = round_robin([item for item in local if item.candidate_id not in used
+                              and score(item) <= 0.5], local_budget - len(forced_local) - len(explore), prior=[*forced_local, *explore])
+    used.update(item.candidate_id for item in local_main)
+    # If the preferred pool is sparse, use remaining acceptable local candidates
+    # after the reserved exploration slice, without duplicating an exact construct.
+    local_fill = round_robin([item for item in local if item.candidate_id not in used and score(item) <= 0.5],
+                             local_budget - len(forced_local) - len(explore) - len(local_main), prior=[*forced_local,*explore,*local_main])
+    used.update(item.candidate_id for item in local_fill)
+    forced_global = sorted((item for item in global_rows if item.candidate_id in priorities), key=base_key)[:global_budget]
+    global_selected = [*forced_global, *round_robin(
+        [item for item in global_rows if item.candidate_id not in {c.candidate_id for c in forced_global}],
+        global_budget - len(forced_global), prior=forced_global)]
+    # A physical mutation identity may be encountered through overlapping
+    # footprints; keep one requested copy and account for any resulting shortage.
+    chosen = []
+    seen = set()
+    for item in [*forced_local, *local_main, *explore, *local_fill, *global_selected]:
+        identity = tuple(sorted(option.notation for option in item.mutations))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        chosen.append(item)
+    # Recycle unused local/global slots without weakening candidate eligibility.
+    recycle = round_robin([item for item in [*local, *global_rows]
+        if tuple(sorted(o.notation for o in item.mutations)) not in seen
+        and (members[item.candidate_id]["exclusive_region_id"] is None or score(item) <= .5)],
+        local_budget + global_budget - len(chosen), prior=chosen)
+    chosen.extend(recycle)
+    selected_ids = {item.candidate_id for item in chosen}
+    for item in unique.values():
+        owner = members[item.candidate_id]["exclusive_region_id"]
+        item.impact_evidence["foldx_scheduling"] = {
+            "selected": item.candidate_id in selected_ids,
+            "budget_purpose": "local_strong_exploration" if item in explore else "local" if owner else "global",
+            "exclusive_region_id": owner,
+            "not_scheduled_reason": None if item.candidate_id in selected_ids else "BUDGET_OR_EXPLORATION_QUOTA",
+            "site_set": sorted(o.residue.uniprot_pos for o in item.mutations),
+            "chemical_identity": sorted(o.notation for o in item.mutations)}
+    audit = {
+        "policy": "ordinary_v4_foldx_80_v1",
+        "reallocated_candidate_ids": [item.candidate_id for item in recycle],
+        "reallocated_slots": len(recycle),
+        "allocation_scope": "60/20 are nominal pools; shortage recycling preserves total and eligibility gates",
+        "requested": {"local": local_budget, "local_strong_exploration": local_exploration_budget,
+                      "global": global_budget, "total": local_budget + global_budget},
+        "selected": {"local": sum(members[item.candidate_id]["exclusive_region_id"] is not None for item in chosen),
+                     "local_strong_exploration": sum(item.candidate_id in exploration_ids for item in chosen),
+                     "global": sum(members[item.candidate_id]["exclusive_region_id"] is None for item in chosen),
+                     "total": len(chosen)},
+        "shortage": {"local": max(0, local_budget - sum(members[item.candidate_id]["exclusive_region_id"] is not None for item in chosen)),
+                     "local_strong_exploration": max(0, local_exploration_budget - sum(item.candidate_id in exploration_ids for item in chosen)),
+                     "global": max(0, global_budget - sum(members[item.candidate_id]["exclusive_region_id"] is None for item in chosen)),
+                     "total": local_budget + global_budget - len(chosen)},
+        "spurs_multi_window": {"lower_exclusive": exploration_min_exclusive,
+                               "upper_inclusive": exploration_max_inclusive},
+        "mechanism_rank_within": "exclusive_region_id_and_order",
+        "mechanism_percentile": percentile,
+        "exploration_groups": exploration_group_audit,
+        "selected_candidate_ids": [item.candidate_id for item in chosen],
+        "unselected_candidate_count": len(set(unique) - selected_ids),
+        "deduplicated_construct_count": valid_input_count - len(unique),
+    }
+    return chosen, audit
+
+
+def select_v4_foldx_refinement_batch(
+    candidates,
+    panel_candidate_ids,
+    regional_primary_candidate_ids,
+    already_completed_ids,
+    *,
+    limit=7,
+):
+    """Choose the next deterministic repeat-completion tranche, without repeats."""
+    by_id = {item.candidate_id: item for item in candidates}
+    completed = set(already_completed_ids)
+    ordered_ids = []
+    for candidate_id in [*panel_candidate_ids, *regional_primary_candidate_ids]:
+        if candidate_id in by_id and candidate_id not in completed and candidate_id not in ordered_ids:
+            ordered_ids.append(candidate_id)
+    remaining = [item for item in candidates if item.candidate_id not in completed
+                 and item.candidate_id not in ordered_ids]
+    remaining.sort(key=lambda item: (
+        item.order != 2,
+        not bool(item.formal_eligible),
+        (item.impact_evidence or {}).get("selection_rank", math.inf),
+        item.candidate_id,
+    ))
+    ordered_ids.extend(item.candidate_id for item in remaining)
+    return [by_id[candidate_id] for candidate_id in ordered_ids[:max(0, int(limit))]]
+
+
 def coverage_candidates(options, graph, parameters, diagnostics=None):
     """Enumerate full eligible site graph, then select a bounded proxy pool."""
     from .coverage_profile import sequence_reasons, mechanisms, descriptors

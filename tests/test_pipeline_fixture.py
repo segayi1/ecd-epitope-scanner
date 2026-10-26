@@ -99,6 +99,12 @@ def test_full_pipeline_outputs_meaningful_regional_constructs(fixture_result):
     assert all(row["failed_gates"] for row in suggestions if row["status"] == "NEAR_THRESHOLD")
     assert all(candidate["geometry_support"]["area_basis"] == "eligible_surface_area_a2"
                for candidate in result["joint_v4_ml"]["candidates"])
+    # Preview lacks single-model evidence; it must not invent mechanism recommendations or JSON infinities.
+    assert not any(candidate.get("impact_evidence", {}).get("policy") == "regional_mechanism_pareto_v1"
+                   for candidate in result["joint_v4_ml"]["candidates"])
+    def reject_nonfinite(value):
+        raise AssertionError(f"Non-finite candidate export: {value}")
+    json.loads((output / "panel_candidates.json").read_text(encoding="utf-8"), parse_constant=reject_nonfinite)
     assert all(set(row["geometry_support"]["scenarios"]) == {"geodesic_9", "geodesic_12", "geodesic_15"}
                for row in suggestions if row["candidate_id"])
     assert (output / "run_manifest.json").is_file()

@@ -38,6 +38,12 @@ def test_exclusive_primary_and_cross_alternative_have_independent_evidence():
     alt = rows[0]["alternatives"][0]
     assert alt["candidate_id"] == "cross" and alt["status"] == "PASSED"
     assert alt["ownership"] == "CROSS_REGION"
+    assert all(value is not None for value in alt["impact_evidence"]["axes"].values())
+    assert "policy" not in alt["impact_evidence"]
+    assert len(alt["impact_evidence"]["mutation_site_details"]) == 2
+    assert set(alt["regional_geometry_support"]["scenarios"]) == {
+        "geodesic_9", "geodesic_12", "geodesic_15"}
+    assert len(alt["impact_evidence"]["local_interaction_diagnostics"]["pairs"]) == 1
     assert rows[1]["status"] == "NO_COMBINATION"
     assert rows[1]["alternatives"][0]["candidate_id"] == "cross"
     assert rows[0]["gate_details"] and not alt["gate_details"]
@@ -167,11 +173,12 @@ def test_missing_foldx_reason_distinguishes_scheduling_from_failure():
 
 def test_real_secondary_structure_and_engineered_neighborhood_notes_are_explained():
     one = candidate("one", [1, 2])
-    one.mutations[0].warnings = ["beta-strand", "engineered-neighborhood"]
+    one.mutations[0].warnings = ["beta-strand", "engineered-neighborhood", "salt-bridge"]
     risk = build([one])[0]["site_details"][0]["risk_assessment"]
     notes = {note["code"]: note["explanation"] for note in risk["notes"]}
     assert "β链" in notes["beta-strand"]
     assert "参考序列不一致" in notes["engineered-neighborhood"]
+    assert "盐桥" in notes["salt-bridge"] and "不等于已证实" in notes["salt-bridge"]
 
 
 def test_source_and_combination_model_provenance_are_preserved():
@@ -208,7 +215,7 @@ def test_alternative_quantitative_tradeoffs_are_exact_and_missing_baseline_unkno
 def test_csv_flattens_alternatives_without_increasing_primary_selection(tmp_path):
     from ecd_epitope_scanner.joint_design_v4.models import JointV4Result, V4Panel
     from ecd_epitope_scanner.joint_design_v4.reporting import write_v4_outputs
-    pool = [candidate("a", [1, 2]), candidate("cross", [2, 5])]
+    pool = [candidate("a", [1, 2]), candidate("cross", [2, 5]), candidate("review", [4, 5], passed=False, ddg=2.5)]
     rows = build(pool)
     panel = V4Panel(["a"], {}, {}, [], "test", sector_recommendations=rows)
     result = JointV4Result("4.0", "FORMAL_RECOMMENDATION", {}, [], [], [], sectors(), pool, panel)
@@ -218,4 +225,7 @@ def test_csv_flattens_alternatives_without_increasing_primary_selection(tmp_path
     assert any(row["recommendation_role"] == "ALTERNATIVE" for row in data)
     exported_alt = next(row for row in data if row["recommendation_role"] == "ALTERNATIVE")
     assert json.loads(exported_alt["primary_comparison"]) == rows[0]["alternatives"][0]["primary_comparison"]
+    exported_gap = next(row for row in data if row["sector_id"] == "VS002" and row["candidate_id"] == "review")
+    assert json.loads(exported_gap["unavailable_principles"]) == rows[1]["unavailable_principles"]
+    assert any(item["gate_details"] for item in rows[1]["unavailable_principles"])
     assert json.loads((tmp_path / "selected_panel_v4.json").read_text(encoding="utf-8"))["selected_candidate_ids"] == ["a"]

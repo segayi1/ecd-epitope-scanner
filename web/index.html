@@ -5,73 +5,94 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>ECD Epitope Workbench</title>
-<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/workbench.css">
+<link rel="stylesheet" href="/assets/app.css?v=job-eta-20261026-v1">
 <link rel="stylesheet" href="/assets/vendor/pdbe-molstar-light-3.10.1.css">
 </head>
-<body>
+<body data-workspace-step="1">
 
 <header class="appbar">
-  <div class="brand">
-    <span class="brand-mark">E</span>
+  <a class="brand site-brand" href="/">
+    <span class="brand-mark site-mark">E</span>
     <div><strong id="app-brand-title">ECD Epitope Workbench</strong><small id="app-brand-subtitle" data-i18n="app.subtitle">胞外区结构分区组合突变设计</small></div>
+  </a>
+  <div class="app-actions site-links">
+    <a href="/" aria-current="page" data-i18n="nav.design">结构设计</a>
+    <a href="/experiments" data-i18n="nav.experiments">实验项目</a>
+    <details class="site-nav-menu"><summary data-i18n="nav.atlas">结构图册</summary><div>
+      <a href="/assets/surface_partitions.html">PD-L1 / CTLA-4 分区表面</a>
+      <a href="/assets/ctla4_six_mutants.html">CTLA-4 六突变体结构</a>
+      <a href="/pd1-antibodies">PD-1 抗体表面</a>
+    </div></details>
+    <button id="btn-lang" class="btn btn-quiet" type="button">EN</button>
+    <button id="btn-export-offline" class="btn" type="button" disabled data-i18n="form.exportOffline" data-i18n-title="form.exportOfflineTitle" title="导出单文件离线报告（含结构）">导出离线 HTML</button>
+    <button id="open-run" class="btn primary" type="button" data-i18n="workspace.new">＋ 新建分析</button>
   </div>
+</header>
+
+<aside class="offline-notice" data-i18n="offline.loaded" role="status">离线任务结果已载入；仅查看与本地序列草稿，不运行计算。</aside>
+
+<dialog id="run-dialog" class="dlg run-dialog" aria-labelledby="run-title">
   <form id="run-form" class="runbox">
+    <div class="dialog-head"><div><p class="site-kicker">NEW ANALYSIS</p><h2 id="run-title" data-i18n="workspace.newTitle">开始一次结构分析</h2></div>
+      <button id="close-run" class="btn btn-quiet" type="button" data-i18n="common.cancel">取消</button></div>
+    <p class="note" data-i18n="workspace.newHint">输入蛋白标识，或上传已有结构。高级参数按需设置。</p>
     <span class="seg" role="radiogroup" data-i18n-aria="aria.inputType" aria-label="输入类型">
       <label><input type="radio" name="input-type" value="uniprot" checked><span>UniProt</span></label>
       <label><input type="radio" name="input-type" value="pdb_id"><span>PDB ID</span></label>
     </span>
     <label class="fld"><span id="identifier-label" data-i18n="form.identifier">蛋白 accession</span>
       <input id="identifier" value="Q9NZQ7" autocomplete="off" required></label>
-    <label class="fld fld-sm"><span data-i18n="form.chain">链</span>
+    <label class="fld"><span data-i18n="form.chain">链</span>
       <input id="chain" maxlength="4" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
+    <details class="run-advanced"><summary data-i18n="workspace.advanced">高级设置与计算预算</summary><div class="run-settings">
     <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
     <label class="fld fld-sm"><span>表面策略</span><select id="surface-strategy"><option value="legacy">现有V4</option><option value="surface_perturbation_v1_preview">真实扰动预览</option></select></label>
     <label class="fld fld-sm"><span>优化配置</span><select id="optimization-profile"><option value="legacy">兼容配置</option><option value="coverage_scan_v2_preview">覆盖优先预览v2</option><option value="coverage_scan_v3_preview">覆盖与信息预览v3</option></select></label>
-    <details><summary>构建体预算</summary>
-      <label><input id="adaptive-budget" type="checkbox" checked>自动 4–8</label>
+    <details><summary data-i18n="form.panelBudget">可选全局精简面板</summary>
+      <p class="hint" data-i18n="form.panelBudgetHint">以下预算仅控制附加全局面板；各分区按设计原则给出的合格推荐独立保留。</p>
+      <label><input id="adaptive-budget" type="checkbox" checked><span data-i18n="form.panelAdaptive">精简面板自动选4–8个</span></label>
       <label>最少目标<input id="budget-minimum" type="number" min="1" max="8" value="4" style="width:45px"></label>
       <label>常见目标<input id="budget-target" type="number" min="1" max="8" value="7" style="width:45px"></label>
       <label>硬上限<input id="budget-maximum" type="number" min="1" max="12" value="8" style="width:45px"></label>
     </details>
     <details><summary data-i18n="form.partitionSettings">显示分区设置</summary>
-      <label><span data-i18n="form.partitionTarget">目标残基数（软目标）</span><input id="sector-target" type="number" min="10" max="15" step="1" value="12" style="width:55px"></label>
+      <label><span data-i18n="form.partitionTarget">每区目标残基数（留空自动）</span><input id="sector-target" type="number" min="7" max="15" step="1" data-i18n-placeholder="form.partitionAuto" placeholder="自动" style="width:70px"></label>
+      <p class="hint" data-i18n="form.partitionSizeHint">总区数以4–12为软目标。按实际分析链长度分配每区表面残基数：&lt;120 aa 目标7个；120–150 aa 目标8个；&gt;150 aa 目标12个。各区独立推荐，分区须满足连通和直径限制。</p>
       <label><span data-i18n="form.partitionSurface">表面测地直径上限 Å</span><input id="sector-geodesic" type="number" min="1" step="1" value="30" style="width:55px"></label>
       <label><span data-i18n="form.partitionCa">Cα直径上限 Å</span><input id="sector-ca" type="number" min="1" step="1" value="22" style="width:55px"></label>
     </details>
-    <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button>
-    <button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
+    </div></details>
+    <p id="run-feedback" class="joberr" role="alert" hidden></p>
+    <div class="dlg-actions"><button id="open-upload" class="btn" type="button" data-i18n="form.upload">上传结构</button>
+    <button id="run-button" class="btn primary" type="submit" data-i18n="form.run">运行设计</button></div>
   </form>
-  <div class="app-actions">
-    <a class="btn" href="/assets/surface_partitions.html">PD-L1 / CTLA-4 分区表面</a>
-    <a class="btn" href="/assets/ctla4_six_mutants.html">CTLA-4 六突变体结构</a>
-    <a class="btn" href="/pd1-antibodies">PD-1 抗体表面</a>
-    <a class="btn" href="/experiments">实验项目</a>
-    <button id="btn-lang" class="btn" type="button">EN</button>
-    <button id="btn-export-offline" class="btn" type="button" disabled data-i18n="form.exportOffline" data-i18n-title="form.exportOfflineTitle" title="导出单文件离线报告（含结构）">导出离线 HTML</button>
-  </div>
-</header>
+</dialog>
 
 <nav id="steps" class="steps" data-i18n-aria="aria.steps" aria-label="分析步骤"></nav>
 
 <div class="jobbar" aria-live="polite">
   <span id="job-state" class="badge" data-i18n="status.idle">未运行</span>
   <span id="job-message" data-i18n="status.initial">载入冻结 PD-L1 示例，或提交 UniProt / PDB ID。</span>
+  <span id="job-eta" class="pct" hidden></span>
   <span class="prog"><i id="job-progress"></i></span>
   <span id="job-percent" class="pct">0%</span>
 </div>
-<p id="job-error" class="joberr" hidden></p>
+<div class="job-error-wrap"><p id="job-error" class="joberr" hidden></p></div>
 
 <div class="page">
 
   <section class="stage-col">
+    <header class="stage-heading"><div><span class="site-kicker">STRUCTURE WORKSPACE</span><h1 id="workspace-title" data-i18n="hud.canvasTitle">结构审查画布</h1></div>
+      <span id="workspace-context" class="workspace-context" data-i18n="workspace.loading">正在载入结构</span></header>
     <div class="viewport" id="viewport">
       <div id="viewer-molstar" class="view-host"></div>
       <div id="viewer-beads" class="view-host" hidden></div>
 
       <div class="vp-hud vp-toolbar">
         <span class="seg" role="group" data-i18n-aria="aria.engine" aria-label="渲染引擎">
-          <button type="button" data-engine="molstar" aria-pressed="true" data-i18n="hud.cartoonBtn">卡通</button>
+          <button type="button" data-engine="molstar" aria-pressed="true" data-i18n="hud.cartoonBtn">精细模型</button>
           <button type="button" data-engine="beads" aria-pressed="false" data-i18n="hud.beadsBtn">珠子</button>
         </span>
         <span class="seg" role="group" data-i18n-aria="aria.representation" aria-label="显示模式">
@@ -99,16 +120,18 @@
     <section class="seqdock" data-i18n-aria="aria.seqdock" aria-label="序列比对（常驻）">
       <header class="seqdock-head">
         <strong data-i18n="seqdock.title">序列比对</strong>
-        <span class="dock-note" data-i18n="seqdock.persistent">常驻面板</span>
+        <span id="sequence-summary" class="dock-note" data-i18n="seqdock.loadFirst">载入结果后显示序列比对。</span>
         <span class="grow"></span>
-        <span class="seg seg-sm" role="group" data-i18n-aria="aria.seqType" aria-label="序列类型">
+        <span class="seg seg-sm seq-mode" role="group" data-i18n-aria="aria.seqType" aria-label="序列类型">
           <label><input type="radio" name="seq-mode" value="aa" checked><span data-i18n="seqdock.aa">氨基酸</span></label>
           <label><input type="radio" name="seq-mode" value="dna"><span data-i18n="seqdock.dna">编码序列</span></label>
         </span>
         <label class="fld fld-inline"><span data-i18n="seqdock.construct">构建体</span>
           <select id="design-select"><option value="wt">WT ECD</option></select>
         </label>
+        <button id="toggle-sequence" class="btn btn-mini" type="button" aria-expanded="false" aria-controls="sequence-content" data-i18n="workspace.expandSequence">展开比对</button>
       </header>
+      <div id="sequence-content" hidden>
       <div class="seq-line">
         <span class="seq-tag">WT</span><span id="wt-meta" class="seq-meta"></span>
         <span class="grow"></span>
@@ -123,6 +146,7 @@
         <button class="btn btn-mini" id="copy-design-nt" type="button"><span data-i18n="seqdock.copyCDS">⧉ 复制 CDS</span></button>
       </div>
       <div id="design-sequence" class="seq-body" tabindex="0"></div>
+      </div>
     </section>
   </section>
 
@@ -132,14 +156,16 @@
 <dialog id="upload-dialog" class="dlg">
   <form id="upload-form" method="dialog">
     <h3 data-i18n="upload.title">上传已下载结构</h3>
-    <label class="fld"><span data-i18n="upload.analysisTarget">分析对象</span><select id="upload-analysis-target" aria-describedby="upload-target-hint"><option value="antigen" data-i18n="upload.targetAntigen">抗原 ECD</option><option value="binder" data-i18n="upload.targetBinder">Binder 本体</option></select></label>
+    <label class="fld"><span data-i18n="upload.analysisTarget">分析对象</span>
+      <select id="upload-analysis-target" aria-describedby="upload-target-hint"><option value="antigen" data-i18n="upload.targetAntigen">抗原 ECD</option><option value="binder" data-i18n="upload.targetBinder">Binder 本体</option></select></label>
     <p id="upload-target-hint" class="muted" aria-live="polite"></p>
     <label class="fld"><span data-i18n="upload.sourceMode">输入类型</span><select id="upload-source-mode"><option value="structure" data-i18n="upload.singleStructure">单个结构文件</option><option value="af3-directory" data-i18n="upload.af3Directory">AF3 解压文件夹</option></select></label>
-    <p class="muted" data-i18n="upload.hint">仅需抗原 ECD 的 PDB / mmCIF；固定使用 Jurkat-Fab × K562-抗原膜方位并输出最多 6 个粗定位探针。</p>
     <label class="fld" id="upload-structure-field"><span data-i18n="upload.structureFile">结构文件</span>
       <input id="upload-structure" type="file" accept=".pdb,.ent,.cif,.mmcif" required></label>
-    <label class="fld" id="upload-af3-directory-field" hidden><span data-i18n="upload.af3Directory">AF3 解压文件夹</span><input id="upload-af3-directory" type="file" webkitdirectory directory multiple></label>
-    <label class="chk" id="upload-af3-confirm-field" hidden><input id="upload-af3-confirm" type="checkbox"><span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
+    <label class="fld" id="upload-af3-directory-field" hidden><span data-i18n="upload.af3Directory">AF3 解压文件夹</span>
+      <input id="upload-af3-directory" type="file" webkitdirectory directory multiple></label>
+    <label class="chk" id="upload-af3-confirm-field" hidden><input id="upload-af3-confirm" type="checkbox">
+      <span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
     <div class="grid2">
       <label class="fld"><span id="upload-accession-label" data-i18n="upload.accession">UniProt accession</span><input id="upload-accession" data-i18n-placeholder="upload.accessionHint" placeholder="推荐填写"></label>
       <label class="fld"><span id="upload-chain-label" data-i18n="upload.chain">目标链</span><input id="upload-chain2" data-i18n-placeholder="form.chainPlaceholder" placeholder="自动"></label>
@@ -150,10 +176,12 @@
     <label class="fld fld-sm"><span>优化配置</span><select id="upload-optimization-profile"><option value="legacy">兼容配置</option><option value="coverage_scan_v2_preview">覆盖优先预览v2</option><option value="coverage_scan_v3_preview">覆盖与信息预览v3</option></select></label>
     <details id="upload-antigen-advanced">
       <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
-      <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>
-      <div class="grid2">
-        <label class="fld"><span data-i18n="upload.ecdStart">ECD 起点</span><input id="upload-ecd-start" type="number" min="1"></label>
-        <label class="fld"><span data-i18n="upload.ecdEnd">ECD 终点</span><input id="upload-ecd-end" type="number" min="1"></label>
+      <div>
+        <label class="fld"><span data-i18n="upload.fullSeq">完整蛋白序列</span><textarea id="upload-sequence" rows="3"></textarea></label>
+        <div class="grid2">
+          <label class="fld"><span data-i18n="upload.ecdStart">ECD 起点</span><input id="upload-ecd-start" type="number" min="1"></label>
+          <label class="fld"><span data-i18n="upload.ecdEnd">ECD 终点</span><input id="upload-ecd-end" type="number" min="1"></label>
+        </div>
       </div>
     </details>
     <div class="dlg-actions">
@@ -166,15 +194,14 @@
 <dialog id="af3-dialog" class="dlg">
   <form id="af3-form" method="dialog">
     <h3 data-i18n="af3.title">补充官方 AF3 输出</h3>
+    <p class="muted" data-i18n="af3.hint">需要官方 AF3 解压文件夹，或 top-ranked mmCIF 与对应 confidences JSON。</p>
     <label class="fld"><span data-i18n="af3.sourceMode">AF3 输入</span><select id="af3-source-mode"><option value="pair" data-i18n="af3.modelPair">单个模型 + 置信度</option><option value="directory" data-i18n="af3.directory">AF3 解压文件夹</option></select></label>
-    <div id="af3-pair-fields">
-    <p class="muted" data-i18n="af3.hint">需要 top-ranked mmCIF 与对应 confidences JSON。系统不会把 AFDB/AF2 当作 AF3。</p>
-    <label class="fld"><span>AF3 model CIF</span>
+    <div id="af3-pair-fields"><label class="fld"><span>AF3 model CIF</span>
       <input id="af3-structure" type="file" accept=".cif,.mmcif" required></label>
     <label class="fld"><span>AF3 confidences JSON</span>
-      <input id="af3-confidence" type="file" accept=".json" required></label>
-    </div>
-      <label class="fld" id="af3-directory-field" hidden><span data-i18n="af3.directory">AF3 解压文件夹</span><input id="af3-directory" type="file" webkitdirectory directory multiple></label>
+      <input id="af3-confidence" type="file" accept=".json" required></label></div>
+    <label class="fld" id="af3-directory-field" hidden><span data-i18n="af3.directory">AF3 解压文件夹</span>
+      <input id="af3-directory" type="file" webkitdirectory directory multiple></label>
     <label class="chk"><input id="af3-confirm" type="checkbox" required>
       <span data-i18n="af3.confirm">确认文件来自官方 AlphaFold 3 输出</span></label>
     <div class="dlg-actions">
@@ -188,7 +215,7 @@
 
 <script src="/assets/vendor/3Dmol-min.js"></script>
 <script src="/assets/vendor/pdbe-molstar-plugin-3.10.1.js"></script>
-<script src="/assets/renderer.js"></script>
-<script type="module" src="/assets/app.js?v=af3-folder-upload-20261021-v1"></script>
+<script src="/assets/renderer.js?v=unified-target-20261025-v1"></script>
+<script type="module" src="/assets/app.js?v=job-eta-20261026-v1"></script>
 </body>
 </html>

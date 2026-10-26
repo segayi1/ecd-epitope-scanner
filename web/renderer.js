@@ -17,6 +17,7 @@ const MolstarView = (() => {
   let plugin = null;
   let ready = false;
   let initOptions = null;
+  let chainView = null;
   const disposed = new WeakSet();
 
   function dispose(instance) {
@@ -54,7 +55,7 @@ const MolstarView = (() => {
 
   const alive = () => Boolean(plugin && plugin.plugin && plugin.plugin.managers);
 
-  async function init(host, structureUrl, representation) {
+  async function init(host, structureUrl, representation, inlineStructureText = null) {
     destroy();
     host.innerHTML = "";
     let instance;
@@ -66,7 +67,7 @@ const MolstarView = (() => {
       defaultPreset: "default",
       visualStyle: { polymer: representation || "cartoon", het: "ball-and-stick", carbs: "carbohydrate" },
       hideStructure: ["water"],
-      bgColor: "#f4f0e7",
+      bgColor: "#f1f5f7",
       highlightColor: "#FFD166",
       selectColor: "#FFD166",
       granularity: "residue",
@@ -83,14 +84,19 @@ const MolstarView = (() => {
     let resourceUrl = null;
     let stage = "fetch";
     try {
-      const response = await fetch(structureUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.text();
+      let data = inlineStructureText;
+      if (data == null) {
+        const response = await fetch(structureUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        data = await response.text();
+      }
       stage = "parse";
-      if (!/^\s*(?:#[^\n]*\n\s*)*data_/i.test(data)) throw new Error("Expected mmCIF structure data");
+      const format = /^\s*(?:#[^\n]*\n\s*)*data_/i.test(data) ? "cif"
+        : /^(?:HEADER|ATOM\s|HETATM|MODEL\s|COMPND|TITLE\s|REMARK)/m.test(data) ? "pdb" : null;
+      if (!format) throw new Error("Expected mmCIF or PDB structure data");
       if (instance !== plugin) return null;
       resourceUrl = URL.createObjectURL(new Blob([data], { type: "text/plain" }));
-      const options = { ...initOptions, customData: { ...initOptions.customData, url: resourceUrl } };
+      const options = { ...initOptions, customData: { ...initOptions.customData, url: resourceUrl, format } };
       stage = "render";
       await instance.render(host, options);
       if (!await waitReady(15000, instance)) return null;
@@ -128,22 +134,82 @@ const MolstarView = (() => {
     if (typeof instance.applyVisualStyles === "function" && instance.assemblyRef) {
       await instance.applyVisualStyles(instance.assemblyRef, visualStyle);
     } else {
+      const previousChains = chainView;
       initOptions = { ...initOptions, visualStyle };
       await instance.visual.update(initOptions, true);
       if (!await waitReady(15000, instance)) return;
+      if (previousChains) {
+        await configureChains(previousChains.targetChains, previousChains.partnerChains, representation, previousChains.targetRecords);
+        chainView.visible = previousChains.visible;
+      }
     }
     if (instance !== plugin) return;
+    applyChainVisibility();
     await instance.canvas.applySettings({
-      color: "#f4f0e7",
+      color: "#f1f5f7",
       lighting: representation === "molecular-surface" ? "matte" : "flat",
     });
     if (instance === plugin) applyViewProps();
   }
 
-  async function color(queryRecords, nonSelectedColor) {
+  async function color(queryRecords, nonSelectedColor, { keepRepresentations = false } = {}) {
     if (!plugin) return;
     if (!alive()) return;
-    await plugin.visual.select({ data: queryRecords, nonSelectedColor, keepRepresentations: false });
+    const instance = plugin;
+    await instance.visual.select({ data: queryRecords, nonSelectedColor, keepRepresentations });
+    if (instance === plugin) applyChainVisibility();
+  }
+
+  async function configureChains(targetChains, partnerChains, representation, targetRecords = null) {
+    if (!alive() || (!targetChains.length && !targetRecords?.length)) return;
+    const instance = plugin;
+    const hierarchy = instance.plugin.managers.structure.hierarchy;
+    const originals = hierarchy.current.structures.flatMap((structure) => structure.components);
+    const query = (chains) => {
+      const tests = chains.map((chain) => ({ head: { name: "core.rel.eq" }, args: [
+        { head: { name: "structure-query.atom-property.macromolecular.auth_asym_id" }, args: [] }, chain,
+      ] }));
+      return { head: { name: "structure-query.generator.atom-groups" }, args: {
+        "chain-test": tests.length === 1 ? tests[0] : { head: { name: "core.logic.or" }, args: tests },
+      } };
+    };
+    const components = [];
+    const groups = [["target", targetChains], ...(partnerChains.length ? [["partner", partnerChains]] : [])];
+    for (const [key, chains] of groups) {
+      const component = key === "target" && targetRecords?.length
+        ? await instance.plugin.builders.structure.tryCreateComponent(instance.assemblyRef, {
+          type: { name: "bundle", params: instance.getBundle(targetRecords) },
+          nullIfEmpty: true, label: "Analysis target",
+        }, "ecd-target", ["structure-component-static-polymer"])
+        : await instance.plugin.builders.structure.tryCreateComponentFromExpression(
+        instance.assemblyRef, query(chains), `ecd-${key}`, {
+          label: key === "target" ? "Analysis target" : "Protein partner",
+          tags: ["structure-component-static-polymer"],
+        });
+      if (component) {
+        await instance.plugin.builders.structure.representation.addRepresentation(component, { type: representation });
+        components.push(component);
+      }
+    }
+    if (instance !== plugin) return;
+    if (components.length !== groups.length) throw new Error("Analysis target or partner chain is missing from the display structure");
+    chainView = { originals, targetChains, targetRecords, partnerChains, partner: components[1], visible: false };
+    applyChainVisibility();
+  }
+
+  function applyChainVisibility() {
+    if (!alive() || !chainView) return;
+    const hierarchy = plugin.plugin.managers.structure.hierarchy;
+    // Mol* rebuilds representations as visible even under a hidden component.
+    hierarchy.toggleVisibility(chainView.originals, "hide");
+    if (chainView.partner) hierarchy.toggleVisibility([chainView.partner], chainView.visible ? "show" : "hide");
+  }
+
+  async function setPartnerVisible(visible) {
+    if (!alive() || !chainView) return;
+    chainView.visible = visible;
+    applyChainVisibility();
+    await reset();
   }
 
   async function highlight(record) {
@@ -164,15 +230,25 @@ const MolstarView = (() => {
     await plugin.visual.tooltips({ data: records });
   }
 
-  async function focus(records) {
+  async function focus(records, { durationMs = 600 } = {}) {
     if (!plugin) return;
     if (!alive()) return;
-    await plugin.visual.focus(records);
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    const loci = plugin.getLociForParams(records);
+    // PDBe-Mol* 3.10.1 visual.focus() calls focusLoci() without options, whose
+    // pinned default is 250 ms. Pass an explicit transition to retain the
+    // current camera orientation while smoothly moving the focus target.
+    await plugin.plugin.managers.camera.focusLoci(loci, { durationMs: reducedMotion ? 0 : durationMs });
   }
 
   async function reset() {
     if (!plugin) return;
     if (!alive()) return;
+    if (chainView) {
+      const target = chainView.targetRecords || chainView.targetChains.map((chain) => ({ auth_asym_id: chain }));
+      await focus([...target, ...(chainView.visible ? chainView.partnerChains.map((chain) => ({ auth_asym_id: chain })) : [])]);
+      return;
+    }
     await plugin.visual.reset({ camera: true });
   }
 
@@ -193,11 +269,12 @@ const MolstarView = (() => {
     try { dispose(plugin); } catch (e) { console.warn("Mol* dispose failed", e); }
     plugin = null;
     initOptions = null;
+    chainView = null;
     ready = false;
     window.__ecdMolstar = null;
   }
 
-  return { init, update, waitReady, setRepresentation, color, highlight, clearHighlight, tooltips, focus, reset, resize, spin, destroy, isReady: () => ready && alive() };
+  return { init, update, waitReady, setRepresentation, configureChains, setPartnerVisible, color, highlight, clearHighlight, tooltips, focus, reset, resize, spin, destroy, isReady: () => ready && alive() };
 })();
 
 const BeadsView = (() => {
@@ -206,15 +283,15 @@ const BeadsView = (() => {
   let pickCb = null;
   let hoverCb = null;
 
-  async function init(host, pdbUrl, residueList) {
+  async function init(host, pdbUrl, residueList, inlinePdbText = null) {
     destroy();
     residues = residueList;
     host.innerHTML = '<div class="beads-canvas" style="position:absolute;inset:0"></div>';
     const instance = $3Dmol.createViewer(host.querySelector(".beads-canvas"), {
-      backgroundColor: "#f4f0e7", antialias: true,
+      backgroundColor: "#f1f5f7", antialias: true,
     });
     viewer = instance;
-    const text = await fetch(pdbUrl).then((r) => {
+    const text = inlinePdbText ?? await fetch(pdbUrl).then((r) => {
       if (!r.ok) throw new Error(`structure fetch failed: HTTP ${r.status}`);
       return r.text();
     });

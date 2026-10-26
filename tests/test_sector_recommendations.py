@@ -115,10 +115,13 @@ def test_cross_region_reuse_is_alternative_and_metrics_are_independent():
         sector("VS005", [5]), sector("VS006", [6]),
     ], dict.fromkeys(range(1, 7), 1), {})
     assert all(row["candidate_id"] is None for row in rows)
-    assert [r["alternatives"][0]["candidate_id"] for r in rows] == ["shared", "shared", "review", "review", "formal", "formal"]
+    assert [[item["candidate_id"] for item in row["alternatives"]] for row in rows] == [
+        ["shared"], ["shared"], [], [], ["formal"], ["formal"]]
     assert rows[0]["alternatives"][0]["coverage_gain"] == 1
     assert rows[1]["alternatives"][0]["coverage_gain"] == 1
-    assert rows[2]["alternatives"][0]["status"] == "NEAR_THRESHOLD"
+    gap = next(item for item in rows[2]["unavailable_principles"] if item["principle"] == "cross_region_coverage")
+    assert gap["candidate_id"] == "review" and gap["gate_details"]
+    assert gap["reason"] == "NO_QUALIFIED_PRINCIPLE_CANDIDATE"
     assert rows[4]["alternatives"][0]["coverage_gain_area_a2"] == 1
 
 

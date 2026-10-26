@@ -1,5 +1,158 @@
 # 项目记忆：有效决策、故障证据与维护约束
 
+## 2026-10-26 运行剩余时间与FoldX / AF3状态核查
+
+新增job_timing.py与JobStore.time_estimate，详情API/SSE发布同owner/同输入协议的历史阶段耗时区间；当前execution trace识别FoldX首轮/追加等真实阶段，不用百分比倒推。至少3个不同执行参考，历史缓存60秒，排队/等待/结束不伪报倒计时，样本不足/超范围明确未知。恢复取最新execution_id，发布重放副本不重复计样本；既有数据库无迁移、科学结果不改。运行条中英/手机及新离线完成态已覆盖。
+
+ETA/API/生命周期36项通过；FoldX诊断/执行身份与AF3轻量接入58项通过、1Windows权限跳过/1完整集成未选。Chrome1440/390px中英四场景模拟进度渲染PASS，零HTTP/pageerror；实际只读历史AF3 binder5例、structure binder6例可估，部分抗原组仅1例不给数字。证据test_output/job_eta_20261026/，详见[估时及状态审计](job_eta_and_integration_audit_20261026.md)。
+
+核对0 RUNNING/QUEUED、WSL /bin/true预检、旧PID12876及完整启动时间后安全隐藏重载。当前服务PID18924，health、time_estimate响应字段与HTML新字段均PASS，service_reload.json终态PASS；前面统一工作台和逐区规则也由新进程加载。未启动新模型或新增自动化，未跑全仓。
+
+用户询问的FoldX大波动：实际准入取五槽median，采样隔离与跨门/逐槽风险显示已实现；并未新增方差硬拒绝，median通过且部分槽超门的组合仍可能保留资格并标采样需复核。AF3多模型预处理已接入共用流程且既有完整等价收据PASS；同目录普通Server模型的sample_id仍以父目录fallback，遗留未修，不能称来源身份所有布局均正确。本轮没有改变上述科学门或重跑完整AF3模型链。
+
+## 2026-10-25 当前主合同：4–12分区，各原则独立给出合格推荐
+
+用户明确4–12指显示分区，各区分别保留不同设计原则下通过门槛的推荐，不以全局4–8构建体数量截断。常规长度分区函数现对所有链长应用4–12软偏好，每区目标仍按长度7/8/12；连通/直径/面积硬门优先。全局精简面板仅作附加选择，预算不再占据逐区结果顶部。物理预览与80组合/300槽评分合同保留。
+
+最终原则备选不再回退未通过项；缺口保存最近候选ID及失败/缺失门，CSV/JSON同步。主代表的近门槛诊断和冻结旧备选放入折叠审查详情。评分前/追加确认的engine两处调用显式confirmation_planning，仍保留未确认原则候选优先级。展示描述补充先复制单点记录，避免改源科学单点元数据。
+
+18文件179项回归通过，最后CSV/显示专项20项通过（重叠不相加）；12区×全局4/8容量各原则完整与CTLA4源分数/资格/hash不变通过。125残基抗原7区、77残基binder7区新离线站点真实Chrome断网PASS，未通过卡折叠、精确目标、伙伴/表示/七步/单viewer/390px与零HTTP/pageerror。证据test_output/regional_contract_20261025/，详见[本次审计](regional_recommendation_contract_20261025.md)。未重算模型/重启服务/跑全仓；历史包不回写，评分不足的原则仍明示缺口。以下既有全局面板预算说明仅是附加面板历史，不能替代本条主要产品结果。
+
+## 2026-10-25 Binder / 抗原共用工作台与长度分区
+
+用户要求沿用修改后的binder前端统一普通模式，并明确每区残基数根据实际分析链长度而非binder标签分配。V4原本共用`display_sectoring_parameters(len(records))`，<120/120–150/>150 aa分别目标7/8/12；本次保留算法，修正前端及旧API测试的8起步限制为7。DiscoTope仍是主要评分差别，binder关先验并保留assay/膜方向未知、目标链和参考映射语义。
+
+app统一完整结构来源/重试和第四步伙伴开关；renderer用既有getBundle建立精确分析残基组件，避免普通抗原同链ECD外片段露出，表示重建/复位沿用精确集合，离开第四步隐藏伙伴。在线缓存版本更新，新离线站点使用相同源码，历史包不回写。
+
+父目录venv八文件72项回归通过；真实保存125残基抗原与77残基binder新离线站点Chrome断网均PASS：目标集合准确、伙伴/跨步隐藏、表示切换、单viewer、七步、390px及零HTTP/pageerror。收据test_output/unified_target_20261025/regression.xml与browser_acceptance.json；详见[本次审计](unified_target_workbench_20261025.md)。未跑全仓/重验在线服务、未重启或重算模型。早期相关binder受体可见性修复仍须保留。
+
+## 2026-10-22 AF3多模型预处理交付与五例效果评估（完成）
+
+实现已接入目录CLI/API、公共流程、在线/离线显示、原始输入归档和重放；只选原始构象，AF3语义/置信度和既有位点规则/80组合300槽合同保留。最终比较完全重算两边Surface V2几何，不使用早期临时缓存，源码与25模型输入SHA核对通过。
+
+最终仅AIB10从model0选为model1，其余AIB203/AIB26/AIB56/AIB60仍model0。AIB10核心RMSD0.252Å、全目标0.616Å、pTM与ranking不变、平均pLDDT+0.0166分；接触Jaccard0.967，合格暴露位点67→66，Surface V2区域3→4，成员Jaccard0.953但分区ARI0.204，反映边界敏感。早期“2/5换模、AIB26m002”为把并列对照标签误当selected_model_id，已更正，不能继续引用。
+
+当前专项92通过/1Windows symlink权限跳过（test_output/af3_final_focused_20261022.xml）；最终完整等价1通过（af3_final_equivalence_v4_20261022.xml），映射/可靠性/表面/显示区域/AA候选与两个导出包审核通过。修复np.mean与原流程statistics.mean导致的0.01分差异；同义密码子随机优化仅在测试冻结。保存PD1映射100%，288个残基confidence和PAE已映射；最大单模型2048目标全矩阵容量通过，未实测100个最大模型组合。
+
+权威交付：test_output/af3_final_delivery_20261022/evaluation_zh.md与acceptance.json；最终原始比较test_output/af3_preprocessing_comparison_20261022_32de0d8a/。不回写历史运行；没有新AF3/SPURS/FoldX或正式突变推荐评分，未重启服务。浏览器file://受URL策略阻止，静态与归档检查完成；真实多模型ECD和实验准确度基准未完成。以下2026-10-21条目是实施历史，已由本条替代。
+
+## 2026-10-21 AF3多模型预处理（实施与验收中，未交付）
+
+用户批准仅在突变筛选前增加文件夹多模型输入、原始CIF/confidence身份验证、目标映射、质量近似池和来源组等权核心medoid；0.05Å集合内用合法pTM等置信度选一个原始构象，保留原文件与AF3语义。新增诊断不回写位点资格；workers/普通80组合与300槽合同不改。实现已覆盖core、API/CLI/JobRunner、pipeline、在线离线显示、输入归档、重放；原工作树和历史结果保留。
+
+真实源验证暴露并修复原CIF省略冗余auth列与同目录冻结复制自身的问题。五例25模型前处理和源SHA不变已通过，收据test_output/af3_preprocessing_20261021/real_validation_v2/real_binder_audit.json；该收据早于最终基线/元数据修订，最终需要刷新。2048tokens、各4194304项PAE/contact_probs容量测试峰值281501696 bytes，见capacity_receipt.json。旧Binder/可靠性/PD1 22项及核心/接口专项通过，分组有重叠不求和；Windows无权限创建symlink的用例跳过。
+
+尚需：真实文件名job_request/data与seed/上下文归档、原始基线范围/并列、解码前限额和缺少成员的逐项诊断最终核验；目录与选中单对完整公共流程等价测试尚无最终PASS。无新AF3/SPURS/FoldX调用、无服务重启；在线浏览器因本地服务不可用未验证。接续唯一状态tasks/af3_preprocessing_state.md，不得将此条当完成验收。
+
+## 2026-10-18 AF3交付清单遗漏修复（不重算模型）
+
+追加29组/58槽已于2026-10-18T02:11:22Z全部成功，四例派生卡片均PASS，但终验真实发现派生输出遗漏活动foldx_refinement清单：保存评分重放没有复制子目录，各例60条原始配对因此未进入最终目录。源结构/原模型/新增评分均完整，不能将此报错称为模型失败，也不能放宽集合核验。finalize_af3_completion.copy_refinement_evidence现在明确复制五份阶段JSON，绑定analysis.files与run_manifest.files后重建归档；根补齐清单保持原样，并要求最终真实配对身份集合严格等于源加58补充。首次失败收据、派生旧ZIP与元数据备份保留在before_refinement_manifest_repair。
+
+实际终验还暴露validate_pair逐行重复解析同批所有Dif表的平方级I/O。仅在验收器内使用生命周期内解析复用，每份表解析前记录hash、退出前重新校验所有表hash；原始配对的结构字节、坐标身份、突变、槽、DDG匹配检查保持。新增回归验证相同结果只解析一次、表内容变化拒绝通过、离开作用域恢复解析器；导出/独立几何/发布相关8项通过。终验与真实五站ZIP网页检查仍以final_acceptance_execution.json终态为准。
+
+## 2026-10-17 AF3最终验收补齐（独立追加58槽，接续中）
+
+五例已COMPLETE；复查确认4个FAIL都来自真实展示卡五次重复不足，并非仍有80/300溢出。AIB10/AIB26/AIB56原验收把区域主代表缺五槽混称预算失败，现区分源协议不变量与派生补齐后的真实重复证据。29个组合（13/1/9/6）各补槽3/4，共58槽；`supplement_displayed_recommendations.execute_job`允许显式独立预算，默认历史20/43保持，原1500活动槽不扩大改写。任务下`run_af3_completion.py`冻结计划并一次执行，`finalize_af3_completion.py`复用已有重导出器；原目录保留，新增派生COMPLETE记录由无模型发布器注册。
+
+独立核验必须同时读取root首轮240槽与foldx_refinement60槽，排除prior_attempts/paired_manifest_history；只读root清单会错误断言缺60槽。最终验证器核对原协议80/300、追加账本、每条实际配对、完整候选池身份/SPURS不变、逐槽FoldX值和中位数，再审全卡片。五例几何独立重算全部PASS（35区/277节点）；29项相关回归通过及专项12项通过有重叠不求和。AIB60实际file网页/独立报告/七步/结构/草稿JSON与AA/CDS下载/零HTTP通过，其余四站需最终ZIP形成后实测。
+
+`finish_af3_acceptance.py`已一次性后台等待追加进程43536退出（launcher48476），随后核验并发布四例派生记录，五ZIP解压到unpacked_offline_sites后复用浏览器脚本实测。所有原任务、失败产物及早期验收收据保留；没有sleep轮询/自动化。终态、报告、UI收据分别见final_acceptance_execution.json、final_acceptance_zh.md、final_offline_browser_audit/acceptance.json；只有终态PASS才是完整交付。运行服务核对PID/启动时间且任务全空闲后才重载，重载失败单列，不改科学结果。
+
+## 2026-10-17 AF3 FoldX首轮预算溢出修复（等待原队列结束后补跑）
+
+AF3 AIB10 `87f726c6fce8`与AIB26 `2788c19f05c8`在首轮FoldX后进入refinement时失败，分别已有81组/243配对、86组/258配对。AIB10按保存区划核对为61局部+20全局。根因是`select_v4_foldx_first_pass`给逐区优先候选分配局部名额后，探索份额仅扣除已入探索的优先候选，没有同时扣除所有已占局部容量。`candidate_search.py`现将探索限制为剩余局部容量和剩余探索份额的较小值；`engine.py`在启动首轮FoldX前另行检查80组上限，避免昂贵计算后才报错。45优先局部+16探索局部+20全局的回归覆盖本次81组复发。
+
+普通协议/恢复筛选与历史/任务证据历史/推荐补算18项回归通过（5.37秒）。`workspace_data/af3_binder_batch_20261017/budget_repair_evidence.json`绑定失败实际消耗、源码hash与测试记录。原进程PID48180已加载旧模块，磁盘修复不热改其活跃任务；后续失败使用同任务ID在新进程加载修复代码，独立保存失败数据库记录及顶层产物至`prior_attempts`，严格复用身份及槽合同一致的原始配对。已超额的旧尝试单独留账，不能把新运行80/300口径当累计消耗。
+
+一次性后台恢复脚本`recover_failed_af3.py`用OS进程退出等待与文件锁，原队列终态后只恢复FAILED，成功任务不重跑；拒绝重复恢复和存在活跃任务时启动。无sleep轮询、无新增自动化；终态调用独立五例验收器，计算成功与验收状态分别保留。接续已启动（launcher16256/实际43456），收据`recovery_receipt.json`为`WAITING_FOR_ORIGINAL_QUEUE`；最终19项回归4.55秒通过，新增活跃任务禁止服务重载的断言。在线服务仍加载旧Python模块；接续只在五例验收通过且任务全空闲后核对原服务PID27912及启动时间再重载，不能提前声称修复已在线生效。重载只记录新服务启动，健康检查待用户回来后单次核对。
+
+## 2026-10-17 AF3 binder 五例全流程（后台运行）
+
+用户在文章来源六例完成后授权继续处理此前暂缓的五个 AF3 binder。使用其新提供的 `20261016_raw data_binder` 原始AF3文件，不调用AF3推理：每例取 model_0 CIF、同索引 `full_data_0.json`（含 atom_plddts/PAE）及 summary_confidences_0；model_0 在五模型排名分数中均最高或并列最高。AIB10/AIB203/AIB26/AIB56/AIB60 五条A链序列分别为128/64/108/123/66 aa，均与既有预检序列完全一致；单链与 confidence/token/PAE 映射预检PASS。源哈希、五个种子hash和预算规则写入 `workspace_data/af3_binder_batch_20261017/batch_manifest.json`。
+
+五任务以 `input_type=af3_upload`、`analysis_target=binder`、chain A、strict V4运行；目标区大小按长度用7（<120 aa）或8（120–150 aa），显示请求上限12、4–12为软范围。沿用普通V4双/三点、80唯一FoldX组合（60 local/20 global）、80×3首轮及最多30组补两次（总300配对槽）；DiscoTope对binder关闭。通过单独后台JobRunner串行提交，不重启在线服务；首个AIB10 `87f726c6fce8` RUNNING，其余四个QUEUED。完成后需按清单核对结果和每例离线包；旧六例与失败/历史目录保留。
+
+## 2026-10-17 六例推荐补算、卡片完整性与结构总览（交付完成）
+
+20个已展示但FoldX槽不足的唯一组合追加43槽后，六例在线结果以新COMPLETE任务发布，原运行目录、源哈希及已保存值均保留。新任务ID与来源映射记录在`workspace_data/recommendation_completion_20261017/delivery_manifest.json`。FoldX新增用途：19个组合补第4/5槽，AIB201单个无初始槽组合完成0–4五槽；总共43次WT/Mut配对槽，不增加其他候选计算。
+
+推荐卡完整性硬门现在遍历primary、alternatives及全部正式本区展开候选，按每次显示实例记录父区/角色；每例52–63实例均PASS，三输入文件hash绑定。His的质子化在原始AA属性中未知；新增展示专用独立微态枚举，His按中性(电荷0/供体1/受体1)和质子化(1/2/0)分别计算场景、轴/逐位范围和近邻方向分类，不指定pH。原始排序描述符null及资格不改。`web/recommendations.js`将有效范围投影到对应计算轴/逐位单元格，避免范围已可追溯而旁边仍写“未计算”。
+
+遇到两类导出复发点并最小修复：`reexport_recommendation_supplements.py`按ledger仓库相对路径读取时固定以`__file__`推导根目录；补算候选的display-only字段不得传入`V4Candidate`严格schema；发布候选身份校验按notation/位点/替换字母，允许新增逐位证据但逐单核对SPURS、FoldX槽及原值。首次失败/中间目录保留。
+
+结构选择保留同一viewer实例及现有representation，聚焦相机600ms过渡（系统减少动态效果时为0）；多选摘要标注位点重合/替换冲突，可清空且按任务隔离。真实在线AIB239页检查His范围、两组合冲突、清空、跨任务隔离及单canvas定位；六个完整ZIP 71成员且`audit_run_bundle`均PASS。在线与离线共用显示代码并重建归档哈希。相关后端41项、前端14项、生命周期6项及本轮渲染2项回归通过。file://断网交互未在此轮重新实测；真实缺少来源记录的pLDDT/表位先验仍明确呈现，不填造。
+
+## 2026-10-17 P0–P3终态复审（计算结束，验收缺口明确保留）
+
+本轮用户询问运行是否结束并要求再审查。一次性终态核对：六例新任务均COMPLETE、源/配对/预算/导出验收PASS；42区6–8个表面残基、2,664组合SPURS、480 FoldX、180五槽、177正式、48主面板；每例80/300，local60/global20，强探索五例16、AIB239为13。旧283正式与新177不可直接归因为门槛，五槽确认池已由每例60变30。外部runner 2026-10-17T11:10:23Z FINISHED，48尝试、44 SPURS、47 FoldX、235有效配对、240已预占槽；4 SPURS失败及1启动无结果保留不重试。最终汇总已重建，数据预审脚本仍只负责源hash/映射/符号，不能把旧0槽预审收据当终态验收。
+
+最终报告`workspace_data/p0_p3_review_20261017/final_review_zh.md`及review_acceptance.json（35项断言）核对指标/账本/身份hash；独立只读六例与基准审查一致。全候选high_risk是SASA_METHOD_SETTINGS_UNVERIFIED旗标传播，应补方法证据且分拆语义，不能称全部稳定性失败。外部双模型数值线内有1SAKA +8.4、1MGRA +2.7源实验标签，但实验条件缺失/结构上下文需核对、训练同源未知，不据此自动调阈值。仅AIB239有本轮结构化file页PASS；前两例保留早期浏览器产物，后三例file策略受阻，不绕行重试。全部ZIP静态一致性通过仍不代表5/6完整离线交互验收。
+
+报告图表错误仅接受audit.status=PASS，实际报告生产者是AUDIT_COMPLETE，导致全终态图仍写PARTIAL；write_p0_p3_comparison_figures.py最小修正为联合终态与两种审计成功枚举，测试保留RUNNING+旧PASS为pending。本轮无模型调用、无服务重启、无自动化恢复；用户明确后台运行与成本约束继续有效。
+
+## 2026-10-16 P0–P3新协议（代码实施及完整新批次运行中，未交付）
+
+任务证据根目录`workspace_data/p0_p3_upgrade_20261016/`。用户完整批准：普通新V4仅双/三点；<120aa目标7/6–8，120–150保留8/6–10；SPURS单点/组合≤1（≤.5优先）、FoldX≤2，差/符号仅诊断。80 unique=60local/20global软资源池，可回流；最多16local强扰动窗口(.5,1]；3初始+最多30组合各追加2，≤300尝试槽，正式候选需5唯一槽。特殊物理合同显式恢复原阈值及60组合，历史不回写。
+
+首轮部分子任务中断后主任务接续：真实SPURS GPU6个双/三点编码复用数值差0；严格cache实际权重/源码/环境/参数绑定、损坏保留拒绝复用。序贯调度、同证据本区候选、近邻/精确重复、同池界面对照、模型差/重复审计、源码ZIP/阶段事件/owner诊断、完整同源经典脚本离线网站均已接入。203相关回归PASS，之后专项回归有重叠不相加。真实禁模型AIB234冒烟7区，79文件/ZIP哈希及唯一成员通过。预览无评分不得贴机制policy已修复；P0–P3相关pipeline及专项回归继续验证。在线历史页结构与rSASA-only说明实际核验。当前两例最终任务ZIP先核验CRC/成员路径，再真实解压并由Chrome以`file://`断网打开；七步、7区、内嵌结构及`MolstarView.isReady()`均通过，本地未评分突变草稿JSON/氨基酸与CDS FASTA可下载，且无HTTP请求或浏览器异常。离线主站和独立报告共用分析投影的回归也通过；Mol* wrapper不公开先前假设的layout `isBusy`属性。其余四例待任务结束后同法验收。
+
+新任务唯一清单`rerun_manifest.json`：f606506c8e4a、5ac94808fb61、55ac1dce3c04、f53da1c7dac0、d4613b14ee6b、9b232e35663e。六个源结构hash及A链身份沿原manifest；AF3五例暂缓。禁止重复提交、重启有活跃任务的服务或改门。恢复不移原始配对模型路径，先复制元数据及顶层产物到prior_attempts，再追加执行UUID与新原始目录。AIB234/AIB226/AIB239已通过独立身份/预算/配对/导出审核及离线网站验收；较早FAIL核验日志早于最终PASS收据，原文保存在`*_verification_initial.log`，当前日志是复核后的PASS。面板重复敏感性审计曾错误读取根层门槛；实际`run_manifest`将SPURS门槛放在`spurs_multi`，已修复读取和阈值路径，三例均完成3/5槽选择重放（30个五槽候选池、80个首轮候选，五槽面板精确复现保存面板）。三份80成员ZIP的完整成员/磁盘/manifest/CRC审计通过；通用审计器现在容许安全多层离线资产路径并拒绝路径逃逸。AIB239的根离线页和独立报告页均经断网浏览器核验，比较科学显示payload时排除在线/离线路径、文件hash及执行elapsed字段，其他结果字段一致；源码回归也直接验证两种导出共用同一投影。外部runner新增OS文件锁，防止并行恢复重复预留槽。AIB193实际FoldX子进程及输出活动、数据库阶段标签滞后；AIB201/AIB15仍排队。外部预审48变体（8单/20双/20三），训练参考簇重叠明显、单点条件有缺口，不作为通用校准。首次10条SPURS试点完成、5条FoldX尝试预占25/240槽，4条结果与20个配对证明有效，1条启动无结果且不重试；旧runner PID不存在且无终态收据，状态已标记`INTERRUPTED_NO_TERMINAL_RECEIPT`并保留原manifest快照。六例终态后续跑其余43条（215槽），总额不超240。
+
+
+2026-10-17增量审计：安全的多层ZIP资产路径（如`assets/vendor/viewer.js`）此前被通用bundle检查器误拒，已支持安全相对路径并继续拒绝绝对路径、盘符、反斜线及`..`逃逸。AIB234/AIB226/AIB239三份80成员包经磁盘/manifest/ZIP SHA与CRC检查通过；runner锁、3/5槽敏感性读取及离线报告双页浏览器回归已补。
+
+## 2026-10-16 Binder 六例预算与选择偏倚（只读报告完成）
+
+完整报告与可复核CSV/图/脚本位于`workspace_data/binder_run_budget_review_20261016/`。本轮未改变生产代码、服务或历史运行，模型调用0；六例9,348单点→3,669合格替换→2,699组合SPURS→360 FoldX×5→283全局formal，48主面板；当前36区/306节点，平均8.5个表面残基。FoldX elapsed总12,807.42秒占记录模型阶段和94.1%，不能叫CPU核时；single/multi是批次计算，记录数不等于独立模型启动数。
+
+修正区级缺口解释：7个NEAR_THRESHOLD机制primary区实际有14个全局formal且位点全落当前区的双点（2/4/3/2/1/1/1），10个已列PASSED alternatives、4个未展示。它们缺候选级regional policy而未参加机制primary竞争，并非全区无合格组合；当前历史primary仍待审，不直接改标签。可先在独立目录复核当前区ownership/几何/完整资格与impact/敏感性，无需新模型；三点额外重算当前区增益。此前13/9合计错误已由独立断言纠正为14/10/4。
+
+预算层次：区域路径全菜单枚举后每区20双/10三（最多12双亲本），通用路径每位点最多3选项；合并物理身份去重。每蛋白FoldX60 unique组合、5重复、内部最多8并发，不是每区60；新36区专属131/360，跨区229/360。四点360组只作SPURS探索，不能FoldX正式确认。有效主面板min4/target7/max8，实际COVERAGE_FIRST_GREEDY，各例6双+2三；requested_maximum误存显示区请求，不能当有效构建上限。
+
+偏倚信号：净疏水增加41/48主面板；界面突变槽保存池28.5%→主面板16.7%，混合覆盖/风险/菜单目标，未做单权重因果对照。77模型分歧中75各自门通过且FoldX更负；实际FoldX取5槽中位数，前3槽比较仅4/360联合门翻转、主面板0/48，存在尾部变异，不支持直接削减5次/放宽分歧门。`indistinguishable`是RMS<0.1近邻数，非向量完全相同；仅AIB201一对精确重复。部分UI仍称sidechain≥20联合表面门，但本批实际总rSASA-only、侧链描述用途；P0文案/字段修复尚未实施。菜单与图7个位点差异来自几何owner要求，缺原子级记录不能进一步归因。
+
+`report_acceptance.json` PASS：74主输入+96原始FoldX文件重验hash不变，独立合计/14候选身份/本地链接/四图嵌入通过，两路代码/偏倚复核。四图已看，HTML浏览器file协议预览被策略阻断未绕过；静态HTML已查。文章来源仍不等于实验结构，训练集同源/外部稳定性校准/实验结合未验；报告是审查与优化提案，不是生产优化或实验完成。
+
+## 2026-10-16 小蛋白分区尺度（实现及六例派生验收完成）
+
+用户明确每区约8个表面残基、总区数4–12软范围；按分析链≤150aa用8/6–10偏好，长链12/10–15，显式覆盖优先。config.display_sectoring_parameters由engine传原始未合并overrides，避免默认12被误当显式；UI留空自动、API支持8。sectors保持4残基/50Å²/连通/唯一覆盖及30/22硬门，4–12仅软优化；物理预览冻结旧策略不改。
+
+服务重载规则：不在有活跃任务时重启。六例全部终态后确认无QUEUED/RUNNING，按仓库launcher要求从包目录父目录用项目venv启动；/api/health、既有派生job读取和小链8/6–10/4–12、长链12/10–15默认检查通过，收据`service_reload_acceptance.json`。
+
+文章来源批次最终6/6原始验收PASS，每例60 FoldX候选×5次与300对WT/Mut结构审计通过；六个小蛋白派生分区也通过结构、来源、评分保持及导出核验，共36区29 PASSED/7 NEAR_THRESHOLD，无新增模型调用。详表以`workspace_data/binder_input_preflight_20261016/article_batch_summary_20261016.md`、`batch_acceptance.json`、`small_protein_delivery_acceptance.json`为准。
+
+## 2026-10-16 Binder 输入适配（文章来源六例批次完成）
+
+上传/API/CLI新增analysis_target=binder（默认antigen不变）；单链自动、多链显式binder链，坐标派生序列保留作者链/编号与插入码。binder不套用固定抗原assay、膜方向/膜锚保持未知，不读取未知B-factor为pLDDT；DiscoTope抗体表位先验关闭，原SASA/ProCaliper/SPURS/FoldX与稳定性/空间门沿用。独立V4来源、序列及验证文案保留binder身份。真实浏览器发现旧app.js/i18n缓存不匹配新HTML，资源版本参数与单一动态说明修复后入口正常，窄屏表单无横向溢出。
+
+用户确认本批6个文章来源双链复合物全流程，5个AF3单链暂缓；用户最终清单为`workspace_data/binder_input_preflight_20261016/article_batch_manifest.json`。六个原始运行与六个保存评分池分区派生全部完成，原始与派生验收细节见批次总结文件。11文件/17链映射、11个binder A链SASA/能量导出及两份禁模型预览通过，原始哈希保持。AIB203早期冒烟已停止且不计入本批。
+
+## 2026-10-16 机制排序批判修订（实现与保存评分池验收完成）
+
+逐区策略族保留regional_mechanism_pareto_v1，新排序显式mechanism_channels_v2：原始六轴+暴露Pareto、缺失掩码/冻结参考保留，电荷/亲疏水/氢键及体积/芳香两组内取最大效用，最小暴露单独成组，组间leximin；搜索多样性仍按六轴。增加去除芳香轴敏感性且重算前沿，单候选不标稳健。signed净变化/绝对和/代数反向比例、FWY数、WT Cα近邻与距离仅诊断，不能作净零惩罚、CB/盐桥或碰撞证明。SPURS单点REVIEW窗口审计保留其他排除及两种暴露定义，门槛不放宽，不新增8–18Å窗口；表位仍只在新逐区路线注释。
+
+涉及regional_perturbation.py、engine.py、sector_recommendations.py、reporting.py、共享recommendations.js及显式新目录replay_v4_selection.py。重放重建单点资格与源CSV逐项相同，并保留描述符/侧链证据；这是当前算法重排旧评分池，不是复现旧排序或完整新候选模型链。CSV补齐resource_audit及实际sensitivity，旧报告无新ranking_version不套新解释。原始CTLA4/PD-L1芳香富集与近邻异向现象是审计信号，不能推断聚集或自中和。
+
+58项相关回归；两组556/753固定候选新评分0，评分/资格/源哈希保持，各60文件与ZIP一致；在线冻结显示投影和实际离线桌面/手机8项通过。CTLA4分区2换A44R/S55F，PD-L1分区10换K178V/S176H仍EVIDENCE_LIMITED；原4个模型差异超限区仍保留。新完整成员窗口225/463中其余条件合格125/320，高侧链暴露33/120，不能与原mutable-menu窗口67/141混为同一分母。证据workspace_data/regional_mechanism_critique_20261016及[修订验收](regional_mechanism_critique_20261016.md)。服务空闲重启加载新代码，未重跑完整新模型链/全仓/实验或提交推送，历史产物不改。
+
+## 2026-10-15 全站 UI 重设计（展示验收完成）
+
+用户经 grill-me 确认七步向导、浅色工作台、笔记本优先、按步骤调整结构/右栏比例、序列默认紧凑摘要后批准实施。首页新建/上传/高级参数移入对话框，默认 WT 全结构；序列展开、选择/视角保留、键盘与分区/组合联动保持。共享 workbench.css 统一主站、实验、抗体和结构图册外围；新离线模板自包含，旧报告不重写。主代码 web/index.html、app.css、app.js、renderer.js、experiments.html/js、offline_template.html 和图册外围；分区报告生成器内联共享 CSS。
+
+修复时不能把每行 QC 表单也套入通用折叠容器，须保留表格操作和预览输出的相邻关系；不能用 overflow-x:clip 隐藏手机溢出，应由表格内部滚动与正文换行解决。截图必须等待真实结构层级和 Molstar 布尔 isBusy=false，单纯存在 canvas 不足以证明已渲染。标题父级字号/字重不能传播到说明段落。
+
+真实首页 be18bf6290fb 在 1366×768/1440×900/1920×1080/390×844 通过；1366 下结构画布约902×472、结果步骤779×472，切步骤相机目标/选择/实例保持，保存结果到冻结示例真实载入只销毁旧实例一次。四个附属在线页各三尺寸、实际 file:// 离线断网、完整实验页浏览器回归及18项相关pytest通过。实验页写操作用模拟响应；真实调用仅包含已核对的只读绘图/序列预览。结构图册内嵌脚本与 HEAD 哈希一致，冻结资产无diff。收据 workspace_data/ui_redesign_20261015/main_final_verified、pages_final_verified、offline、pytest.log、experiment_regression.log；详见 [UI 重设计验收](ui_redesign_20261015.md)。未重算科学模型、跑全仓测试或修改历史科学结果；不将 UI 验收称为实验验证。
+
+## 2026-10-15 逐区机制帕累托推荐（实现与计算验收完成）
+
+新常规默认regional_mechanism_pareto_v1：全量合格单点、原生侧链相对暴露、六项逐位带符号化学描述，组合按平均绝对变化、缺失掩码分层帕累托和冻结分布分组折中选工程代表；每区20双/10三、最多12双亲本扩展。DiscoTope仅在新逐区路线作注释，不参与排序/调度；固定分区不变性不等于整个旧全局流程无表位先验。共享物理身份只评分一次，原始完整序列/24Å跨度/双模型/高阶增益门及全局预算保留。主卡显示直接面积与本区12Å覆盖/未覆盖，详情9/12/15Å及敏感性，在线/离线/CSV/JSON共用证据。
+
+核心代码joint_design_v4/regional_perturbation.py、engine.py、sector_recommendations.py、reporting.py及structure_analysis.py。Bio.PDB逐残基deepcopy会复制20模型NMR父级，改实体copy脱离parent，冻结1AH1五个完整侧链新旧数值一致。敏感性每种变体重算相应前沿；未评分preview单点不进入新机制组合；未知His化学轴保留缺失。历史方法、科学门、运行目录和物理预览合同保持。
+
+基线6999657/文献d092c12先提交。真实最终CTLA4任务2fd8fa7fb244：7区6完整通过、1模型差异超限；PD-L1 be18bf6290fb：10区6完整通过、1稳定性通过但His轴未知、3模型差异超限。SPURS组合556/753；各FoldX60×5，CTLA4复用本轮真实中间任务300对，PD-L1新算300对。两组300配对均独立身份/映射/哈希验证PASS，各65清单文件与ZIP一致；最终科学analysis哈希未改。新机制27项、既有99项、最终展示20项及较早物理等187项通过，有重叠不相加。两任务在线真实API和file离线桌面/手机通过，冻结渲染模拟证据单独标注。
+
+收据workspace_data/regional_mechanism_20261015；[实现与逐区面积验收](regional_mechanism_pareto_20261015.md)列明任务、组合、面积、测试、失败和模型复用来源。新实现保留工作区未推送；未跑全仓库测试/可选物理场预览/抗体结合实验。计算代表和几何邻域不能称亲和力下降最大或实测接触面积，未通过分区不能为凑齐输出而放行。
+
 ## 2026-10-12 完整科学评分链恢复（完成）
 
 新完整任务首轮07bbf0dd36ca因venv Python继承Low完整性标签，Windows→WSL桥拒绝访问而失败；独立Linux CUDA推理证明SPURS/DiscoTope环境与权重仍有效。仅修复venv的python/pythonw为Medium，实际生产Python→WSL预检通过，新任务484899e022f3为Medium。旧Low网站进程已重启，启动器增加WSL实际执行预检。独立新任务COMPLETE：原生SASA/ProCaliper/SPURS single/DiscoTope各215，SPURS multi476，FoldX60×5=300fresh/0复用；10专属首选全通过、主面板8全有有限双模型。25相关回归、300配对身份/哈希、65manifest文件/1022展示引用/API/JSON/CSV/ZIP与正式网页单canvas/定位/详情全部通过。保守性仅1同源记录保留未知，IUPred无输入及可选物理预览未运行，四区大小9/9/9/8偏离软目标，不称实验完成；详见[完整恢复审计](full_runtime_restore_20261012.md)。
@@ -38,9 +191,12 @@
 
 真实评分任务6aef485cc7c1复用冻结1AH1坐标，输入CIF/规范PDB/映射相同、71节点211边及面积相同；SPURS346组合/FoldX42组合真实成功。展示最终任务8acec7ea445b，9专属首选7通过2待审查、8主构建体，保留真实源任务与原262条记录。分区7收益0.011079<0.05，分区8 SPURS0.802133>0.5且缺FoldX；不声称已证实不稳定。分区2/3/8基础资源不足及8无可进入FoldX专属组如实审计，不能为凑齐放行。详见[验收记录](exclusive_sector_acceptance_20261009.md)及workspace_data/ctla4_exclusive_acceptance_20261009；正式与离线真实Chrome在1500/390像素均通过，无模拟API、无页面异常或溢出；序列栏内部编号导致窄屏撑宽已移除正文编号并添加换行约束，重打包后API下载/ZIP/清单哈希及冻结评分源一致。浏览器收据见workspace_data/ctla4_exclusive_browser_20261009_final3与ctla4_exclusive_offline_browser_20261009_final。
 
-更新日期：2026-10-08。用于后续开发查阅；历史运行是证据，不是当前算法规范。  
-2026-10-08 CTLA4六构建体结构查看页见 web/ctla4_six_mutants.html，冻结结构资产和清单见 web/data/ctla4_six_mutants/，由 tooling/export_ctla4_six_mutants_web.py 从原研究逐条配对清单重建。核验覆盖30个production WT/Mut槽位：PDB SHA-256匹配，链A序列差异恰为两个设计突变；折叠模型局部编号按完整序列比对映射至P16410 37–161。各候选WT唯一字节数为5/5、5/5、3/5、5/5、1/5、5/5；报告不得把逻辑槽位称作独立骨架。该页面是计算结构展示，不改变原正式面板、86.0262%旧合同或field-fusion unknown状态。  
-本日筛查条件专项审查见 [ctla4\_screening\_conditions\_audit\_20261004.md](ctla4_screening_conditions_audit_20261004.md)。固定96候选检查点实际44组合拒绝均无FoldX，其中39仅SPURS在0.5–1.0；21模型分歧中17双方各自稳定门均通过。30逐位审查中21未确认，其中18前五次≥2拓扑拒绝；fields.py全结构Euler不等将所有通道置NaN，保存11粗细网格对照10个Euler敏感。calibration.py/directions.py在四次阳性之外要求五次全有限，零求解反例[2,2,2,2,NaN]拒绝已复现。9逐位阳性仅1正式的主要合同瓶颈为全局部全通道完整或扫描上界闭合；shadow8组79.381610%不可升级。case/audits/screening_96保存4来源字节/hash、96行CSV、可重放脚本与PASS断言，新增科学调用0。此次仅报告/审查证据新增，活跃冻结源码、原科学门及正式17.660761%不改；局部拓扑、四次quorum、新下界资格、联合null与review调度为待验证建议，不称已修复或已科学达标。  
+更新日期：2026-10-08。用于后续开发查阅；历史运行是证据，不是当前算法规范。
+  
+2026-10-08 CTLA4六构建体结构查看页见 web/ctla4_six_mutants.html，冻结结构资产和清单见 web/data/ctla4_six_mutants/，由 tooling/export_ctla4_six_mutants_web.py 从原研究逐条配对清单重建。核验覆盖30个production WT/Mut槽位：PDB SHA-256匹配，链A序列差异恰为两个设计突变；折叠模型局部编号按完整序列比对映射至P16410 37–161。各候选WT唯一字节数为5/5、5/5、3/5、5/5、1/5、5/5；报告不得把逻辑槽位称作独立骨架。该页面是计算结构展示，不改变原正式面板、86.0262%旧合同或field-fusion unknown状态。
+  
+本日筛查条件专项审查见 [ctla4\_screening\_conditions\_audit\_20261004.md](ctla4_screening_conditions_audit_20261004.md)。固定96候选检查点实际44组合拒绝均无FoldX，其中39仅SPURS在0.5–1.0；21模型分歧中17双方各自稳定门均通过。30逐位审查中21未确认，其中18前五次≥2拓扑拒绝；fields.py全结构Euler不等将所有通道置NaN，保存11粗细网格对照10个Euler敏感。calibration.py/directions.py在四次阳性之外要求五次全有限，零求解反例[2,2,2,2,NaN]拒绝已复现。9逐位阳性仅1正式的主要合同瓶颈为全局部全通道完整或扫描上界闭合；shadow8组79.381610%不可升级。case/audits/screening_96保存4来源字节/hash、96行CSV、可重放脚本与PASS断言，新增科学调用0。此次仅报告/审查证据新增，活跃冻结源码、原科学门及正式17.660761%不改；局部拓扑、四次quorum、新下界资格、联合null与review调度为待验证建议，不称已修复或已科学达标。
+  
 本文件记录有效方向、已核对修复与边界；已放弃的实施建议从活动待办移除。历史输入、profile和审计保留，不能据此宣称所有输入都能产生正式推荐。
 
 ## 0. 当前用户目标与任务状态
@@ -82,83 +238,121 @@
 - **科学假设**：Surface V2 raw footprint 经 family 与 conservative inference hierarchy 解释；同一残基可参与多个假设。
 - **扰动矩阵**：几何与化学规则的 proxy，不是结合下降概率。
 - **当前V3面板**：greedy信息增益与风险约束的结果，不宣称全局最优；CTLA4证明其广覆盖不足，下一步覆盖优先计划尚未实施。
-- 区域数、假设数、构建体预算相互独立。固定 assay profile V2 的 Stage 1    
+- 区域数、假设数、构建体预算相互独立。固定 assay profile V2 的 Stage 1
+    
   上限为 6；未指定固定 profile 的旧请求可保留其独立预算。
 - 膜方向、糖链、PAE 是结构证据；不能据此声称预测 reporter 或亲和力。
 
 ## 2. 本次 PD1 / AF3 分区故障
 
-输入：`workspace_data/fa85119485cd`，Q15116，ECD 25–170。  
-原模型 SHA256：  
+输入：`workspace_data/fa85119485cd`，Q15116，ECD 25–170。
+  
+原模型 SHA256：
+  
 `8e4c7e0b922377d19359d2f4ad1bd598dadb69d0cdcb3b991aa1c5ea07b7c496`。
 
 ### 原因与证据
 
-1. **页面着色的直接原因是导出编号错位。** ECD CIF 的 label_seq_id 从 1     
-   开始，而 record 保留 AF3 原编号 25–170；旧选择器优先用 label，导致     
-   本输入颜色选择偏移 24 位。实际导出前两项 auth/label 为 25/1、26/2。     
+1. **页面着色的直接原因是导出编号错位。** ECD CIF 的 label_seq_id 从 1
+     
+   开始，而 record 保留 AF3 原编号 25–170；旧选择器优先用 label，导致
+     
+   本输入颜色选择偏移 24 位。实际导出前两项 auth/label 为 25/1、26/2。
+     
    输入映射本身正确并不意味着导出结构的 label 编号仍一致。
-2. `sectors.py` 为接近 7 区而合并小区域，未在合并前检查直径；最终检查只     
-   添加警告，没有修复。原 VS004 测地 / Cα 直径为 42.410 / 35.499 Å；     
+2. `sectors.py` 为接近 7 区而合并小区域，未在合并前检查直径；最终检查只
+     
+   添加警告，没有修复。原 VS004 测地 / Cα 直径为 42.410 / 35.499 Å；
+     
    VS007 为 39.432 / 34.631 Å，超出当时 35 / 30 Å 上限。
-3. 原 VS001 的 25–31 与 129–130 在序列上相隔远，但 Cα 最大距离为     
-   16.821 Å；不能把序列跨度直接当作三维错分。原 VS002 Cα 直径为     
+3. 原 VS001 的 25–31 与 129–130 在序列上相隔远，但 Cα 最大距离为
+     
+   16.821 Å；不能把序列跨度直接当作三维错分。原 VS002 Cα 直径为
+     
    25.029 Å，显示范围也明显大于页面宣称的 ≤18 Å。
-4. AF3 末端 25–31、150–170 的低置信度坐标没有达到严格 IDR 分类条件，     
-   因而仍进入三维几何。这混淆了“不能诊断无序”和“坐标足够可靠”。     
+4. AF3 末端 25–31、150–170 的低置信度坐标没有达到严格 IDR 分类条件，
+     
+   因而仍进入三维几何。这混淆了“不能诊断无序”和“坐标足够可靠”。
+     
    原 reliability QC 的 excluded_positions 为空，88 个残基进入表面图。
-5. UI 的固定文案称所有区域都是 13 Å / 18 Å Fab 补丁，实际显示的是 V4     
+5. UI 的固定文案称所有区域都是 13 Å / 18 Å Fab 补丁，实际显示的是 V4
+     
    sector。旧颜色只有 7 种循环复用；区域数增加时会造成远处分区同色。
-6. 重放脚本把所有结构设为 `structure`；用于 AF3 会丢失预测模型语义和     
+6. 重放脚本把所有结构设为 `structure`；用于 AF3 会丢失预测模型语义和
+     
    confidence 的作用。必须保留 `af3_upload` 与原 confidence。
 
 
 ### 修复规则
 
-- `web/app.js.residueQuery` 使用导出后保持一致的 auth chain、auth_seq_id    
-  与 insertion code；只有 author 标识缺失时才回退到 label。不能直接    
+- `web/app.js.residueQuery` 使用导出后保持一致的 auth chain、auth_seq_id
+    
+  与 insertion code；只有 author 标识缺失时才回退到 label。不能直接
+    
   将原 AF3 label 用在经过 ECD 截取 / 写出的 CIF 上。
-- 显示 regions 时，不叠加未归属位点的通用 SASA 蓝色或 folding 绿色；    
+- 显示 regions 时，不叠加未归属位点的通用 SASA 蓝色或 folding 绿色；
+    
   不可靠尾部为灰色。否则通用蓝色会被误认为区域 1。
-- `web/renderer.js` 等待实际结构 hierarchy 与 assembly 可用才首次着色，    
+- `web/renderer.js` 等待实际结构 hierarchy 与 assembly 可用才首次着色，
+    
   不能仅等待 managers 初始化，防止第一次 paint 在加载完成前被跳过。
-- `structure_reliability.py` 的 `reliability_rules_v2` 将坐标资格与生物学    
-  无序分类分开。ECD 端部连续 UNCERTAIN 段只有在以下证据同时满足时，    
-  才退出三维足迹：所有已测 pLDDT <70、至少 80% 位点非局部接触数 ≤2、    
+- `structure_reliability.py` 的 `reliability_rules_v2` 将坐标资格与生物学
+    
+  无序分类分开。ECD 端部连续 UNCERTAIN 段只有在以下证据同时满足时，
+    
+  才退出三维足迹：所有已测 pLDDT <70、至少 80% 位点非局部接触数 ≤2、
+    
   至少一个位点有经过合法 token 映射的 core PAE ≥15 Å。
-- 该段仍为 UNCERTAIN，保留原结构、序列和审核能力；不自动标成 IDR，    
-  不产生自动 IDR 突变。高置信度移动结构域和嵌在核心中的低置信度短环    
+- 该段仍为 UNCERTAIN，保留原结构、序列和审核能力；不自动标成 IDR，
+    
+  不产生自动 IDR 突变。高置信度移动结构域和嵌在核心中的低置信度短环
+    
   不因这条规则退出。缺少 PAE 不能触发这条退出规则。
-- `surface_patch/engine.py` 真正消费 `use_for_3d_footprint`；不可靠末端    
-  不生成表面样本，仍作为当前构象的遮挡原子保留。既有明确 DISORDERED    
+- `surface_patch/engine.py` 真正消费 `use_for_3d_footprint`；不可靠末端
+    
+  不生成表面样本，仍作为当前构象的遮挡原子保留。既有明确 DISORDERED
+    
   段继续遵守 strict / occlusion_sensitivity 策略。
 - 相邻 2 个保留位点作为边界 guard；不可靠末端自身不重复算作边界。
-- `sectors.py` 在输出前拆分不连通 / 超径组，合并只接受满足全部空间约束    
-  的并集。默认显示直径：测地 ≤26 Å、Cα ≤18 Å。这是明确可配置的显示    
+- `sectors.py` 在输出前拆分不连通 / 超径组，合并只接受满足全部空间约束
+    
+  的并集。默认显示直径：测地 ≤26 Å、Cα ≤18 Å。这是明确可配置的显示
+    
   紧凑性规则，不是所有抗体足迹的物理尺寸定律。
-- 区域数是软目标。不能为了 7 色牺牲空间约束；小区域若无法安全合并，    
+- 区域数是软目标。不能为了 7 色牺牲空间约束；小区域若无法安全合并，
+    
   保留并标记。额外区域采用不同颜色。
-- `surface_display_regions_v41.json.regions` 保存实际 V4 显示归属，    
+- `surface_display_regions_v41.json.regions` 保存实际 V4 显示归属，
+    
   `surface_v2_regions` 保存原 Surface V2 聚合区域，两者不能混称。
-- 兼容投影的 `mutable_residues` 不再包含硬保护残基；空列表不能在 UI 中    
+- 兼容投影的 `mutable_residues` 不再包含硬保护残基；空列表不能在 UI 中
+    
   被 `||` 回退成“全部可突变”。
-- V4 兼容投影同步 `ResidueRecord.region_id`，使珠子视图与 Molstar 的区域    
+- V4 兼容投影同步 `ResidueRecord.region_id`，使珠子视图与 Molstar 的区域
+    
   membership 着色一致；不属于有效区域的位点必须清空旧归属。
 
 ### 验证资产
 
-- `tests/fixtures/pd1_af3_partition.json`：原坐标、PAE、原图和原分区；    
+- `tests/fixtures/pd1_af3_partition.json`：原坐标、PAE、原图和原分区；
+    
   PAE 按明确 token 映射截取 ECD，不用数组下标猜测 UniProt 编号。
-- `tests/test_pd1_af3_partition_regression.py`：原故障图、端部资格、缺失    
-  PAE、实验结构、短环保留、mask 到 footprint/graph 的传递、软计数、    
+- `tests/test_pd1_af3_partition_regression.py`：原故障图、端部资格、缺失
+    
+  PAE、实验结构、短环保留、mask 到 footprint/graph 的传递、软计数、
+    
   颜色唯一和 AF3 重放语义；实际执行 JS 选择器并验证 ECD 导出编号。
-- `workspace_data/pd1_af3_partition_repair_20260930/verified_geometry_complete`：    
+- `workspace_data/pd1_af3_partition_repair_20260930/verified_geometry_complete`：
+    
   原模型与 confidence 的真实几何重算；外部评分显式禁用，无正式突变推荐。
-- 新图保留 58 个符合表面与可靠性规则的节点，仍形成 7 个有效区域；    
+- 新图保留 58 个符合表面与可靠性规则的节点，仍形成 7 个有效区域；
+    
   最大测地直径 25.226 Å，最大 Cα 直径 17.885 Å。
-- 28 个端部位置退出三维足迹；边界 guard 为 32、33、148、149；全部    
+- 28 个端部位置退出三维足迹；边界 guard 为 32、33、148、149；全部
+    
   146 个 ECD 坐标和原输入结构保留。当前输入未被诊断为 IDR。
-- 页面验证副本任务 `da27bc835241`，明确标为“仅重算几何，未运行突变评分”；    
+- 页面验证副本任务 `da27bc835241`，明确标为“仅重算几何，未运行突变评分”；
+    
   原失败任务保留。172 个假设均无不合资格位点；47 个 bundle 文件一致。
 
 详见 `docs/pd1_af3_partition_repair_20260930.md`。
@@ -201,27 +395,37 @@
 | 完成消息覆盖推荐阻断原因                              | pipeline、diagnostics、jobs 保留真实原因；计算完成不等于正式推荐                                           |
 | ZIP 漏掉 V4.1 文件                            | 4.1 文件纳入 manifest 与 ZIP；最终 analysis 写入后重新封装 / 哈希                                       |
 
-真实 CTLA4 修复重跑：`8c068ad701a6` →  
-`workspace_data/ctla4_v41_repair_20260930/verified_pipeline`。  
-210 个唯一组合、34 个正式通过、5 个正式入选；所有外部 worker 实际成功。  
-48 个导出文件的磁盘 / manifest / ZIP 一致。页面副本任务为 `05ecca7e4cc7`。  
+真实 CTLA4 修复重跑：`8c068ad701a6` →
+  
+`workspace_data/ctla4_v41_repair_20260930/verified_pipeline`。
+  
+210 个唯一组合、34 个正式通过、5 个正式入选；所有外部 worker 实际成功。
+  
+48 个导出文件的磁盘 / manifest / ZIP 一致。页面副本任务为 `05ecca7e4cc7`。
+  
 这证明特定实现故障修复，不证明其他输入必须产生组合。
 
-本机完整性标签修复不随 Git 同步；程序不自动提升权限或重置整个目录 ACL。  
+本机完整性标签修复不随 Git 同步；程序不自动提升权限或重置整个目录 ACL。
+  
 长时间 multi 推理不要反复启动重复进程；先检查进度与模型实际日志。
 
 ## 5. 后续必须执行的检查
 
-1. 先确认原始输入类型、chain/auth/label/UniProt 映射、confidence token     
+1. 先确认原始输入类型、chain/auth/label/UniProt 映射、confidence token
+     
    映射和文件 hash。PAE 无合法映射即忽略，不能凭序列下标猜测。
-2. 显示 membership 对 eligible graph **完整、唯一**；每区 induced graph     
+2. 显示 membership 对 eligible graph **完整、唯一**；每区 induced graph
+     
    连通，所有两两距离满足直径上限；不能只打 quality flag 后照常输出。
-3. geometry-ineligible 的样本不能经 graph fallback、transit contraction、     
+3. geometry-ineligible 的样本不能经 graph fallback、transit contraction、
+     
    sequence bridge 或 hypothesis adapter 被重新引入。
 4. 用真实故障 fixture 验证，再核对完整输入重算；历史运行不可原地改写。
-5. 不因“必须推荐”而放宽稳定性、保护位点或外部证据门槛。有效空结果应     
+5. 不因“必须推荐”而放宽稳定性、保护位点或外部证据门槛。有效空结果应
+     
    明确区分真实不通过、工具缺失、几何资格不足与优化未获得信息增益。
-6. 只更新文案是不够的；反之修后端也必须核对 UI 归属、颜色、位点计数、     
+6. 只更新文案是不够的；反之修后端也必须核对 UI 归属、颜色、位点计数、
+     
    JSON、CSV、manifest、离线报告和下载 ZIP。
 7. 当前工作树包含大量其他功能的未提交编辑，不能 `git add .` 混合提交。
 
@@ -239,18 +443,23 @@ python -m pytest -p no:cacheprovider ecd_epitope_scanner/tests/test_joint_v4.py 
 .venv/Scripts/python.exe scripts/replay_joint_v41_run.py workspace_data/fa85119485cd workspace_data/new_pd1_geometry_validation --geometry-only
 ```
 
-去掉 `--geometry-only` 才会运行真实评分、候选门槛和面板。  
+去掉 `--geometry-only` 才会运行真实评分、候选门槛和面板。
+  
 重放必须使用新目录。`replay_input_provenance.json` 记录实际计算范围与 hash。
 
 ## 6. 仍需谨慎的边界
 
-- 缺少 PAE 的预测输入不会由这条 AF3 末端规则自动删除；应保留不确定性，    
+- 缺少 PAE 的预测输入不会由这条 AF3 末端规则自动删除；应保留不确定性，
+    
   不能称作已验证的表位几何。
-- 高置信度但相对方向不确定的结构域仍需 PAE / 多构象审查；本次 PD1    
+- 高置信度但相对方向不确定的结构域仍需 PAE / 多构象审查；本次 PD1
+    
   修复不等同于完整结构 ensemble 验证。
-- 低置信度末端保留为遮挡原子，因此“移走尾部”仍可改变表面可见性；    
+- 低置信度末端保留为遮挡原子，因此“移走尾部”仍可改变表面可见性；
+    
   本次采用保守的给定构象，不声称对此类变化严格不变。
-- 受保护 / 埋藏残基造成的颜色空隙不等同于空间断裂；连接判定基于已    
+- 受保护 / 埋藏残基造成的颜色空隙不等同于空间断裂；连接判定基于已
+    
   记录的显式表面图及有界 transit 路径，不是序列连续性。
 - 70 项相关回归通过不等于整个仓库所有实验工作台 / 流式功能均已验证。
 - 结构场景与真实benchmark尚未完成；没有真实完成的数据不能写成已实现结果。黑箱binding/report训练不列入当前活动计划。
@@ -307,7 +516,8 @@ python -m pytest -p no:cacheprovider ecd_epitope_scanner/tests/test_joint_v4.py 
 
 ## 8. 2026-10-01：WT参考扰动场独立预览实现
 
-实现与当前验证范围见 [surface\_perturbation\_v1\_implementation\_audit\_20261001.md](surface_perturbation_v1_implementation_audit_20261001.md)。  
+实现与当前验证范围见 [surface\_perturbation\_v1\_implementation\_audit\_20261001.md](surface_perturbation_v1_implementation_audit_20261001.md)。
+  
 上节“SES尚未实现/worker只返回DDG”是先前只读审查的历史状态；新策略已新增真实NanoShaper SES、FoldX配对manifest、分通道null和真实组合再优化，不原地改写旧策略。
 
 - `surface_perturbation_v1_preview`独立接入API/UI/报告和导出，原正式门槛及预览身份保留。APBS只最终集合审计，缺失/噪声失配/介质切换均未知。
@@ -574,3 +784,74 @@ CTLA4作业5068b62450ec保存证据只读重放到 `workspace_data/ctla4_coverag
 # 2026-10-11 PD-L1待审查算法修复（验收完成）
 
 审计与收据见 `docs/pdl1_review_gate_repair_20261011.md` 和 `workspace_data/pdl1_review_gate_audit_20261011`。旧b4b51cda70f6保留；局部面积门被全局hypothesis响应稀释、FoldX先确认无增益三点、含H源结构与无H评分输入SASA口径不一已确认修复。新增一次最多12个双点的无SPURS通过分区反馈补筛，保留真实组合模型门与42个FoldX上限。反馈任务119b97d86de9真实SPURS476/FoldX42成功，105节点10区专属首选全部通过、主面板8；交付18c0b8ee73fa仅重放说明与共享网页，评分不变、科学调用0。15备选12通过/3待审，对应2个未安排FoldX的跨区物理组合。60文件/1407引用/API/JSON/CSV/ZIP及正式/实际离线×1500/390浏览器验收通过；4区9/9/9/8偏离10–15软偏好，不称全局无解。全图测地30/Cα22是直径门，区内路径单独诊断，修正网页混用标签；原结构/映射及全部历史证据保留。
+
+
+## AF3 binder 五例最终验收（完成）
+
+五个原始任务及两例失败恢复全部COMPLETE；原始80组/300槽核对通过。29个展示组合追加58个缺失重复槽，独立交付目录和新COMPLETE记录保留原结果。五例全卡片/真实配对/几何/源hash/ZIP验收通过；五个ZIP实际解压后file网页七步、结构与本地序列导出、零HTTP请求实测通过。最终报告：workspace_data/af3_binder_batch_20261017/final_acceptance_zh.md；收据：final_acceptance_execution.json、af3_batch_acceptance.json及final_offline_browser_audit/acceptance.json。后台进程使用一次性OS退出等待，无循环监控或自动化。
+
+## 2026-10-18：11例binder审查与普通V4复发防护
+
+审查入口 `workspace_data/20261016_raw data_binder/full_review_zh.md`，旧交付快照独立证据为evidence_audit.json。11例77区/583表面节点、689卡片完整性与几何通过；正式327、主面板88。发现7个旧包漏420条refinement清单行，AIB60还漏顶层240条；原始模型未丢失。新增派生包及注册结果以article_repacked_manifest.json终态为准，不能用旧ZIP的hash通过代替源配对集合闭合。
+
+公共修复：sequential_foldx.display_priority优先全部主代表再轮转备选；engine严格普通任务从complete_display_pool生成卡，保留raw池与未展示ID；pipeline导出后写全卡完整性收据，缺证据卡不发布COMPLETE，无卡明确诊断。普通输入处理归档native与confidence并保存SHA身份；exporting与replay携带；普通export_names包含top paired及active refinement清单；共享supplement重导出复制阶段清单、拒绝冲突。特殊物理评分合同与科学门不变。
+
+78项相关回归通过（42定向、31含完整pipeline、5离线/标准ZIP；最后补top清单后5项再通过）；闲置服务经DB无活跃任务、进程身份与无子进程检查后加载，health通过。详见regression_results.json和service_activation.json。历史原件保留，审查新增模型0。原AF3五站file浏览器5/5；本轮7个重建站未重新逐站file交互，来源实验类型、SASA设置与外部训练独立性也未补造为通过。后续审查以review_acceptance.json声明缺口为准。
+
+上述重包终态已完成：article_repacked_manifest.json七条均注册COMPLETE（该清单顶层阶段名REPACKED），2143条活动pair核验、420 refinement加240初始清单恢复、评分/序列/源hash不变；最终11例DB均COMPLETE；两项发布元数据差异已在11条当前交付记录同步，前值备份及核对PASS；本轮未宣称11站API/浏览器全验。交付入口full_review_zh.md、review_acceptance.json、review_package.zip和final_delivery_check.json，状态PASS_WITH_DECLARED_GAPS。七个新网站不以旧file浏览器证据代替新版本交互验收。
+
+## Binder复合物受体显示（后台交付重建）
+共享renderer新增独立binder/partner组件，默认隐藏整体组件和partner，复用同一viewer；自建组件保留polymer标签以沿用表示切换和overpaint。第四步显示/隐藏受体，切换保留视角并平滑聚焦。12项生命周期/离线导出回归通过，AIB234真实file页面切换/表示/着色及无外网请求通过。11例更新脚本workspace_data/20261016_raw data_binder/update_partner_delivery.py正在后台更新六例离线产物、检查11站和一站在线并生成v2分享ZIP；只有partner_visibility_delivery.json为PASS才代表新版离线交付完成。旧分享ZIP保留。旧结果目录更名后以article_repacked目录junction维持已注册在线路径兼容。
+
+Binder受体开关最终交付PASS：partner_visibility_delivery.json绑定v2 ZIP及SHA，11例file网页（六复合物开关/五AF3无开关）和AIB234在线共12项浏览器检查通过。在线此前加载ecd_structure.cif仅含binder，现复合物显示使用structure.cif完整坐标并隐藏受体；不能假设在线与离线加载同一结构上下文。六例analysis/组合评分/序列/主面板共24文件与历史ZIP字节一致。模型调用0，旧包及before_partner_toggle历史保留。验收脚本修正在线模块私有变量访问为DOM/真实组件状态。
+
+## 2026-10-18 受体仅限蛋白蛋白界面（修复）
+
+用户指定v2解压站点真实复现AIB234离开第四步进入第五步仍showPartner=true、受体组件可见。根因setStep只切面板，没有清除共享viewer的受体状态。web/app.js在离开第四步隐藏受体并同步按钮；开关回调也检查当前步骤，异步失败不在其他步骤恢复显示。
+
+14项生命周期/离线导出回归通过；六复合物真实file站逐一验证4→1/2/3/5/6/7、突变定位/多选/清空、表示切换、相机重置与同viewer，零HTTP/pageerror。仅更新指定解压目录的app.bundle.js及manifest对应hash，逐文件清单证明科学文件不变；原v2 ZIP和旧脚本保留，另存v3。根因、验证和交付收据见docs/binder_partner_step_repair_20261018.md及workspace_data/20261016_raw data_binder/partner_step_repair_20261018；最终归档以delivery.json为准。未重算模型、未跑全仓或重验在线/五个未改AF3站。
+
+## 2026-10-18 定位结构后受体复发：表示层修复
+
+上次父组件隐藏检查假阳性：AIB193定位S1D/R4A重建分子表面后，Polymer/partner父组件仍hidden=true，新表示与renderObject却均可见。renderer.setRepresentation现重施完整原组件与partner的子树可见性，color和开关共用同步方法，完整重载回退重建链组件。selectDesign删除先行重复paint，避免与删建表示争用state ref。
+
+15项回归通过（4.52秒），新两项检查分别能使旧renderer与旧selectDesign失败。真实六例验收改核对representation、renderObject、可见原子链及捕获viewerError，含截图。证据partner_representation_repair_20261018与docs/binder_partner_step_repair_20261018.md；v4最终以delivery.json为准。原v2/v3保留，科学文件逐字节核对不变，新增模型0。此前step修复PASS不得当作实际绘制层的通过；未重验在线或五个未改AF3。
+
+## 2026-10-18 用户授权清理本任务中间产物
+
+已按明确清单将70个中间文件（1,543,570,015字节）移入回收站：旧网页备份、DB修复前result_json备份、一次性workspace脚本、旧显示验收与调试文件。用户授权覆盖历史中间备份保留默认约束；原始输入、科学模型运行目录和当前在线来源article_repacked保留。v4 ZIP/文件夹、报告/汇总、最终显示验收及两份回归夹具保留，关键文件SHA前后一致、12个网页入口在位。cleanup_manifest_20261018.json记录PASS、清理路径和保护文件SHA。旧文档/收据仍可能引用已回收的中间路径，以该清单说明其去向；回收站未清空。
+
+## 2026-10-20 开题报告与实验进展确认
+
+用户本次明确确认：部分PD-1、CTLA-4构建已完成测序及Myc表达检测。应视为已有实验进展；具体构建清单、原始测序/流式图及表达数值尚待归档，不扩展为天然折叠或表位确认。当前只读数据库activation e0f2c26650f04681仍revision16、162样本/3份导入，人工QC/effect均0，只代表工作台分析登记状态，不能否定用户已完成的线下实验。4样本Myc项目也不代表线下全部工作。
+
+开题报告已按现有结构映射、连通分区、六轴化学机制、SPURS/FoldX、序贯预算与实际案例重写，新增完成状态和证据索引。交付E:/download/开题报告-chw/项目进展补充版（21页正文、15页答辩内容）；原稿保留，未运行新模型或修改数据库。报告区分CTLA-4旧评分、PD-1局部候选、PD-L1流程及11例binder迁移，不作为同批表位性能。
+
+
+## 2026-10-22 CTLA4 R51A/E59Y/K65F 三点风险直算
+
+同一P16410/1AH1连续编号输入上，FoldX 5.1/timeRotabase五槽直接计算三单、三双及R51A/E59Y/K65F三点；35条配对身份和原始Dif验证PASS。目标三点中位数+2.537 kcal/mol，范围+0.582至+2.924，3/5高于项目+2.0复核线；风险主要跟E59Y一致，故标高风险复核项，不推断确定失折叠/表达或结合。旧V4 E59Y/K65F +1.21为legacy记录且缺逐槽输出；本次同二进制新五槽双点为+2.951，差异无法由旧原始数据解析，未混合均值。完整报告与输入/模型hash见 `workspace_data/ctla4_triple_risk_51RA_59EY_65KF_20261022/`。调用经历作者/连续编号误配和路径长度失败两次未出分，均保留；纠正规则见 `tasks/lessons.md`。历史正式面板未改。
+
+
+## 2026-10-23 CTLA4 E59Y独立第二批复算
+E59Y与E59Y/K65F各新增5槽，旧配对复用0，运行106.99秒；原始输入、RepairPDB产物及FoldX二进制SHA均与第一批相同。10/10原始Dif/模型hash/完整序列/采样槽核验PASS；两组WT/Mut均5种内容且与第一批无内容重合。第二批中位数分别+2.954（4/5>2）与+2.517（5/5>2）；第一批分别+2.821与+2.951。维持FoldX稳定性风险复核，不合并批次为新正式合同，不改历史面板。旧legacy双点+1.21因缺原始槽仍无法精确归因。报告workspace_data/ctla4_e59y_recheck_20261022/recheck_report_zh.md。未重算三点/SPURS/其他骨架。
+
+
+## 2026-10-23 CTLA4旧FoldX推荐与严格复现审计（更正）
+本条替代前述CTLA4条目中“旧逐槽数据缺失、旧值无法复现”的结论。complete派生报告的selection_replay.source_run指向5068b62450ec，原数据完整；9来源hash相符。旧E59Y/K65F在foldx_batch_4afa2724第5组，五槽2.99488/0.276247/3.45390/1.21002/0.710114，中位1.21002→1.21。42组210配对及全部中位聚合独立通过。原batch同input/binary/rotabase/列表顺序默认调用严格复现25 DDG与50模型字节；单独调用该双点中位2.07290。批次上下文属于计算身份，新timeSeed采样不能当旧调用复现。旧推荐按中位<=2等合同正确放行，但标签未体现采样敏感性；不临时改为五槽全过门。新增受控实验30配对/210.24秒；两近期风险报告及清单已勘误，更正前副本保存。原源任务和正式资格/面板未回写。报告workspace_data/ctla4_legacy_repro_audit_20261023/audit_report_zh.md。
+
+## 2026-10-23 FoldX重复门限敏感性诊断
+原因：五槽median按现行合同放行并不说明五个采样槽都位于门内；旧E59Y/K65F即有2/5槽>2，而变更候选批次组成后同输入/工具的中位数也可跨过2。`joint_design_v4/stability_repeat_diagnostics.py`被engine、reporting、本区推荐和保存评分重导出复用；导出最小值、最大值、门限两侧计数、`sampling_decision_sensitive`与`recommendation_risk_label`。只在五个预期槽有效完整时输出敏感性布尔值，缺失/NaN/错误槽身份为未知；不改变median资格合同。E59Y/K65F五槽显示2/5超门且仍按median维持共识通过。父目录venv相关6个测试文件92项通过。未实现历史目录自动扫描或把已核验跨执行证据自动关联当前候选；报告字段保持`cross_execution_evidence_status=NOT_ASSESSED`，来源身份需结构化绑定后再显示候选级冲突。详情见`tasks/lessons.md`与`tasks/todo.md`。
+UI续修：`web/recommendations.js`和`web/app.js`同序读取本区`stability_repeat_diagnostic`、稳定性provenance、impact evidence及`design.foldx_diagnostics`；采样敏感/重复不完整/旧审计缺诊断时卡片标签分别显示需复核、不完整或诊断未知，并覆盖兼容旧低风险enum；完整数据展示配置门限、范围、门两侧数量和编号槽值。引擎导出槽值另保留带缺失位置的对齐列表，避免UI把缺失槽后的值错标。全槽在门内只标“本批未见门限跨越”，不写跨批稳定。Node渲染、离线及生命周期相关6个文件32项通过；不做自动跨执行历史搜索。
+
+
+## 2026-10-23 FoldX候选隔离、缓存与可重放证据修复（验收完成）
+公共score_many现为candidate_isolated_v1，一组合一进程、组合内固定排序；模型次数/科学阈值不变。worker保存请求/源码/原始结构/命令/输入与rotabase及输出hash，旧布局或协议不兼容缓存不复用。默认流只取一个完整原生batch，不能重启补后缀或混外部三槽与自身完整五槽；时间播种保留固定槽增量。推荐/CSV/报告/网页增加跨门诊断与未知标签；新旧来源、可移植配对和执行依赖进入普通与重放包，旧CLI/source未知不补造。234项相关回归PASS，真实新增15对：默认双点2.07290及10模型匹配历史单独调用；换序并发2→1复用10对/新增0；timeSeed1→3→5新增1/2/2总5。旧210/新10对包hash与移包核验PASS。未重启在线主服务、未全仓或真浏览器验收。审计docs/foldx_reproducibility_repair_20261023.md和workspace_data/ctla4_isolation_acceptance_20261023/final_acceptance.json。
+
+
+## 2026-10-25 PD1独立突变图统一seg1–8
+此前新增seg总览但突变卡片/膜图/说明仍用旧R分区，现独立atlas全部使用统一8段定义及灰色范围外位点。保留mut1–5和原mut4/5/7，按所选位点方向设相机；历史距离审计另存。11画布/288位置颜色/逐位映射/CB标记/零外部资源及PNG核验通过，独立只读审查通过。无管线或评分变化；seg8为预测茎区。修复与验收记录：[seg_only_update_20261025.md](pd1_antibody_epitope_atlas/seg_only_update_20261025.md)。
+
+
+## 2026-10-25 PD1文献8嵌合体与现有8设计共同结构对照
+新增独立PD1_mutant_comparison.html（原seg图保留），报告逐表与ECD序列验证45替换，现有8设计23替换；58独立位点。采用统一AFQ15116v6 ECD25–170预测坐标覆盖缺失N端/茎区，中性表面、构建体多色定位、共享位点多标记，单canvas离线。主面板L1–8+C3/C4/C5=11，其他5保留补充；原mut4/5/7保留A132L背景并建议单独对照。文献MPER译名/Seg3坐标计数纠正在网站标明，不用错误SASA汇总筛选。桌面/390px、逐位/交互/零网络验收PASS，数据来源hash未变；用户报告目录已复制网站、PNG、建议与验收JSON。详见docs/pd1_antibody_epitope_atlas/PD1_mutant_comparison_acceptance.json及用户目录PD1_mutant_comparison_delivery.json。未调用模型评分或重算突变结构。

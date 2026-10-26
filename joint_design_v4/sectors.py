@@ -552,8 +552,16 @@ def build_epitope_sectors(
     target = int(params.get('target_sector_residues', 12))
     preferred_min = int(params.get('preferred_minimum_sector_residues', 10))
     preferred_max = int(params.get('preferred_maximum_sector_residues', 15))
+    preferred_count_min = params.get('preferred_minimum_sector_count')
+    preferred_count_max = params.get('preferred_maximum_sector_count')
+    has_count_range = preferred_count_min is not None or preferred_count_max is not None
+    if has_count_range:
+        if (isinstance(preferred_count_min, bool) or not isinstance(preferred_count_min, int)
+                or isinstance(preferred_count_max, bool) or not isinstance(preferred_count_max, int)):
+            raise ValueError('Preferred sector-count bounds must be positive integers') from None
     if (not all(math.isfinite(v) and v > 0 for v in (maximum_geo, maximum_ca, minimum_area))
-            or not 1 <= minimum_size <= preferred_min <= target <= preferred_max):
+            or not 1 <= minimum_size <= preferred_min <= target <= preferred_max
+            or (has_count_range and not 1 <= preferred_count_min <= preferred_count_max)):
         raise ValueError('Display size preferences and positive finite diameter/area limits are required')
     audit = diagnostics if diagnostics is not None else {}
     audit.clear()
@@ -566,6 +574,9 @@ def build_epitope_sectors(
         'diameter_basis': 'full_eligible_residue_graph_shortest_paths',
         'connectivity_basis': 'induced_eligible_residue_graph_with_contracted_surface_transit',
         'search_limit': PARTITION_SEARCH_LIMIT, 'search_states': 0, 'repairs': []})
+    if has_count_range:
+        audit.update(preferred_minimum_sector_count=preferred_count_min,
+            preferred_maximum_sector_count=preferred_count_max, count_range_is_soft=True)
 
     by_position = {row.residue.uniprot_pos: row for row in surface}
     invalid = []
@@ -629,8 +640,13 @@ def build_epitope_sectors(
 
         def quality(groups):
             sizes = [len(g) for g in groups]
-            return (sum(max(preferred_min - n, 0) ** 2 + max(n - preferred_max, 0) ** 2 for n in sizes),
-                    len(groups), sum((n - target) ** 2 for n in sizes))
+            size_penalty = sum(max(preferred_min - n, 0) ** 2 + max(n - preferred_max, 0) ** 2
+                               for n in sizes)
+            if has_count_range:
+                count_penalty = (max(preferred_count_min - len(groups), 0) ** 2
+                                 + max(len(groups) - preferred_count_max, 0) ** 2)
+                return (size_penalty, count_penalty, len(groups), sum((n - target) ** 2 for n in sizes))
+            return (size_penalty, len(groups), sum((n - target) ** 2 for n in sizes))
 
         def adjacent(left, right):
             return any(q in right for p in left for q in graph[p])
@@ -766,7 +782,9 @@ def build_epitope_sectors(
             raise PartitionConstraintError('UNSATISFIED_PARTITION_CONSTRAINTS: 最终显示分区未通过硬验收', audit)
         audit.update(status='COMPLETE', realized_region_count=len(groups), search_states=budget['states'],
             chosen_initial_region_count=chosen_count, repairs=repairs, objective=list(objective),
-            objective_order=['squared_preferred_range_deviation', 'region_count', 'squared_target_size_deviation'],
+            objective_order=(['squared_preferred_size_range_deviation', 'squared_preferred_count_range_deviation',
+                              'region_count', 'squared_target_size_deviation'] if has_count_range else
+                             ['squared_preferred_range_deviation', 'region_count', 'squared_target_size_deviation']),
             optimization_status='SEARCH_BUDGET_EXHAUSTED' if exhausted else 'LOCAL_SEARCH_COMPLETE')
         result = _sector_outputs(groups, by_position, {r.residue.uniprot_pos: r for r in epitope},
             graph, records, distances, max_sectors, minimum_size, minimum_area, maximum_geo, maximum_ca)
@@ -793,4 +811,13 @@ def build_epitope_sectors(
                                             'reason': reason, 'description': description})
             row.quality_flags.append('BELOW_PREFERRED_DISPLAY_SIZE' if len(group) < preferred_min
                                      else 'ABOVE_PREFERRED_DISPLAY_SIZE')
+    if has_count_range:
+        realized_count = len(result)
+        audit['count_preference_met'] = preferred_count_min <= realized_count <= preferred_count_max
+        if not audit['count_preference_met']:
+            audit['count_range_exception'] = {
+                'realized_region_count': realized_count,
+                'reason': 'SOFT_COUNT_RANGE_EXCEEDED',
+                'description': '连通性、覆盖或硬几何约束优先于分区数量偏好。',
+            }
     return result

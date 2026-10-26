@@ -25,10 +25,10 @@ def test_buildmodel_guard_allows_slow_pdl1_batches_without_changing_runs():
     assert settings['timeout_seconds'] > _buildmodel_timeout(6, 5)
     assert settings['number_of_runs'] == 5
     assert settings['combination_gate_kcal_mol'] == 2.0
-    assert settings['max_candidates'] == 60
+    assert settings['max_candidates'] == 80
     assert spurs['preferred_max_ddg'] == 0.5
-    assert spurs['review_max_ddg'] == 1.0
-    assert spurs['disagreement_gate_kcal_mol'] == 1.5
+    assert spurs['review_max_ddg'] == 2.0
+    assert spurs['absolute_gap_diagnostic_kcal_mol'] == 1.5
 
 
 def test_native_timeout_is_recorded_and_never_returned_as_success(tmp_path, monkeypatch):

@@ -105,8 +105,10 @@ def write_surface_v2_outputs(
             for footprint_id in region.footprint_ids:
                 writer.writerow([region.region_id, footprint_id, footprint_id == region.representative_footprint_id])
     write_json(output_dir / "surface_v2_qc.json", qc)
+    write_json(output_dir / "surface_geometry_owner_diagnostics.json",
+               surface.metadata.get("owner_diagnostics", {}))
     return [
         "surface_vertices.csv", "surface_edges.npz", "raw_footprints.json", "footprints.json", "footprints.csv",
         "footprint_membership.csv", "footprint_adjacency.csv", "surface_regions.json",
-        "surface_region_membership.csv", "surface_v2_qc.json",
+        "surface_region_membership.csv", "surface_v2_qc.json", "surface_geometry_owner_diagnostics.json",
     ]

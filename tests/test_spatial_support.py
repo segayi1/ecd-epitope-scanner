@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ecd_epitope_scanner.joint_design_v4.models import ResidueKey, V4Candidate, V4MutationOption, V4Sector
+from ecd_epitope_scanner.joint_design_v4.models import CombinationStabilityEvidence, ResidueKey, V4Candidate, V4MutationOption, V4Sector
 from ecd_epitope_scanner.joint_design_v4.candidate_search import generate_candidates, hypothesis_balanced_shortlist
 from ecd_epitope_scanner.joint_design_v4.engine import _foldx_shortlist
 from ecd_epitope_scanner.joint_design_v4.sector_recommendations import build_sector_recommendations
@@ -17,7 +17,8 @@ def option(position, mutant="A", risk=0.0):
 
 def candidate(identifier, positions, risk=0.0, mutant="A"):
     return V4Candidate(identifier, "S", [option(p, mutant) for p in positions], order=len(positions),
-                       structural_risk=risk, formal_eligible=True)
+                       structural_risk=risk, formal_eligible=True,
+                       stability=CombinationStabilityEvidence((), .1, .1, len(positions), consensus_status="CONSENSUS_PASS"))
 
 
 def chain():

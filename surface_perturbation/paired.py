@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import json
 from pathlib import Path
 import numpy as np
 from Bio.PDB import PDBParser
@@ -107,10 +108,42 @@ def scan_pairs(root: Path):
                 "mutant_file_sha256":sha256_file(batch/'individual_list.txt'),
                 "batch_path": str(batch.resolve()),
             })
+            receipt = batch/'buildmodel_request.json'
+            if receipt.is_file():
+                execution = json.loads(receipt.read_text(encoding='utf-8'))
+                pairs[-1].update(buildmodel_request_path=str(receipt.resolve()),
+                    buildmodel_request_sha256=sha256_file(receipt),
+                    execution_layout=execution.get('execution_layout'),
+                    replay_mode=execution.get('replay_mode'),
+                    rotabase_sha256=execution.get('rotabase_sha256'))
     return pairs, failures
 
 
 def validate_pair(row):
+    if row.get('execution_layout') == 'candidate_isolated_v1' and not row.get('buildmodel_request_sha256'):
+        raise ValueError('candidate-isolated execution receipt missing')
+    if row.get('buildmodel_request_sha256'):
+        receipt = Path(row['batch_path'])/'buildmodel_request.json'
+        if sha256_file(receipt) != row['buildmodel_request_sha256']:
+            raise ValueError('BuildModel execution receipt changed')
+        execution = json.loads(receipt.read_text(encoding='utf-8'))
+        if execution.get('execution_layout') != row.get('execution_layout'):
+            raise ValueError('BuildModel execution layout mismatch')
+        if execution.get('execution_layout') == 'candidate_isolated_v1' and (
+                len(execution.get('ordered_mutations', [])) != 1 or int(row['group']) != 1):
+            raise ValueError('candidate-isolated execution contains other constructs')
+        if execution.get('input_sha256') != row.get('input_sha256') or execution.get('mutant_file_sha256') != row.get('mutant_file_sha256'):
+            raise ValueError('BuildModel execution inputs mismatch')
+        if row.get('binary_sha256') and execution.get('binary_sha256') != row['binary_sha256']:
+            raise ValueError('BuildModel binary identity mismatch')
+        if execution.get('rotabase_sha256') and sha256_file(Path(row['batch_path'])/'rotabase.txt') != execution['rotabase_sha256']:
+            raise ValueError('BuildModel rotabase changed')
+        for kind in ('wt','mut'):
+            if execution.get('output_sha256', {}).get(Path(row[f'{kind}_path']).name) != row[f'{kind}_sha256']:
+                raise ValueError('BuildModel model differs from execution receipt')
+        for kind in ('pdb_list','ddg_file'):
+            if row.get(f'{kind}_path') and execution.get('output_sha256', {}).get(Path(row[f'{kind}_path']).name) != row.get(f'{kind}_sha256'):
+                raise ValueError('BuildModel raw table differs from execution receipt')
     if row.get('ddg_kcal_mol') is not None and not np.isfinite(row['ddg_kcal_mol']):
         raise ValueError('nonfinite paired DDG')
     if row.get('input_sha256') and sha256_file(Path(row['batch_path'])/'input.pdb')!=row['input_sha256']:

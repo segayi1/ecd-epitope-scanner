@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import re
+import shutil
 import textwrap
 import zipfile
 from pathlib import Path
@@ -37,6 +39,113 @@ def _js_safe(chunk: str) -> str:
 def _json_inline(value: Any) -> str:
     """JSON for inline embedding; '</' is escaped the JSON-legal way."""
     return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
+
+
+OFFLINE_SITE_ASSETS = (
+    "workbench.css",
+    "app.css",
+    "renderer.js",
+    "vendor/3Dmol-min.js",
+    "vendor/pdbe-molstar-plugin-3.10.1.js",
+    "vendor/pdbe-molstar-light-3.10.1.css",
+    "vendor/PDBe-Molstar-LICENSE",
+)
+
+
+def _offline_classic_bundle() -> str:
+    """Build the app's existing single-import frontend as a classic file:// bundle."""
+    app = (WEB_ROOT / "app.js").read_text(encoding="utf-8")
+    recommendations = (WEB_ROOT / "recommendations.js").read_text(encoding="utf-8")
+    import_pattern = r'^import\s*\{\s*createRecommendationRenderer\s*\}\s*from\s*["\']\.\/recommendations\.js(?:\?[^"\']*)?["\'];\s*'
+    app, import_count = re.subn(import_pattern, "", app, count=1, flags=re.MULTILINE)
+    if import_count != 1 or re.search(r'^\s*import\s|^\s*export\s', app, re.MULTILINE):
+        raise ValueError("Offline bundle assertion failed: app.js import/export contract changed")
+    recommendations, export_count = re.subn(
+        r'^export\s+function\s+createRecommendationRenderer\b',
+        "function createRecommendationRenderer",
+        recommendations,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if export_count != 1 or re.search(r'^\s*(?:import|export)\s', recommendations, re.MULTILINE):
+        raise ValueError("Offline bundle assertion failed: recommendations.js module contract changed")
+    return "/* local offline classic bundle; generated from the online app sources */\n" + recommendations + "\n" + app
+
+
+def build_offline_site(output_dir: Path, analysis: dict[str, Any], lang: str = "zh") -> list[str]:
+    """Build a self-contained copy of the same workbench for direct file:// use.
+
+    Scientific data and structures are embedded in the root page so no local
+    fetch, localhost API, or network access is needed to open a report.
+    """
+    from .joint_design_v4.reporting import project_display_analysis
+
+    assets_dir = output_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    for rel_name in OFFLINE_SITE_ASSETS:
+        source = WEB_ROOT / rel_name
+        if not source.is_file():
+            raise FileNotFoundError(f"Required offline frontend asset is missing: {source}")
+        target = assets_dir / rel_name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    (assets_dir / "app.bundle.js").write_text(_offline_classic_bundle(), encoding="utf-8")
+
+    structure_path = output_dir / "structure.cif"
+    if not structure_path.is_file():
+        structure_path = output_dir / "ecd_structure.cif"
+    pdb_path = output_dir / "structure_for_energy.pdb"
+    if not pdb_path.is_file():
+        raise FileNotFoundError(f"No PDB structure is available for offline viewer in {output_dir}")
+    if not structure_path.is_file():
+        structure_path = pdb_path
+
+    i18n = {
+        name: json.loads((WEB_ROOT / "i18n" / f"{name}.json").read_text(encoding="utf-8"))
+        for name in ("zh", "en")
+    }
+    page = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    page = re.sub(
+        r'(?P<attr>href|src)="/assets/(?P<path>[^"]+)"',
+        lambda match: f'{match.group("attr")}="./assets/{match.group("path").split("?", 1)[0]}"',
+        page,
+    )
+    page = page.replace('href="/"', 'href="./index.html"')
+    page = re.sub(r'href="/(?!assets/)[^"]*"', 'href="#offline-unavailable"', page)
+    available_assets = set(OFFLINE_SITE_ASSETS) | {"app.bundle.js"}
+    page = re.sub(
+        r'href="\./assets/([^"?]+)(?:\?[^\"]*)?"',
+        lambda match: match.group(0) if match.group(1) in available_assets else 'href="#offline-unavailable"',
+        page,
+    )
+    page = re.sub(
+        r'<script type="module" src="\./assets/app\.js[^\"]*"></script>',
+        '<script src="./assets/app.bundle.js"></script>',
+        page,
+    )
+    if 'type="module"' in page or re.search(
+        r'(?:href|src)="(?:/|https?:|//)|/api/', page, flags=re.IGNORECASE
+    ):
+        raise ValueError("Offline site assertion failed: absolute/module network resource remains")
+    page = page.replace(
+        '<meta charset="utf-8">',
+        '<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" '
+        'content="default-src \'self\' file: data: blob:; connect-src \'self\' file: blob: data:; '
+        'script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' file: blob:; '
+        'style-src \'self\' \'unsafe-inline\' file:; img-src \'self\' file: data: blob:; '
+        'font-src \'self\' file: data:; worker-src \'self\' file: blob:">',
+    )
+    snapshot = {
+        "analysis": project_display_analysis(analysis),
+        "i18n": i18n,
+        "structure_data": structure_path.read_text(encoding="utf-8", errors="replace"),
+        "structure_pdb": pdb_path.read_text(encoding="utf-8", errors="replace"),
+        "language": "en" if lang == "en" else "zh",
+    }
+    embedded = "<script>window.APP_OFFLINE = " + _json_inline(snapshot) + ";</script>\n"
+    page = page.replace('<body data-workspace-step="1">', '<body class="offline-mode" data-workspace-step="1">\n' + embedded)
+    (output_dir / "index.html").write_text(page, encoding="utf-8")
+    return ["index.html", *(f"assets/{name}" for name in OFFLINE_SITE_ASSETS), "assets/app.bundle.js"]
 
 
 def build_offline_html(
@@ -124,6 +233,7 @@ def write_scientific_outputs(
     (output_dir / "offline_report.html").write_text(
         build_offline_html(analysis, output_dir), encoding="utf-8"
     )
+    offline_site_names = build_offline_site(output_dir, analysis)
 
     residue_rows = [to_dict(item) for item in records]
     _write_csv(
@@ -467,6 +577,7 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "designs.json",
         "fixed_assay_profile.json",
         "offline_report.html",
+        *offline_site_names,
         "designs.csv",
         "panel_coverage_matrix.csv",
         "sequences.fasta",
@@ -527,6 +638,7 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "sector_recommendations_v4.json",
         "sector_recommendations_v4.csv",
         "v4_manifest.json",
+        "paired_model_manifest.json",
         "v4_scientific_report.md",
         "v4_manifest_v41.json",
         "surface_graph_v4.json",
@@ -565,6 +677,9 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "native_input.pdb",
         "structure_for_energy.pdb",
     ]
+    export_names.extend(path.relative_to(output_dir).as_posix()
+        for path in sorted((output_dir / "foldx_refinement").glob("**/paired_model_manifest.json"))
+        if not {"prior_attempts", "paired_manifest_history"}.intersection(path.relative_to(output_dir).parts))
     if af3:
         export_names.extend((analysis.get("source", {}).get("af3_preprocessing") or {}).get("files", []))
         export_names.extend(path.relative_to(output_dir).as_posix()
@@ -624,6 +739,37 @@ def finalize_scientific_bundle(output_dir: Path) -> None:
     """Bind checksums and the ZIP to the final analysis written by the pipeline."""
     manifest_path = output_dir / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    analysis_path = output_dir / "analysis.json"
+    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    v4_manifest_path = output_dir / "v4_manifest.json"
+    if v4_manifest_path.is_file():
+        v4_manifest = json.loads(v4_manifest_path.read_text(encoding="utf-8"))
+        if v4_manifest.get("worker_runs", {}).get("foldx", {}).get("status") == "success":
+            from .foldx_source_evidence import copy_foldx_source_evidence
+            try:
+                evidence = copy_foldx_source_evidence(output_dir, output_dir, v4_manifest)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                evidence = {"status": "UNKNOWN", "reason": str(exc)}
+            v4_manifest.setdefault("provenance", {})["portable_source_evidence"] = evidence
+            analysis["portable_source_evidence"] = evidence
+            if evidence.get("status") != "UNKNOWN":
+                for name in evidence["artifact_paths"]:
+                    analysis.setdefault("files", {})[name] = name
+                    manifest.setdefault("files", {})[name] = ""
+            write_json(v4_manifest_path, v4_manifest)
+            write_json(analysis_path, analysis)
+    has_structure = (output_dir / "structure_for_energy.pdb").is_file()
+    if has_structure:
+        (output_dir / "offline_report.html").write_text(
+            build_offline_html(analysis, output_dir), encoding="utf-8"
+        )
+        manifest.setdefault("files", {}).setdefault("offline_report.html", "")
+    site_names = (build_offline_site(output_dir, analysis)
+        if analysis.get("joint_v4_ml") or has_structure else [])
+    for name in site_names:
+        manifest.setdefault("files", {}).setdefault(name, "")
+    manifest["files"].pop("run_manifest.json", None)
+    manifest["files"].pop("ecd_epitope_design.zip", None)
     for name in manifest["files"]:
         relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:

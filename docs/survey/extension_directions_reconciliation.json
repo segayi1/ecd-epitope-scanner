@@ -1,0 +1,126 @@
+{
+  "purpose": "Reconciliation ledger for docs/extension_directions.md after the third independent evaluation (2026-10-16). Records every correction made in response to the named gaps, so each change is mechanically checkable against the on-disk snapshots.",
+  "generated_at": "2026-10-16",
+  "corrections": [
+    {
+      "id": "c01",
+      "target": "docs/extension_directions.md:201 exporting.py:413",
+      "predicted": "exporting.py:413 is the description site",
+      "found": "exporting.py:413 is the README-citation string; the description text lives at exporting.py:523 and the fixed-header writer at exporting.py:335",
+      "action": "Rewrote the sentence to cite exporting.py:523 (verbatim description) and exporting.py:335 (writer).",
+      "status": "corrected"
+    },
+    {
+      "id": "c02",
+      "target": "docs/extension_directions.md §5 row 42241701",
+      "predicted": "one purpose-cell rewording suffices",
+      "found": "Snapshot title is 'Detecting Uncoded Self-Harm in Veterans' Electronic Health Records Using Positive and Unlabeled Learning: Retrospective Cohort Study.'; journal is 'Journal of medical Internet research', doi 10.2196/89071",
+      "action": "Rewrote the purpose cell verbatim from the snapshot; strengthened '旁证' to '不构成本文任何方向的证据'.",
+      "status": "corrected"
+    },
+    {
+      "id": "c03",
+      "target": "docs/extension_directions.md §5 row 42412842 (line 90 body text)",
+      "predicted": "the '已被当作标准做法' claim was supportable from the abstract",
+      "found": "Only titles were snapshotted for surrounding items; that was an abstract-level induction not verifiable from the snapshot",
+      "action": "Deleted the claim and stated explicitly that the document does not assert it.",
+      "status": "corrected"
+    },
+    {
+      "id": "c04",
+      "target": "docs/extension_directions.md section direction 4",
+      "predicted": "no content-adjacent literature exists (first-round conclusion)",
+      "found": "Second round with different roots returned PMID 27401684 (Tools and techniques for computational reproducibility, GigaScience, PubDate 2016 Jul 11, DOI 10.1186/s13742-016-0135-4). Note: 10.1093/gigascience/giz095 belongs to a different paper (31675414); an earlier draft of this record mis-paired the two. Auxiliary: 35277501 (FAIRly big), 42800986 (FairFlow, efetch-only).",
+      "action": "Rewrote the direction-4 literature block: direct-adjacent evidence 27401684 plus two auxiliary; kept 31675414 and 39915771 explicitly as non-supporting side notes, with the reason each fails isomorphism.",
+      "status": "corrected"
+    },
+    {
+      "id": "c05",
+      "target": "docs/extension_directions.md §1 direction 1",
+      "predicted": "some content-adjacent literature could be found on retry",
+      "found": "Two closest query strings returned 0 hits; none of 20 candidates has a proposition isomorphic to 'do an export file's fields align with its source data'",
+      "action": "Rewrote the block to state plainly: verifiable side notes exist, no content-adjacent literature exists, and therefore criterion (1) cannot be judged as passed overall while this direction stays listed as an extension direction. Three disposition options handed to the human; I did not pick one.",
+      "status": "corrected"
+    },
+    {
+      "id": "c06",
+      "target": "docs/extension_directions.md §5 table",
+      "predicted": "20 rows; four year cells need fixing",
+      "found": "Table grew from 20 to 23 rows when the three [A2] entries were added; it is 24 rows after PMID 27216816 was added in round 5. The real errors in that round were a journal name and a title (42241701) and a journal name (39915771); the year cells were already PubDate-derived.",
+      "action": "Added [A2] rows for 27401684 / 35277501 / 42800986, added the [A2] legend, recorded the 42241701 and 39915771 corrections inline, and (2026-10-17) added the 27216816 row that direction 5 cited without listing.",
+      "status": "corrected"
+    },
+    {
+      "id": "c07",
+      "target": "docs/extension_directions.md §5 verification-layer note",
+      "predicted": "23 mechanically checkable rows",
+      "found": "snapshot_accounting.json: snapshot_A = 19 docsums, snapshot_B = 4 docsums, disjoint. The 23 + 3 = 26 reading was a double count: 27401684, 35277501 and 42800986 were already among the 23, and 42800986 was in no esummary at all.",
+      "action": "Round 5 replaced the additive reading with a four-layer partition in which every table row belongs to exactly one layer and the layers sum to the row count (24). The layers are A = 17, B = 4, C/D/E = 3, no snapshot = 0.",
+      "status": "corrected"
+    }
+  ],
+  "counts": {
+    "table_rows_after": 24,
+    "mechanically_checkable_after": 24,
+    "counting_note": "Recomputed 2026-10-17 from docs/extension_directions.md by docs/survey/_fix_reconciliation_counts.py. The earlier '23 + 3 = 26' reading double-counted three PMIDs that were already among the 23; every table row has at least one on-disk snapshot, so the mechanically checkable count equals the row count.",
+    "layer_breakdown": {
+      "A": 17,
+      "B": 4,
+      "C_D_E": 3,
+      "no_snapshot": 0,
+      "sums_to_table_rows": 24
+    },
+    "layer_pmids": {
+      "A": [
+        "19055730",
+        "25048123",
+        "27216816",
+        "31243847",
+        "32761082",
+        "36611255",
+        "38177393",
+        "38197311",
+        "38227011",
+        "38844044",
+        "39455825",
+        "39872490",
+        "42252708",
+        "42412842",
+        "42620036",
+        "42719814",
+        "42824475"
+      ],
+      "B": [
+        "31675414",
+        "38496213",
+        "39915771",
+        "42241701"
+      ],
+      "C/D/E": [
+        "27401684",
+        "35277501",
+        "42800986"
+      ]
+    },
+    "document_lines": 299,
+    "document_bytes_lf_utf8": 37931,
+    "document_bytes_on_disk": 38229,
+    "document_bytes_note": "document_bytes_lf_utf8 = 换行归一为 LF 后的 UTF-8 字节数(本脚本实测);document_bytes_on_disk = 磁盘实际大小(本检出为 CRLF)。两者之差等于行数减一,不是数据不一致。"
+  },
+  "unchanged_known_gaps": [
+    {
+      "id": "g01",
+      "gap": "Direction 1 has no content-adjacent literature.",
+      "disposition": "Handed to the human: docs/survey/direction_1_ruling_request.md states the two options (keep it as an extension direction and record criterion (1) as not passed, or demote it to a defect-fix task). Not resolved by this ledger."
+    }
+  ],
+  "post_audit_notes": [
+    {
+      "id": "n01",
+      "target": "c04 / docs/survey/citation_ledger.md R1",
+      "issue": "27401684 was cited as 2017 by reading efetch <DateCompleted> 2017-10-30 as the publication year; its PubDate and ArticleDate are both 2016-07-11.",
+      "status": "corrected",
+      "evidence": "docs/survey/date_field_audit.json -> by_pmid.27401684.efetch"
+    }
+  ]
+}

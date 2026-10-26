@@ -37,6 +37,28 @@ from ecd_epitope_scanner.models import ProteinContext, ResidueRecord
 from ecd_epitope_scanner.util import sha256_file
 
 
+@pytest.fixture(autouse=True)
+def supplied_repeat_fixture(monkeypatch):
+    from ecd_epitope_scanner.joint_design_v4 import engine
+    original, saved = engine._prediction, {}
+    def predict(adapter, structure, chain, sequence, output, structure_type, parameters, supplied, key=None, mutations=None):
+        source = supplied.get("foldx") if supplied else None
+        if key == "foldx" and source and source.status == "success":
+            saved.update({tuple(sorted(r["mutations"])): r for r in source.records})
+        if key == "foldx" and saved and (source or "foldx_refinement" in str(output)):
+            rows = []
+            for n, group in enumerate(mutations or []):
+                row = dict(saved[tuple(sorted(group))])
+                start = int(parameters.get("sampling_slot_start", 0))
+                row["paired_models"] = [{"sampling_slot": i, "ddg_kcal_mol": row["ddg"],
+                    "batch_path": str(output), "group": n, "run": i}
+                    for i in range(start,start+int(parameters.get("number_of_runs", 5)))]
+                rows.append(row)
+            return PredictionResult("success", records=rows)
+        return original(adapter,structure,chain,sequence,output,structure_type,parameters,supplied,key,mutations)
+    monkeypatch.setattr(engine,"_prediction",predict)
+
+
 def _fixture_records(count: int = 12):
     sequence = "DEKRFWYAILMSTNQ"[:count]
     return [
@@ -303,6 +325,7 @@ def test_v4_preview_is_explicitly_not_formal_and_respects_hard_protection(tmp_pa
         prediction_results={"procaliper": success, "spurs": success, "discotope": discotope},
     )
     assert result.recommendation_status == "PREVIEW_NOT_FOR_FORMAL_RECOMMENDATION"
+    assert not any(c.impact_evidence.get("policy") == "regional_mechanism_pareto_v1" for c in result.candidates)
     assert any("accessibility is unassessed" in warning for warning in result.warnings)
     protected = [item for item in result.mutation_options if item.residue.uniprot_pos == 5]
     assert protected and all(not item.eligible for item in protected)
@@ -362,7 +385,7 @@ def test_v4_combination_disagreement_is_recorded(tmp_path: Path):
     evidence = _complete_per_residue_evidence(records)
     seed = run_joint_v4_ml(
         records, _protein(records), tmp_path / "seed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     combinations, foldx_combinations = _combination_rows(seed)
@@ -375,13 +398,14 @@ def test_v4_combination_disagreement_is_recorded(tmp_path: Path):
         tmp_path,
         parameters={
             "mode": "strict",
+            "regional_recommendation_policy": None,
             "candidate_search": {"orders": [2]},
         },
         prediction_results=evidence,
     )
     assert result.candidates
     assert any(
-        item.stability and item.stability.consensus_status == "MODEL_DISAGREEMENT"
+        item.stability and item.stability.consensus_status == "CONSENSUS_REVIEW"
         for item in result.candidates
     )
     assert result.recommendation_status == "BLOCKED_EXTERNAL_EVIDENCE"
@@ -420,6 +444,7 @@ def _complete_per_residue_evidence(records):
 
 
 def _combination_rows(seed):
+    # Frozen legacy selection fixtures; the new policy has its own request-driven integration checks.
     def rows(candidates):
         return [
             {"mutations": [option.notation for option in item.mutations], "ddg": 0.1}
@@ -436,7 +461,7 @@ def test_v4_strict_recommends_only_candidate_level_consensus_pass(tmp_path: Path
         records,
         _protein(records),
         tmp_path / "seed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     assert seed.candidates
@@ -452,7 +477,7 @@ def test_v4_strict_recommends_only_candidate_level_consensus_pass(tmp_path: Path
         records,
         _protein(records),
         tmp_path / "strict",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=strict_evidence,
     )
     assert result.recommendation_status == "FORMAL_RECOMMENDATION"
@@ -489,7 +514,7 @@ def test_v4_strict_blocks_failed_combination_worker_even_with_scores(tmp_path: P
     evidence = _complete_per_residue_evidence(records)
     seed = run_joint_v4_ml(
         records, _protein(records), tmp_path / "seed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     combinations, foldx_combinations = _combination_rows(seed)
@@ -501,7 +526,7 @@ def test_v4_strict_blocks_failed_combination_worker_even_with_scores(tmp_path: P
     )
     result = run_joint_v4_ml(
         records, _protein(records), tmp_path / "failed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     assert result.recommendation_status == "BLOCKED_EXTERNAL_EVIDENCE"
@@ -727,7 +752,7 @@ def test_v4_procaliper_is_diagnostic_and_does_not_block_projection(tmp_path: Pat
         records,
         _protein(records),
         tmp_path / "seed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     combinations, foldx_combinations = _combination_rows(seed)
@@ -738,7 +763,7 @@ def test_v4_procaliper_is_diagnostic_and_does_not_block_projection(tmp_path: Pat
         records,
         _protein(records),
         tmp_path / "blocked",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     assert result.recommendation_status == "FORMAL_RECOMMENDATION"
@@ -888,7 +913,7 @@ def test_v4_discotope_failure_allows_audited_stability_fallback(tmp_path: Path):
         records,
         _protein(records),
         tmp_path / "fallback_seed",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     assert seed.candidates
@@ -899,7 +924,7 @@ def test_v4_discotope_failure_allows_audited_stability_fallback(tmp_path: Path):
         records,
         _protein(records),
         tmp_path / "fallback_final",
-        parameters={"mode": "strict", "candidate_search": {"orders": [2]}},
+        parameters={"mode": "strict", "regional_recommendation_policy": None, "candidate_search": {"orders": [2]}},
         prediction_results=evidence,
     )
     assert result.recommendation_status == "FORMAL_RECOMMENDATION"

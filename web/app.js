@@ -1,10 +1,10 @@
-import { createRecommendationRenderer } from "./recommendations.js";
+import { createRecommendationRenderer } from "./recommendations.js?v=regional-qualified-20261025-v1";
 
 /* ECD Epitope Workbench — frontend (rewrite v4: full-page i18n + interaction fixes)
  *
  * Contract with the backend (ecd_epitope_scanner api.py — unchanged):
  *   POST /api/jobs            {input_type, identifier, chain, strict_af3, allow_partial}
- *   POST /api/jobs/upload     multipart(structure, accession?, chain?, sequence?, ecd_start?, ecd_end?)
+ *   POST /api/jobs/upload     multipart(structure, analysis_target, accession?, chain?, sequence?, ecd_start?, ecd_end?)
  *   GET  /api/jobs/{id}       -> {status, message, progress, result}
  *   GET  /api/jobs/{id}/events        SSE progress
  *   POST /api/jobs/{id}/af3           multipart(structure, confidence, official_source_confirmed)
@@ -62,12 +62,16 @@ const state = {
   layerFocus: "folding",
   selectedResidue: null,
   selectedDesign: "wt",
+  recommendationSelections: new Map(),
+  resultJobId: null,
+  showPartner: false,
   designSurfaceMode: false,
   designFocusRequest: 0,
   previewMode: "construct", // construct | custom; custom never shadows a clicked design
   previewPlans: new Map(),
   customMutations: [],
   lastSequences: null,
+  offline: Boolean(window.APP_OFFLINE),
 };
 
 const STEP_LIST = ["step.surface", "step.tolerance", "step.regions", "step.interface", "step.design", "step.custom", "step.overview"];
@@ -99,6 +103,7 @@ function t(key, fallback) {
 }
 
 async function api(url, options = {}) {
+  if (state.offline) throw new Error("离线结果包不连接服务器，也不执行分析计算。" );
   const response = await fetch(url, options);
   const contentType = response.headers.get("content-type") || "";
   const data = contentType.includes("json") ? await response.json() : await response.text();
@@ -113,8 +118,14 @@ async function api(url, options = {}) {
 }
 
 async function loadI18n() {
+  if (state.offline) {
+    state.i18n = window.APP_OFFLINE.i18n || {};
+    const saved = (() => { try { return localStorage.getItem("ecd.lang"); } catch { return null; } })();
+    state.lang = saved === "en" || saved === "zh" ? saved : (window.APP_OFFLINE.language || "zh");
+    return;
+  }
   for (const lang of ["zh", "en"]) {
-    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=af3-folder-upload-20261021-v1`); }
+    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=job-eta-20261026-v1`); }
     catch (e) { console.error(`i18n load failed for ${lang}`, e); state.i18n[lang] = {}; }
   }
   const saved = localStorage.getItem("ecd.lang");
@@ -139,11 +150,13 @@ function applyStaticI18n() {
 
 function toggleLang() {
   state.lang = state.lang === "zh" ? "en" : "zh";
-  localStorage.setItem("ecd.lang", state.lang);
+  try { localStorage.setItem("ecd.lang", state.lang); } catch { /* file:// storage may be disabled */ }
   applyStaticI18n();
   renderPanelScaffold();   // rebuilds the six step sections in the new language
   if (state.result) renderAll(false);
   else renderLegend();
+  renderSeqDockHead();
+  updateUploadTargetUI();
 }
 
 function showToast(message) {
@@ -190,7 +203,7 @@ function singleChoiceScore(choice) {
 
 /* ---------------- job lifecycle ---------------- */
 
-function setJob(status, message, progress = 0, error = null) {
+function setJob(status, message, progress = 0, error = null, estimate = null) {
   const names = {
     QUEUED: t("status.QUEUED", "排队中"), RUNNING: t("status.RUNNING", "运行中"),
     COMPLETE: t("status.COMPLETE", "完成"), WAITING_FOR_AF3_UPLOAD: t("status.WAITING", "等待 AF3"),
@@ -211,10 +224,29 @@ function setJob(status, message, progress = 0, error = null) {
   $("job-error").textContent = error || "";
   $("run-button").disabled = status === "RUNNING" || status === "QUEUED";
   $("btn-export-offline").disabled = status !== "COMPLETE";
+  const eta = $("job-eta");
+  eta.hidden = !["RUNNING", "QUEUED"].includes(status);
+  const stages = {
+    V4_FOLDX_FIRST_PASS: ["FoldX首轮", "FoldX first pass"], V4_FOLDX_REFINEMENT: ["FoldX追加确认", "FoldX refinement"],
+    V4_SPURS_SINGLE: ["单点评分", "Single-mutation scoring"], V4_SPURS_COMBINATION: ["组合评分", "Combination scoring"],
+    V4_COMBINATION_SEARCH: ["组合搜索", "Combination search"], EXPORTING: ["导出结果", "Exporting"],
+  };
+  const stage = stages[estimate?.stage]?.[state.lang === "en" ? 1 : 0];
+  eta.textContent = status === "QUEUED" ? t("eta.queued", "排队中，开始后估时")
+    : estimate?.status === "ESTIMATED" ? (() => {
+      const [low, high] = estimate.range_seconds.map((seconds) => Math.ceil(seconds / 60));
+      const range = high <= 1 ? t("eta.underMinute", "不足1分钟") : low === high ? `${high}` : `${low}–${high}`;
+      return `${t("eta.remaining", "预计剩余")} ${range}${high <= 1 ? "" : ` ${t("eta.minutes", "分钟")}`}${stage ? ` · ${stage}` : ""}`;
+    })() : estimate?.status === "OVERRUN" ? t("eta.overrun", "已超出历史耗时范围，剩余时间待更新")
+    : t("eta.pending", "正在收集耗时信息，暂无法估计剩余时间");
+  eta.title = `${t("eta.basis", "参考同类已完成任务的阶段耗时，非完成承诺")} · ${estimate?.reference_count || 0} ${t("eta.references", "个参考任务")}`;
 }
 
 function adoptResult(result, { demo, jobId }) {
+  if (state.resultJobId !== jobId) state.recommendationSelections?.clear();
+  state.resultJobId = jobId;
   state.result = result;
+  state.showPartner = false;
   state.selectedRegion = null;
   state.selectedFootprint = null;
   state.reliabilityView = false;
@@ -224,18 +256,13 @@ function adoptResult(result, { demo, jobId }) {
   state.demo = demo;
   state.jobId = jobId;
   state.selectedResidue = result.residues.find((r) => r.folding_screen_pass) || result.residues[0] || null;
-  const initialDesign = result.designs.find(
-    (d) => d.design_role === "STAGE1_PROBE" && d.mutations?.length
-  ) || result.designs.find((d) => d.mutations?.length);
-  state.selectedDesign = initialDesign?.id || "wt";
-  state.designSurfaceMode = Boolean(initialDesign?.mutations?.length && regionForDesign(initialDesign));
+  state.selectedDesign = "wt";
   state.previewMode = "construct";
   if (!result.protein.ecd_coding_sequence) {
     result.protein.ecd_coding_sequence = [...result.protein.ecd_sequence].map((aa) => CODONS[aa]).join("");
   }
   renderAll(false);
-  const url = result.structure_url || "/assets/demo/ecd_structure.cif";
-  ensureViewers(url);
+  ensureViewers(result.structure_url || (state.offline ? "" : "/assets/demo/ecd_structure.cif"));
 }
 
 function taskName() {
@@ -247,7 +274,11 @@ function taskName() {
 
 function applyTaskIdentity() {
   const title = taskName();
-  $("app-brand-title").textContent = state.result ? `${title} · ECD Epitope Workbench` : "ECD Epitope Workbench";
+  $("app-brand-title").textContent = "ECD Epitope Workbench";
+  $("workspace-title").textContent = state.result ? title : t("hud.canvasTitle", "结构审查画布");
+  $("workspace-context").textContent = state.result
+    ? `${state.result.protein.ecd_start}–${state.result.protein.ecd_end} · ${state.result.regions.length} ${t("workspace.regions", "分区")}`
+    : t("workspace.loading", "正在载入结构");
   document.title = state.result ? `${title} | ECD Epitope Workbench` : t("app.title", "ECD Epitope Workbench");
 }
 
@@ -271,7 +302,7 @@ async function loadSavedJob(jobId) {
   try {
     const job = await api(`/api/jobs/${encodeURIComponent(jobId)}?view=display`);
     if (loadId !== resultLoadId) return;
-    setJob(job.status, job.message || "", job.progress || 0, job.error || "");
+    setJob(job.status, job.message || "", job.progress || 0, job.error || "", job.time_estimate);
     if (job.status === "COMPLETE" && job.result) {
       adoptResult(job.result, { demo: false, jobId });
     } else if (job.status === "RUNNING" || job.status === "QUEUED") {
@@ -295,7 +326,7 @@ function watchJob(jobId) {
     if (state.eventSource !== source) return;
     try {
       const u = JSON.parse(event.data);
-      setJob(u.status, u.message, u.progress, u.error);
+      setJob(u.status, u.message, u.progress, u.error, u.time_estimate);
       if (["COMPLETE", "FAILED", "WAITING_FOR_AF3_UPLOAD"].includes(u.status)) {
         source.close();
         const job = await api(`/api/jobs/${jobId}?view=display`);
@@ -331,13 +362,14 @@ function panelBudgetInput(strategy = $("surface-strategy")?.value, optimizationP
 }
 
 function displayPartitionInput() {
-  const target = Number($("sector-target").value);
+  const rawTarget = $("sector-target").value.trim();
+  const target = rawTarget ? Number(rawTarget) : null;
   const geodesic = Number($("sector-geodesic").value);
   const ca = Number($("sector-ca").value);
-  if (!Number.isInteger(target) || target < 4 || target > 256 || ![geodesic, ca].every((value) => Number.isFinite(value) && value > 0)) {
-    throw new Error(t("form.partitionInvalid", "分区目标为4–256之间的整数，两个直径上限必须为正数。"));
+  if ((target !== null && (!Number.isInteger(target) || target < 7 || target > 15)) || ![geodesic, ca].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error(t("form.partitionInvalid", "分区目标留空自动选择，或填写7–15之间的整数；两个直径上限必须为正数。"));
   }
-  return { target_sector_residues: target, maximum_sector_geodesic_diameter_a: geodesic, maximum_sector_ca_diameter_a: ca };
+  return { ...(target === null ? {} : {target_sector_residues: target}), maximum_sector_geodesic_diameter_a: geodesic, maximum_sector_ca_diameter_a: ca };
 }
 
 async function submitRun(event) {
@@ -345,6 +377,7 @@ async function submitRun(event) {
   const inputType = document.querySelector('input[name="input-type"]:checked').value;
   const designEngine = "joint_v4_ml";
   try {
+    $("run-feedback").hidden = true;
     setJob("QUEUED", t("msg.submitting", "提交作业…"), 0.02);
     const job = await api("/api/jobs", {
       method: "POST",
@@ -359,29 +392,36 @@ async function submitRun(event) {
         ml_mode: $("ml-mode").value,
         surface_strategy: $("surface-strategy").value,
         optimization_profile: $("optimization-profile").value,
-        max_sectors: 7,
+        max_sectors: 12,
         ...displayPartitionInput(),
         ...panelBudgetInput(),
       }),
     });
     state.jobId = job.id;
     state.demo = false;
-    setJob(job.status, job.message, job.progress);
+    $("run-dialog").close();
+    setJob(job.status, job.message, job.progress, job.error, job.time_estimate);
     watchJob(job.id);
   } catch (error) {
     setJob("FAILED", t("msg.submitFail", "作业提交失败"), 0, error.message);
+    $("run-feedback").hidden = false;
+    $("run-feedback").textContent = error.message;
   }
 }
 
 async function submitUpload(event) {
   event.preventDefault();
   const folderMode = $("upload-source-mode").value === "af3-directory";
-  const structure = $("upload-structure").files[0], folderFiles = [...$("upload-af3-directory").files];
+  const structure = $("upload-structure").files[0];
+  const folderFiles = [...$("upload-af3-directory").files];
   if (folderMode ? (!folderFiles.length || !$("upload-af3-confirm").checked) : !structure) return;
-  $("upload-dialog").close(); const form = new FormData();
+  $("upload-dialog").close();
+  const form = new FormData();
   const analysisTarget = $("upload-analysis-target").value;
-  if (folderMode) { folderFiles.forEach(file => form.append("files", file, file.webkitRelativePath || file.name)); form.append("official_source_confirmed", "true"); }
-  else form.append("structure", structure);
+  if (folderMode) {
+    folderFiles.forEach((file) => form.append("files", file, file.webkitRelativePath || file.name));
+    form.append("official_source_confirmed", "true");
+  } else form.append("structure", structure);
   form.append("analysis_target", analysisTarget);
   if ($("upload-accession").value.trim()) form.append("accession", $("upload-accession").value.trim());
   if ($("upload-chain2").value.trim()) form.append("chain", $("upload-chain2").value.trim());
@@ -390,28 +430,43 @@ async function submitUpload(event) {
     if ($("upload-ecd-start").value) form.append("ecd_start", $("upload-ecd-start").value);
     if ($("upload-ecd-end").value) form.append("ecd_end", $("upload-ecd-end").value);
   }
-  form.append("design_engine", "joint_v4_ml"); form.append("ml_mode", $("upload-ml-mode").value);
-  form.append("surface_strategy", $("upload-surface-strategy").value); form.append("optimization_profile", $("upload-optimization-profile").value); form.append("max_sectors", "7");
+  form.append("design_engine", "joint_v4_ml");
+  form.append("ml_mode", $("upload-ml-mode").value);
+  form.append("surface_strategy", $("upload-surface-strategy").value);
+  form.append("optimization_profile", $("upload-optimization-profile").value);
+  form.append("max_sectors", "12");
   try {
-    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key,value]) => form.append(key,String(value)));
-    setJob("QUEUED",t("msg.uploading","上传结构并创建作业…"),0.02);
-    const job=await api(folderMode?"/api/jobs/af3-directory":"/api/jobs/upload",{method:"POST",body:form});
-    state.jobId=job.id; state.demo=false; setJob(job.status,job.message,job.progress); watchJob(job.id);
-  } catch(error) { setJob("FAILED",t("msg.uploadFail","上传失败"),0,error.message); }
+    Object.entries(displayPartitionInput()).forEach(([key, value]) => form.append(key, String(value)));
+    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key, value]) => form.append(key, String(value)));
+    setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
+    const job = await api(folderMode ? "/api/jobs/af3-directory" : "/api/jobs/upload", { method: "POST", body: form });
+    state.jobId = job.id;
+    state.demo = false;
+    setJob(job.status, job.message, job.progress, job.error, job.time_estimate);
+    watchJob(job.id);
+  } catch (error) {
+    setJob("FAILED", t("msg.uploadFail", "上传失败"), 0, error.message);
+  }
 }
 
 function updateUploadTargetUI() {
-  const folderMode=$("upload-source-mode").value==="af3-directory";
-  $("upload-structure-field").hidden=folderMode; $("upload-structure").required=!folderMode;
-  $("upload-af3-directory-field").hidden=!folderMode; $("upload-af3-directory").required=folderMode;
-  $("upload-af3-confirm-field").hidden=!folderMode; $("upload-af3-confirm").required=folderMode;
-  const binder=$("upload-analysis-target").value==="binder";
-  $("upload-target-hint").textContent=t(binder?"upload.binderHint":"upload.hint",binder?"Analyze the binder surface. Monomers use their only chain automatically; for complexes, enter the binder chain ID. Antigen membrane orientation is not applied, and B-factors are not assumed to be pLDDT.":"Only an antigen ECD PDB/mmCIF is required.");
-  $("upload-accession-label").textContent=t(binder?"upload.accessionBinder":"upload.accession",binder?"UniProt accession (optional)":"UniProt accession");
-  $("upload-chain-label").textContent=t(binder?"upload.chainBinder":"upload.chain",binder?"Binder chain (optional)":"Target chain");
-  $("upload-chain2").placeholder=t(binder?"upload.chainBinderHint":"form.chainPlaceholder",binder?"e.g. A; blank for a monomer":"auto");
-  $("upload-accession").placeholder=t(binder?"upload.accessionBinderHint":"upload.accessionHint",binder?"optional; blank is OK":"recommended");
-  $("upload-antigen-advanced").hidden=binder;
+  const folderMode = $("upload-source-mode").value === "af3-directory";
+  $("upload-structure-field").hidden = folderMode;
+  $("upload-structure").required = !folderMode;
+  $("upload-af3-directory-field").hidden = !folderMode;
+  $("upload-af3-directory").required = folderMode;
+  $("upload-af3-confirm-field").hidden = !folderMode;
+  $("upload-af3-confirm").required = folderMode;
+  const binder = $("upload-analysis-target").value === "binder";
+  $("upload-target-hint").textContent = t(
+    binder ? "upload.binderHint" : "upload.hint",
+    binder ? "Analyze the binder surface. Monomers use their only chain automatically; for complexes, enter the binder chain ID. Antigen membrane orientation is not applied, and B-factors are not assumed to be pLDDT." : "Only an antigen ECD PDB/mmCIF is required."
+  );
+  $("upload-accession-label").textContent = t(binder ? "upload.accessionBinder" : "upload.accession", binder ? "UniProt accession (optional)" : "UniProt accession");
+  $("upload-chain-label").textContent = t(binder ? "upload.chainBinder" : "upload.chain", binder ? "Binder chain (optional)" : "Target chain");
+  $("upload-chain2").placeholder = t(binder ? "upload.chainBinderHint" : "form.chainPlaceholder", binder ? "e.g. A; blank for a monomer" : "auto");
+  $("upload-accession").placeholder = t(binder ? "upload.accessionBinderHint" : "upload.accessionHint", binder ? "optional; blank is OK" : "recommended");
+  $("upload-antigen-advanced").hidden = binder;
 }
 
 async function submitAf3(event) {
@@ -451,7 +506,7 @@ async function submitAf3Form(form, endpoint) {
     submit.textContent = t("msg.af3Uploading", "正在上传…");
     const job = await api(`/api/jobs/${state.jobId}${endpoint}`, { method: "POST", body: form });
     $("af3-dialog").close();
-    setJob(job.status, job.message, job.progress);
+    setJob(job.status, job.message, job.progress, job.error, job.time_estimate);
     watchJob(state.jobId);
   } catch (error) {
     setJob("WAITING_FOR_AF3_UPLOAD", t("msg.af3Fail", "AF3 文件验证失败"), 0.34, error.message);
@@ -514,8 +569,16 @@ async function ensureViewers(structureUrl) {
   $("retry-viewer").hidden = true;
   let stage = "render";
   try {
-    const instance = await MolstarView.init($("viewer-molstar"), structureUrl, state.representation);
+    // Keep partner chains available on initial load and retry; scope the target below.
+    if (interfacePartnerChains().length) structureUrl = structureUrl.replace(/\/ecd_structure\.cif$/, "/structure.cif");
+    const instance = await MolstarView.init($("viewer-molstar"), structureUrl, state.representation,
+      state.offline ? window.APP_OFFLINE.structure_data : null);
     if (loadId !== viewerLoadId || !instance) return;
+    if (state.result.residues.length) {
+      const chains = [...new Set(state.result.residues.map((residue) => residue.chain_id).filter(Boolean))];
+      await MolstarView.configureChains(chains, interfacePartnerChains(), state.representation,
+        state.result.residues.map(residueQuery));
+    }
     molstarReady = true;
     stage = "paint";
     await paintMolstar();
@@ -630,6 +693,22 @@ async function paintMolstar() {
   const add = (records, color, extra = {}) => records.forEach((residue) => {
     data.push({ ...residueQuery(residue), color, ...extra });
   });
+  if (state.recommendationSelections.size) {
+    const byPosition = new Map();
+    [...state.recommendationSelections.values()].forEach((selection, index) => selection.mutations.forEach((mutation) => {
+      const variants = byPosition.get(mutation.position) || new Map();
+      variants.set(`${mutation.wt}>${mutation.mutant}`, selectionColor(index));
+      byPosition.set(mutation.position, variants);
+    }));
+    for (const [position, variants] of byPosition) {
+      const residue = state.result.residues.find((item) => item.uniprot_pos === position);
+      if (residue) add([residue], variants.size > 1 ? "#D81B60" : variants.values().next().value);
+    }
+    await MolstarView.color(data, "#c8d2d5", { keepRepresentations: true });
+    if (loadId !== viewerLoadId) return;
+    renderLegend();
+    return;
+  }
   const showcase = state.designSurfaceMode && state.previewMode === "construct" ? selectedDesign() : null;
   if (showcase?.mutations?.length) {
     const records = designSurfaceRecords(showcase);
@@ -694,7 +773,7 @@ function renderDesignSurfaceCallout() {
   }
   container.hidden = false;
   container.innerHTML = `<div class="design-surface-head">
-    <div><strong>${h(design.mutations.map(notation).join(" + "))} · ${h(t("design.surfaceTitle", "突变组合表面视图"))}</strong>
+    <div><strong>${h(t("design.surfaceTitle", "突变组合表面视图"))}</strong>
       <span>${regions.length > 1 ? h(recommendationLabel("跨区组合", "Cross-region combination")) + " · " : ""}${h(regions.map((item) => `${recommendationLabel("分区", "Region")} ${item.id}`).join("、"))}</span></div>
     <span class="grow"></span><button type="button" class="btn btn-mini" id="exit-design-surface">${h(t("design.surfaceExit", "退出聚焦"))}</button>
   </div>
@@ -738,6 +817,11 @@ async function setRepresentation(representation) {
 
 function setEngine(engine) {
   if (!state.result) return;
+  if (engine === "beads" && state.showPartner) {
+    state.showPartner = false;
+    MolstarView.setPartnerVisible(false).catch((error) => viewerError(error, "render"));
+    renderStep4();
+  }
   if (engine === "beads" && !state.jobId) {
     showToast(t("msg.beadsNeedJob", "冻结示例无作业结构文件；提交真实作业后可用珠子渲染"));
     document.querySelectorAll("[data-engine]").forEach((b) => {
@@ -756,7 +840,8 @@ function setEngine(engine) {
     beads.hidden = false;
     if (!state.beadsReady) {
       const loadId = viewerLoadId;
-      BeadsView.init(beads, `/api/jobs/${state.jobId}/files/structure_for_energy.pdb`, state.result.residues)
+      BeadsView.init(beads, state.offline ? "" : `/api/jobs/${state.jobId}/files/structure_for_energy.pdb`,
+        state.result.residues, state.offline ? window.APP_OFFLINE.structure_pdb : null)
         .then((instance) => {
           if (loadId !== viewerLoadId || !instance) return;
           state.beadsReady = true;
@@ -811,7 +896,7 @@ function renderLegend() {
   if (designCount) items.push(legendItem(LAYER_META.design.color, `${t("legend.selected", "已选突变")} (${designCount})`));
   if (state.layers.has("interface")) items.push(legendItem(LAYER_META.interface.color, interfaceLabel()));
   if (state.layers.has("regions")) {
-    state.result.regions.forEach((region) => items.push(legendItem(region.color, region.name)));
+    state.result.regions.forEach((region) => items.push(legendItem(region.color, `${recommendationLabel("分区", "Region")} ${region.id}`, region.name)));
   }
   items.push(legendItem("#7c909d", t("hud.backbone", "主链")));
   }
@@ -819,19 +904,19 @@ function renderLegend() {
     items.length = 0;
     Object.entries(RELIABILITY_COLORS).forEach(([name, color]) => items.push(legendItem(color, name)));
   }
-  const collapsed = localStorage.getItem("ecd.legend") === "collapsed";
+  const collapsed = (() => { try { return localStorage.getItem("ecd.legend") === "collapsed"; } catch { return false; } })();
   $("legend").innerHTML =
     `<button type="button" class="legend-toggle">${collapsed ? t("hud.legendCollapsed", "图例 ▸") : t("hud.legendOpen", "图例 ▾")}</button>`
     + (collapsed ? "" : items.join(""));
   const toggle = $("legend").querySelector(".legend-toggle");
   toggle.addEventListener("click", () => {
-    localStorage.setItem("ecd.legend", collapsed ? "open" : "collapsed");
+    try { localStorage.setItem("ecd.legend", collapsed ? "open" : "collapsed"); } catch { /* optional preference */ }
     renderLegend();
   });
 }
 
-const legendItem = (color, text) =>
-  `<span class="legend-item"><i class="legend-swatch" style="background:${h(color)}"></i>${h(text)}</span>`;
+const legendItem = (color, text, title = text) =>
+  `<span class="legend-item" title="${h(title)}"><i class="legend-swatch" style="background:${h(color)}"></i>${h(text)}</span>`;
 
 function interfacePartnerChains() {
   if (!state.result) return [];
@@ -855,26 +940,37 @@ function renderSteps() {
   $("steps").innerHTML = STEP_LIST.map((key, i) => {
     const n = i + 1;
     const cls = `step-pill${state.step === n ? " active" : ""}${n < state.step ? " done" : ""}`;
-    return `<button type="button" class="${cls}" data-step="${n}"><span class="n">${n}</span>${h(t(key, key.split(".")[1]))}</button>`;
-  }).join("");
+    return `<button type="button" class="${cls}" data-step="${n}"${state.step === n ? ' aria-current="step"' : ""}><span class="n">${n}</span>${h(t(key, key.split(".")[1]))}</button>`;
+  }).join("") + `<div class="step-controls"><button type="button" class="btn btn-quiet" id="previous-step" ${state.step === 1 ? "disabled" : ""}>${h(t("workspace.previous", "上一步"))}</button><button type="button" class="btn" id="next-step" ${state.step === STEP_LIST.length ? "disabled" : ""}>${h(t("workspace.next", "下一步"))} →</button></div>`;
   document.querySelectorAll("#steps [data-step]").forEach((b) => {
     b.addEventListener("click", () => setStep(Number(b.dataset.step)));
   });
+  $("previous-step").addEventListener("click", () => setStep(state.step - 1));
+  $("next-step").addEventListener("click", () => setStep(state.step + 1));
 }
 
 function setStep(n) {
+  if (!Number.isInteger(n) || n < 1 || n > STEP_LIST.length) return;
+  const changed = state.step !== n;
   state.step = n;
+  if (n !== 4 && state.showPartner) {
+    state.showPartner = false;
+    MolstarView.setPartnerVisible(false).catch((error) => viewerError(error, "render"));
+    renderStep4();
+  }
+  document.body.dataset.workspaceStep = String(n);
   renderSteps();
   document.querySelectorAll("#panel [data-step-content]").forEach((s) => {
     s.hidden = Number(s.dataset.stepContent) !== n;
   });
+  if (changed) $("panel").scrollTop = 0;
 }
 
 function renderPanelScaffold() {
   $("panel").innerHTML = `
   <section data-step-content="1">
     <h2>${h(t("step.surface", "表面可及性"))}</h2>
-    <div class="note">${h(state.result?.methods?.sidechain_sasa_role === "descriptive_only_not_surface_gate" ? t("surface.note.v411", "表面暴露按 total rSASA 判断；侧链 SASA 仅作描述。坐标资格和突变审核独立，灰色不等于埋藏。") : t("surface.note", "此历史运行使用 rSASA 与侧链 SASA 联合门槛。"))}</div>
+    <div class="note" id="surface-gate-note">${h(surfaceGateDescription(state.result, state.lang))}</div>
     <div id="surface-stats" class="statgrid" style="margin-bottom:10px"></div>
     <div id="source-card"></div>
     <div class="filter-row">
@@ -1007,6 +1103,7 @@ function renderAll(repaint = true) {
 }
 
 function renderStep1() {
+  $("surface-gate-note").textContent = surfaceGateDescription(state.result, state.lang);
   const s = state.result.summary;
   const values = [
     [s.mapped_ecd_residues, t("s1.stat.mapped", "ECD 已映射")],
@@ -1139,9 +1236,7 @@ function criteriaText() {
   if (!state.result) return t("s2.criteriaEmpty", "载入结果后显示本步骤的定量标准。");
   const m = state.result.methods;
   return {
-    surface: m.sidechain_sasa_role === "descriptive_only_not_surface_gate"
-      ? `total rSASA ≥ ${m.rsasa_threshold}; ${t("crit.sidechain.v411", "侧链 SASA 为描述证据")}; SASA: ${m.sasa_method}`
-      : t("crit.surface", `rSASA ≥ ${m.rsasa_threshold} 且侧链 SASA ≥ ${m.sidechain_sasa_threshold_A2} Å²；SASA 引擎：${m.sasa_method}。`),
+    surface: `${surfaceGateDescription(state.result, state.lang)}${m.sasa_method ? `; SASA: ${m.sasa_method}` : ""}`,
     folding: t("crit.folding", "在表面标准上排除二硫键 Cys、注释糖基化/PTM 与低置信度位点；表示低预测风险，不是实验确认。"),
     interface: t("crit.interface", "任一目标重原子距非目标链或异质残基 ≤5 Å；功能界面保留风险标记。"),
     regions: t("crit.regions", `${state.result.partitioning.method}；实际 ${state.result.regions.length} 补丁，覆盖 ${fmtPct(state.result.partitioning.coverage)}。`),
@@ -1149,7 +1244,7 @@ function criteriaText() {
   }[state.layerFocus] || t("crit.default", "当前图层可与其他图层叠加显示。");
 }
 
-const { sectorRecommendationText, renderSectorRecommendations, recommendationLabel } = createRecommendationRenderer({ state, h, fmt, fmtPct, notation: (mutation) => notation(mutation) });
+const { sectorRecommendationText, renderSectorRecommendations, recommendationLabel, surfaceGateDescription, recommendationSelectionRecord, recommendationRiskLabelText, recommendationNeedsReview, recommendationRepeatSummary, selectionColor } = createRecommendationRenderer({ state, h, fmt, fmtPct, notation: (mutation) => notation(mutation) });
 
 
 function renderStep3() {
@@ -1175,6 +1270,9 @@ function renderStep3() {
     if (note?.classList.contains("note")) note.textContent += state.lang === "zh"
       ? ` 当前任务：${state.result.regions.length}区；${target != null ? `目标每区约${target}个合格表面残基（软目标）；` : ""}每区至少${policy.minimum_sector_residues}残基、${policy.minimum_sector_area_a2} Å²；${surfaceLabel}≤${surface} Å，Cα直径≤${ca} Å。显示分区数量不是构建体预算。`
       : ` This run: ${state.result.regions.length} regions; ${target != null ? `about ${target} eligible surface residues per region (soft target); ` : ""}at least ${policy.minimum_sector_residues} residues and ${policy.minimum_sector_area_a2} Å² per region; ${surfaceLabel} ≤${surface} Å, Cα diameter ≤${ca} Å. Region count is independent of the construct budget.`;
+    if (note?.classList.contains("note") && policy.preferred_minimum_sector_count != null) note.textContent += state.lang === "zh"
+      ? ` 总分区数以${policy.preferred_minimum_sector_count}–${policy.preferred_maximum_sector_count}个为软范围。`
+      : ` Preferred region count: ${policy.preferred_minimum_sector_count}–${policy.preferred_maximum_sector_count} (soft range).`;
   }
   const recommendations = state.result.joint_v4_ml?.selected_panel?.sector_recommendations || [];
   const designByRegion = new Map(state.result.designs.filter((d) => !d.design_role || d.design_role === "STAGE1_PROBE").map((d) => [d.region_id, d]));
@@ -1194,7 +1292,7 @@ function renderStep3() {
       : `Full-surface graph geodesic diameter ${fmt(metric.full_graph_geodesic_diameter_a)} Å · Within-region path diameter ${fmt(metric.induced_graph_geodesic_diameter_a)} Å (diagnostic) · Cα diameter ${fmt(metric.ca_diameter_a)} Å`) : "";
     const exceptions = { COMPONENT_SIZE_BELOW_PREFERRED_RANGE: recommendationLabel("该连通表面块本身较小", "The connected surface component is small"), LOCAL_BALANCE_LIMIT: recommendationLabel("在当前连通性与直径约束下，局部调整仍未达到目标大小", "Local adjustment could not reach the target size under the connectivity and diameter limits"), SEARCH_BUDGET_EXHAUSTED: recommendationLabel("调整搜索预算已用尽，未证明无法得到更均衡的分区", "Adjustment search budget exhausted; a more balanced partition has not been ruled out") };
     const sizeNote = exception ? `${recommendationLabel("大小例外", "Size exception")}：${exceptions[exception.reason] || recommendationLabel("原因待核对", "Reason pending review")}` : "";
-    return `<div class="rowline click" data-focus-region="${region.id}">
+    return `<div role="button" tabindex="0" class="rowline click${state.selectedRegion === region.id ? " on" : ""}" data-focus-region="${region.id}" aria-pressed="${state.selectedRegion === region.id}">
       <span class="swatch" style="background:${h(region.color)}"></span>
       <span><b>${h(region.partition_mode === "compact_surface_face" ? t("region.surfaceFace", "表面区域") : t("region.patch", "补丁"))} ${region.id} · ${h(region.name)}</b><br>
       <span class="muted">${h(region.structural_character)} · ${h(region.membrane_position || "")}${h(tier)}${h(accessibility)} · ${h(mutations)}${recommendation ? `<br>${h(sectorRecommendationText(recommendation))}` : ""}</span></span>
@@ -1221,12 +1319,28 @@ function renderStep3() {
   $("region-list").innerHTML = legacyHtml + footprintHtml + reliabilityHtml;
   $("reliability-view")?.addEventListener("change", (event) => { state.reliabilityView = event.target.checked; repaintViews(); });
   document.querySelectorAll("[data-focus-region]").forEach((el) => {
-    el.addEventListener("click", () => {
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); el.click(); }
+    });
+    el.addEventListener("click", async () => {
       const id = Number(el.dataset.focusRegion);
       state.selectedRegion = state.selectedRegion === id ? null : id;
       state.selectedFootprint = null;
+      state.designSurfaceMode = false;
+      state.reliabilityView = false;
       state.layers.add("regions");
+      document.querySelectorAll("[data-focus-region]").forEach((button) => {
+        const selected = Number(button.dataset.focusRegion) === state.selectedRegion;
+        button.setAttribute("aria-pressed", String(selected));
+        button.classList.toggle("on", selected);
+      });
+      renderDesignSurfaceCallout();
       repaintViews();
+      if (molstarReady) {
+        const positions = state.selectedRegion ? new Set(state.result.regions.find((region) => region.id === id).residues) : null;
+        try { await MolstarView.focus(state.result.residues.filter((residue) => !positions || positions.has(residue.uniprot_pos)).map(residueQuery)); }
+        catch (error) { viewerError(error, "focus"); }
+      }
     });
   });
   const footprintSelect = $("footprint-select");
@@ -1248,14 +1362,23 @@ function renderStep3() {
 function renderStep4() {
   const chains = interfacePartnerChains();
   const contacts = state.result.residues.filter((r) => r.interface);
+  const partnerToggle = chains.length
+    ? `<button type="button" class="btn" id="toggle-protein-partner" aria-pressed="${state.showPartner}">${h(state.showPartner ? t("iface.hidePartner", "隐藏伙伴链") : t("iface.showPartner", "显示伙伴链"))}</button>` : "";
   $("iface-partners").innerHTML = chains.length
     ? chains.map((chain) => {
       const count = new Set(contacts.flatMap((r) => (r.interface_partners || [])
         .filter((p) => p.split(":")[0] === chain))).size;
       return `<div class="rowline"><span class="swatch" style="background:${LAYER_META.interface.color}"></span>
         <span><b>${h(t("iface.with", "与"))} ${h(chain)}</b><br><span class="muted">${count} ${h(t("iface.contacts", "个接触残基"))}</span></span></div>`;
-    }).join("")
+    }).join("") + partnerToggle
     : `<div class="empty">${h(t("iface.none", "当前结构无蛋白伙伴，界面叠加不可用。"))}</div>`;
+  $("toggle-protein-partner")?.addEventListener("click", async () => {
+    if (!molstarReady || state.step !== 4) return;
+    if (state.engine === "beads") setEngine("molstar");
+    state.showPartner = !state.showPartner;
+    try { await MolstarView.setPartnerVisible(state.showPartner); renderStep4(); }
+    catch (error) { state.showPartner = state.step === 4 && !state.showPartner; renderStep4(); viewerError(error, "render"); }
+  });
 
   const entries = [
     ["surface", t("layer.surface", "充分表面可及"), t("layer.surfaceDetail", "rSASA 与侧链 SASA 双阈值"), LAYER_META.surface.color],
@@ -1289,6 +1412,25 @@ function renderStep4() {
   $("criterion").textContent = criteriaText();
 }
 
+function renderRunDiagnostics() {
+  const joint = state.result?.joint_v4_ml;
+  if (!joint?.compute_budget) return "";
+  const allocation = joint.compute_budget.foldx_allocation;
+  const repeats = joint.compute_budget.foldx_repeat_budget;
+  const compare = joint.selected_panel?.interface_comparison;
+  const identification = joint.selected_panel?.identifiability_diagnostics;
+  const row = (label, value) => `<tr><th>${h(label)}</th><td>${h(String(value ?? "—"))}</td></tr>`;
+  const panelText = compare ? `<details><summary>${h(recommendationLabel("全表面 / 界面聚焦同池对照", "Full-surface / interface-focused comparison"))}</summary>
+    <p>${h(recommendationLabel("只改变选择目标，不新增模型计算；面积和邻域覆盖为几何代理。", "Changes only the selection objective; no new inference. Area and neighborhood coverage are geometric proxies."))}</p>
+    <table><tbody>${row("全表面候选 / Full-surface", (compare.full_surface_candidate_ids || []).join(", "))}${row("界面聚焦候选 / Interface-focused", (compare.candidate_ids || []).join(", "))}${row("交集 / Intersection", (compare.intersection_candidate_ids || []).join(", "))}${row("全表面：界面直接面积 Å²", compare.full_surface_metrics?.direct_interface_area_a2)}${row("界面聚焦：界面直接面积 Å²", compare.direct_interface_area_a2)}${row("合并去重突变构建 / Unique mutant constructs", compare.procurement?.deduplicated_mutant_constructs)}${row("WT对照（实验对照另计）", compare.procurement?.wt_controls)}</tbody></table>
+    <details><summary>9/12/15 Å、分区覆盖与证据 / Coverage and evidence</summary><pre>${h(JSON.stringify(compare, null, 2))}</pre></details></details>` : "";
+  return `<section class="result-section"><details><summary>${h(recommendationLabel("计算预算、重复诊断与目标对照", "Compute budget, repeat diagnostics and objective comparison"))}</summary>
+    <table><tbody>${row("FoldX唯一组合 / Unique combinations", allocation?.selected?.total)}${row("局部 / Local", allocation?.selected?.local)}${row("全局 / Global", allocation?.selected?.global)}${row("局部强扰动探索 / Local exploration", allocation?.selected?.local_strong_exploration)}${row("前三次配对槽 / Initial pair slots", repeats?.initial_slots)}${row("追加两次配对槽 / Additional pair slots", repeats?.supplemental_slots)}${row("总配对槽（上限300）/ Total pair slots", repeats?.total_slots)}</tbody></table>
+    ${panelText}<details><summary>${h(recommendationLabel("近邻与精确重复响应诊断", "Nearby and exactly identical response diagnostics"))}</summary><pre>${h(JSON.stringify(identification || {}, null, 2))}</pre></details>
+    <details><summary>${h(recommendationLabel("逐候选模型差、重复值及资格", "Per-candidate differences, repetitions and eligibility"))}</summary><pre>${h(JSON.stringify(joint.model_evidence_diagnostics || {}, null, 2))}</pre></details>
+    <p>${h(recommendationLabel("模型差和重复离散度仅作诊断，不是实验置信区间或折叠/结合保证。", "Model differences and repeat spread are diagnostics, not experimental confidence intervals or folding/binding guarantees."))}</p></details></section>`;
+}
+
 function renderStep5() {
   const budget = state.result.design_summary?.panel_budget_decision;
   const budgetReasons = {
@@ -1300,6 +1442,9 @@ function renderStep5() {
     MAXIMUM_CONSTRUCT_BUDGET_REACHED: "已达到构建体硬上限",
   };
   const coveragePolicy = (state.result.joint_v4_ml?.selected_panel?.sector_recommendations || []).length > 0;
+  $("design-list").previousElementSibling.textContent = coveragePolicy
+    ? recommendationLabel("各分区按设计原则独立给出通过门槛的推荐，数量不受全局精简面板预算限制。选择组合可联动结构与序列；未通过项单列审查详情。", "Each region independently recommends combinations that pass the gates under each design principle, without the global compact-panel limit. Select a combination to inspect its structure and sequence; failed candidates appear in review details.")
+    : t("design.note", "选择推荐组合以查看结构位置、序列及评分证据。");
   const minimumNote = coveragePolicy ? "；可用合格候选不足，未达到最少目标" : "；合格候选或信息增益不足，未达到最少目标";
   const budgetText = budget ? `入选 ${budget.selected_constructs} 个；目标 ${budget.minimum_constructs}–${budget.maximum_constructs}，常见目标 ${budget.target_constructs}。${budgetReasons[budget.stop_reason] || budget.stop_reason}${budget.minimum_target_met ? "" : minimumNote}` : "";
   const designs = [...state.result.designs].sort((left, right) =>
@@ -1321,14 +1466,21 @@ function renderStep5() {
       : recommendationClass === "STABILITY_FALLBACK"
         ? t("design.stabilityFallback", "结构稳定回退") : "";
     const classTag = classLabel ? `<span class="tag">${h(classLabel)}</span>` : "";
+    const riskLabel = recommendationRiskLabelText({}, design);
+    const repeatNeedsReview = recommendationNeedsReview({}, design);
+    const repeatSummary = recommendationRepeatSummary({}, design);
+    const statusTag = repeatNeedsReview
+      ? `<span class="tag warn">${h(riskLabel)}</span>`
+      : `<span class="st">${h(design.status)}</span>${riskLabel ? `<span class="tag">${h(riskLabel)}</span>` : ""}`;
     const actionable = Boolean(design.mutations?.length);
     const cardAction = actionable ? ` data-view-design="${h(design.id)}" tabindex="0" role="button"` : "";
     return `<div class="design-card ${actionable ? "clickable" : ""} ${state.selectedDesign === design.id ? "is-selected" : ""}"${cardAction}>
       <div class="design-head">
         <div><strong>${h(t("region.patch", "补丁"))} ${h(patch)} · ${h(design.id)}</strong><br><span class="st">${h(design.source_engine === "joint_v4_ml" ? (design.mutations || []).map(notation).join(" + ") : design.name)} · ${scoreLine}</span></div>
-        <span class="st">${classTag} ${role} ${h(design.status)}</span>
+        <span class="st">${classTag} ${role} ${statusTag}</span>
       </div>
       <div>${chips}</div>
+      ${repeatSummary ? `<div class="muted">${h(repeatSummary)}</div>` : ""}
       <div class="actions-row">
         ${design.mutations?.length ? `<button type="button" class="btn btn-mini" data-review-design="${h(design.id)}">${h(t("design.review", "审查此构建体"))}</button>
         <button type="button" class="btn btn-mini" data-copy-design="${h(design.id)}">${h(t("design.copyCustom", "复制到自定义"))}</button>` : ""}
@@ -1350,7 +1502,10 @@ function renderStep5() {
       <h3>${h(t("region.patch", "补丁"))} ${h(patch)} · ${series.length} ${h(t("design.combinations", "个推荐组合"))}</h3>
       ${series.map((design) => renderCard(design, patch)).join("")}
     </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`);
-  $("design-list").innerHTML = (budgetText ? `<div class="note">${h(budgetText)}</div>` : "") + sectorHtml + legacySeries;
+  const budgetHtml = budgetText ? coveragePolicy
+    ? `<details class="compact-panel-budget"><summary>${h(recommendationLabel("附加全局精简面板（不限制逐区推荐）", "Additional compact panel (does not limit regional recommendations)"))}</summary><p>${h(budgetText)}</p></details>`
+    : `<div class="note">${h(budgetText)}</div>` : "";
+  $("design-list").innerHTML = sectorHtml + legacySeries + budgetHtml + renderRunDiagnostics();
   document.querySelectorAll("[data-copy-candidate]").forEach((el) => {
     el.addEventListener("click", async () => {
       try { await navigator.clipboard.writeText(el.dataset.copyCandidate); showToast(recommendationLabel("追踪编号已复制", "Trace identifier copied")); }
@@ -1369,11 +1524,56 @@ function renderStep5() {
   document.querySelectorAll("[data-review-design]").forEach((el) => {
     el.addEventListener("click", (event) => { event.stopPropagation(); selectDesign(el.dataset.reviewDesign); });
   });
+  document.querySelectorAll("[data-select-recommendation]").forEach((el) => {
+    el.addEventListener("click", (event) => { event.stopPropagation(); toggleRecommendationSelection(el.dataset.selectRecommendation); });
+  });
+  document.querySelectorAll("[data-remove-recommendation]").forEach((el) => {
+    el.addEventListener("click", () => toggleRecommendationSelection(el.dataset.removeRecommendation));
+  });
+  document.querySelectorAll("[data-clear-recommendations]").forEach((el) => el.addEventListener("click", clearRecommendationSelections));
   document.querySelectorAll("[data-copy-design]").forEach((el) => {
     el.addEventListener("click", (event) => { event.stopPropagation(); copyDesignToCustom(el.dataset.copyDesign); });
   });
   renderExports();
   renderDesignSelect();
+}
+
+function recommendationItems() {
+  return (state.result?.joint_v4_ml?.selected_panel?.sector_recommendations || []).flatMap((item) => [
+    item,
+    ...(item.alternatives || []).map((candidate) => ({ ...candidate, sector_id: item.sector_id })),
+    ...(item.all_formal_local_candidates || []).map((candidate) => ({ ...candidate, sector_id: item.sector_id })),
+  ]);
+}
+
+async function toggleRecommendationSelection(id) {
+  if (state.recommendationSelections.has(id)) state.recommendationSelections.delete(id);
+  else {
+    const item = recommendationItems().find((candidate) => String(candidate.candidate_id || candidate.design_id) === id);
+    if (!item) return;
+    const design = state.result.designs.find((candidate) => candidate.id === item.design_id);
+    const selection = recommendationSelectionRecord(item, design);
+    if (!selection) return;
+    state.recommendationSelections.set(selection.id, selection);
+  }
+  renderStep5();
+  if (!molstarReady) return;
+  await paintMolstar();
+  if (!state.recommendationSelections.size) return;
+  const positions = new Set();
+  for (const selection of state.recommendationSelections.values()) {
+    const design = state.result.designs.find((candidate) => candidate.id === selection.design_id);
+    const records = design ? designSurfaceRecords(design).envelope : [];
+    (records.length ? records : state.result.residues.filter((residue) => selection.mutations.some((mutation) => mutation.position === residue.uniprot_pos)))
+      .forEach((residue) => positions.add(residue.uniprot_pos));
+  }
+  await MolstarView.focus(state.result.residues.filter((residue) => positions.has(residue.uniprot_pos)).map(residueQuery));
+}
+
+function clearRecommendationSelections() {
+  state.recommendationSelections.clear();
+  renderStep5();
+  if (molstarReady) paintMolstar().catch((error) => viewerError(error, "paint"));
 }
 
 function renderStep6() {
@@ -1390,12 +1590,14 @@ function renderStep7() {
   const request = result.request || {};
   const v4 = result.joint_v4_ml || {};
   const physical = result.design_summary?.surface_perturbation || v4.surface_perturbation;
+  const rangeLabel = request.analysis_target === "binder"
+    ? t("overview.analysisChainRange", "分析链范围") : t("overview.ecd", "ECD 范围");
   const files = Object.keys(result.files || {});
   const row = (label, value) => `<dt>${h(label)}</dt><dd>${h(value ?? "—")}</dd>`;
   $("task-overview").innerHTML = `<div class="card task-overview-card">
     <h3>${h(taskName())}</h3><dl class="kv task-kv">
     ${row(t("overview.accession", "UniProt / 输入标识"), protein.accession || request.identifier)}
-    ${row(t("overview.ecd", "ECD 范围"), protein.ecd_start && protein.ecd_end ? `${protein.ecd_start}–${protein.ecd_end} (${protein.ecd_sequence?.length || summary.mapped_ecd_residues || "—"} aa)` : "—")}
+    ${row(rangeLabel, protein.ecd_start && protein.ecd_end ? `${protein.ecd_start}–${protein.ecd_end} (${protein.ecd_sequence?.length || summary.mapped_ecd_residues || "—"} aa)` : "—")}
     ${row(t("overview.topology", "拓扑注释"), protein.topology)}
     ${row(t("overview.assayProfile", "固定实验方位"), result.assay_profile?.display_name || "—")}
     ${row(t("overview.orientation", "PDB 方位证据"), result.assay_geometry?.status === "relative_axis_only" ? t("overview.relativeAxis", "C 端锚点相对轴（不是物理膜平面）") : "—")}
@@ -1642,10 +1844,13 @@ async function selectDesign(id) {
   if (id !== "wt") state.layers.add("design");
   renderStep2();
   renderStep5();
-  repaintViews();
   renderSeqDock();
   renderDesignSurfaceCallout();
-  if (!state.designSurfaceMode) return;
+  if (!state.designSurfaceMode) {
+    repaintViews();
+    if (id === "wt" && molstarReady) await MolstarView.reset();
+    return;
+  }
   if (state.engine !== "molstar") setEngine("molstar");
   await setRepresentation("molecular-surface");
   if (requestId !== state.designFocusRequest || !molstarReady) return;
@@ -1687,6 +1892,7 @@ function currentDesignSequences() {
 }
 
 function renderSeqDock() {
+  renderSeqDockHead();
   if (!state.result) {
     $("wt-sequence").innerHTML = `<span class="muted">${h(t("seqdock.loadFirst", "载入结果后显示序列比对。"))}</span>`;
     $("design-sequence").innerHTML = "";
@@ -1697,6 +1903,8 @@ function renderSeqDock() {
   const start = state.result.protein.ecd_start;
   const mode = document.querySelector('input[name="seq-mode"]:checked').value;
   const design = selectedDesign();
+  $("sequence-summary").textContent = `${seqs.wtAa.length} aa · ${Object.keys(seqs.map).length} ${t("workspace.mutations", "处替换")}`;
+  $("sequence-summary").title = seqs.designLabel;
 
   function track(sequence, isDesign) {
     const mutationPositions = isDesign ? new Set(Object.keys(seqs.map).map(Number)) : new Set();
@@ -1713,7 +1921,7 @@ function renderSeqDock() {
         if (selectedPosition === pos) cls.push("sel");
         const ddg = isDesign && mutationPositions.has(pos) ? foldxDdgFor(pos) : null;
         const tip = ddg != null ? ` · FoldX ΔΔG ${fmt(ddg, 3)}` : "";
-        return `<span class="${cls.join(" ")}" data-seq-residue="${pos}" title="${aa}${pos}${tip}">${aa}</span>`;
+        return `<span class="${cls.join(" ")}" role="button" tabindex="0" aria-label="${aa}${pos}${h(tip)}" data-seq-residue="${pos}" title="${aa}${pos}${tip}">${aa}</span>`;
       }).join("");
     }
     const codons = sequence.match(/.{1,3}/g) || [];
@@ -1722,7 +1930,7 @@ function renderSeqDock() {
       const cls = ["tok"];
       if (isDesign && mutationPositions.has(pos)) cls.push("mut");
       if (selectedPosition === pos) cls.push("sel");
-      return `<span class="${cls.join(" ")}" data-seq-residue="${pos}" title="${pos}: ${codon}" style="min-width:31px">${codon}</span>`;
+      return `<span class="${cls.join(" ")}" role="button" tabindex="0" aria-label="${pos}: ${codon}" data-seq-residue="${pos}" title="${pos}: ${codon}" style="min-width:31px">${codon}</span>`;
     }).join(" ");
   }
 
@@ -1734,10 +1942,18 @@ function renderSeqDock() {
     /* focus=true: the camera centres on the residue so it can never hide
        behind the rest of the molecule (the "clicked but can't see it" bug). */
     token.addEventListener("click", () => selectResidue(Number(token.dataset.seqResidue), true));
+    token.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); token.click(); }
+    });
   });
 }
 
-function renderSeqDockHead() { /* headers are static data-i18n elements now */ }
+function renderSeqDockHead() {
+  const expanded = !$("sequence-content").hidden;
+  $("toggle-sequence").setAttribute("aria-expanded", String(expanded));
+  $("toggle-sequence").textContent = expanded
+    ? t("workspace.collapseSequence", "收起比对") : t("workspace.expandSequence", "展开比对");
+}
 
 /* ---------------- custom builder / exports ---------------- */
 
@@ -1782,8 +1998,10 @@ function renderCustomBuilder() {
       <select data-custom-select="${mutation.position}">${options}</select>
       <button type="button" class="btn btn-mini" data-custom-remove="${mutation.position}">${h(t("insp.remove", "移除"))}</button></div>`;
   }).join("");
-  $("save-custom").disabled = state.demo || !state.jobId;
-  $("custom-feedback").textContent = state.demo ? t("custom.demoNote", "冻结示例可编辑预览；提交真实作业后可保存导出。") : "";
+  $("save-custom").disabled = state.offline ? !state.customMutations.length : state.demo || !state.jobId;
+  $("custom-feedback").textContent = state.offline
+    ? t("offline.draftNote", "离线草稿只导出本地序列与突变清单；不会计算、写回原任务或生成稳定性结论。")
+    : state.demo ? t("custom.demoNote", "冻结示例可编辑预览；提交真实作业后可保存导出。") : "";
   document.querySelectorAll("[data-custom-select]").forEach((select) => {
     select.addEventListener("change", () => {
       const mutation = state.customMutations.find((item) => item.position === Number(select.dataset.customSelect));
@@ -1803,6 +2021,32 @@ function renderCustomBuilder() {
 }
 
 async function saveCustomDesign() {
+  if (state.offline) {
+    if (!state.customMutations.length) return;
+    renderSeqDock();
+    const seqs = state.lastSequences || currentDesignSequences();
+    const name = ($("custom-name").value || "offline_draft").trim().replace(/[^\w.-]+/g, "_");
+    const draft = {
+      schema: "ecd-epitope-offline-draft-v1",
+      status: "LOCAL_DRAFT_NOT_ANALYZED",
+      note: "No model or server computation was run. This draft is not added to the original task results.",
+      protein: state.result.protein,
+      mutations: state.customMutations.map(({ position, wt, mutant }) => ({ position, wt, mutant, notation: `${wt}${position}${mutant}` })),
+      sequences: { amino_acid: seqs.designAa, coding_dna: seqs.designDna },
+    };
+    const download = (filename, content, type) => {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([content], { type }));
+      link.download = filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    };
+    download(`${name}.draft.json`, JSON.stringify(draft, null, 2), "application/json");
+    download(`${name}.fasta`, `>${name}_local_draft_not_analyzed\n${seqs.designAa.match(/.{1,80}/g)?.join("\n") || ""}\n`, "text/plain");
+    download(`${name}.cds.fasta`, `>${name}_local_draft_not_analyzed\n${seqs.designDna.match(/.{1,90}/g)?.join("\n") || ""}\n`, "text/plain");
+    $("custom-feedback").textContent = t("offline.draftSaved", "本地草稿已下载；未运行模型，也未修改原结果包。请按实验设计复核序列。" );
+    return;
+  }
   if (!state.jobId || !state.customMutations.length) return;
   $("save-custom").disabled = true;
   $("custom-feedback").textContent = t("custom.saving", "正在验证并生成 ECD 序列…");
@@ -1853,7 +2097,7 @@ function renderExports() {
   const sorted = [...files].sort((a, b) => order.indexOf(a) - order.indexOf(b));
   container.className = "export-links";
   container.innerHTML = sorted.map((file) => {
-    const url = state.demo ? `/assets/demo/${file}` : `/api/jobs/${state.jobId}/files/${file}`;
+    const url = state.offline ? `./${file}` : state.demo ? `/assets/demo/${file}` : `/api/jobs/${state.jobId}/files/${file}`;
     return `<a href="${h(url)}" download>${h(labels[file] || file)}</a>`;
   }).join("");
 }
@@ -1878,12 +2122,24 @@ function secondaryName(code) {
 const notation = (mutation) => `${mutation.wt}${mutation.position}${mutation.mutant}`;
 
 function bindEvents() {
+  $("open-run").addEventListener("click", () => $("run-dialog").showModal());
+  $("close-run").addEventListener("click", () => $("run-dialog").close());
+  $("toggle-sequence").addEventListener("click", () => {
+    $("sequence-content").hidden = !$("sequence-content").hidden;
+    renderSeqDockHead();
+  });
+  $("steps").addEventListener("keydown", (event) => {
+    if (!event.target.matches("[data-step]") || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    setStep(Math.min(STEP_LIST.length, Math.max(1, state.step + (event.key === "ArrowRight" ? 1 : -1))));
+    document.querySelector(`#steps [data-step="${state.step}"]`).focus();
+  });
   $("run-form").addEventListener("submit", submitRun);
   $("load-demo").addEventListener("click", loadDemo);
   $("retry-viewer").addEventListener("click", () => {
     if (state.result) ensureViewers(state.result.structure_url || "/assets/demo/ecd_structure.cif");
   });
-  $("open-upload").addEventListener("click", () => { updateUploadTargetUI(); $("upload-dialog").showModal(); });
+  $("open-upload").addEventListener("click", () => { $("run-dialog").close(); updateUploadTargetUI(); $("upload-dialog").showModal(); });
   $("close-upload").addEventListener("click", () => $("upload-dialog").close());
   $("upload-form").addEventListener("submit", submitUpload);
   $("upload-source-mode").addEventListener("change", updateUploadTargetUI);
@@ -1952,6 +2208,14 @@ function handleMolstarPick(event) {
   renderPanelScaffold();
   bindEvents();
   renderLegend();
+  if (state.offline) {
+    document.body.classList.add("offline-mode");
+    const snapshot = window.APP_OFFLINE.analysis;
+    snapshot.structure_url = "";
+    adoptResult(snapshot, { demo: false, jobId: null });
+    setJob("COMPLETE", t("offline.loaded", "离线任务结果已载入；仅查看与本地序列草稿，不运行计算。"), 1);
+    return;
+  }
   const savedJobId = new URLSearchParams(window.location.search).get("job");
   if (savedJobId) loadSavedJob(savedJobId);
   else loadDemo();

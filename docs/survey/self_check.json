@@ -1,0 +1,219 @@
+{
+  "artifact": "docs/survey/self_check.json",
+  "purpose": "对 docs/extension_directions.md 逐条对照目标的五条判据做自查记录,并登记本次核对发现的全部不符。",
+  "checked_at_repo_state": "2026-10-16,工作树含 32 个未提交修改文件;本次未读取、未修改任何被跟踪源文件",
+  "method": "1) 用 esummary 二次拉取把每个被引 PMID 的标题/年份/期刊/DOI 落盘;2) 用正则从正文抽全部编号与快照求差;3) 逐字比对标题与正文写法;4) 把 6 处不符写回正文对应位置与 §6 限制 7;5) 本节按判据逐条给判定,判定只写可复查的位置。",
+  "revision": 4,
+  "supersedes": "revision 2(此前把判据(4)记为 pass、§5 表记为 16 行、并含 1 条凭空的编号,均已更正)",
+  "criteria_check": [
+    {
+      "criterion": "(1) 列出的每个扩展方向都引用至少一篇真实可核验的文献(PubMed ID 或 DOI),且文献结论与实际内容不矛盾",
+      "verdict": "partial_pass",
+      "split_verdict": {
+        "文献可核验性(每个方向都有能在快照中逐字核对的编号)": "pass — 9 个方向全部有",
+        "文献内容与本方向直接相关": "fail — 方向 1、方向 4 不满足",
+        "文献结论与本方向内容不矛盾": "pass — 6 处不符已逐条更正,更正后无残留矛盾"
+      },
+      "locate": "§5 文献清单表(第 194 行起,20 行);方向 1 第 41 行;方向 2 第 55 行;方向 3 第 80 行;方向 4 第 103 行;方向 5 第 125 行;方向 6 第 137 行;方向 7 第 151 行;方向 8 第 168 行(引 benchmark_landscape.json 的 contrast_with_this_repo 与 36611255);方向 9 第 174 行(引 mutation_effect_landscape.json 的两类 ΔΔG 区分与 27216816/38844044/32761082)",
+      "per_direction": {
+        "方向 1": "两条旁注 38496213、31675414 —— 编号可核验,但对象不同(Julearn=模型评估泄漏;CWLProv=溯源互操作),正文第 41 行已声明**不承担支撑**,并附裁定请求",
+        "方向 2": "38197311、42252708 直接对口(参数/排序敏感性)",
+        "方向 3": "42412842 直接对口(残基级正-未标记);25048123 已降为范围说明",
+        "方向 4": "31675414 间接、39915771 仅旁注;正文第 107 行已声明**不构成证据**,并附裁定请求",
+        "方向 5": "42412842 直接对口;42241701 仅方法学旁证(生物学语境不可迁移)",
+        "方向 6": "42719814、42252708 直接;42620036 预印本、削弱程度低",
+        "方向 7": "27216816、38844044、32761082、31243847、38227011 直接",
+        "方向 8": "36611255 与 benchmark_landscape 的口径对照",
+        "方向 9": "mutation_effect_landscape 的 ΔΔG_fold / ΔΔG_bind 区分,附 3 条原始文献"
+      },
+      "note": "判据(1)对方向 1、方向 4 **不通过内容对口**,这是事实层面的结论,不由我改写为通过。是否把「纯工程闭环类方向」豁免于文献要求,是我的判断无法代替的裁决事项,已在正文两处写明裁定请求。"
+    },
+    {
+      "criterion": "(2) 每个方向写明它对应本仓库哪个当前科学边界(引到具体文件/行为),以及本机现有条件下可否验证(可/需外部数据/需湿实验)",
+      "verdict": "pass",
+      "locate": "§1 标题(第 20 行)、§2 标题(第 123 行)、§3 标题(第 166 行);§2 末口径提醒引 PipelineRequest 字段表(pipeline.py:66 起)与 analysis.json warnings 原文;方向 1 引 exporting.py:221-226 与 README.md:129;方向 2 引 config.py 的 JOINT_V4_ML_PARAMETERS 与 pipeline.py:109-124;方向 3 引 panel_identifiability_v41.json 的 uncovered_hypotheses=54 与 blind_spots(仅 VS007);方向 5 引 project_memory.md 的标签现状;方向 6 引 warnings 原文与 ProCaliper 的口径声明;方向 7 引 project_memory.md 与 tasks/lessons.md 的「FoldX DDG 不是 binding ΔΔG」",
+      "note": "三节归属即三分分级。§2 三条共用一段输入契约说明,避免了同一约束写三遍。"
+    },
+    {
+      "criterion": "(3) 明确区分「现在就能做的干实验验证」与「需要新数据或新依赖的方向」,后者不得写成可立即执行",
+      "verdict": "pass",
+      "locate": "§1(方向 1–4,各带可重跑命令与通过判据)对照 §2(方向 5–7,每条有「为什么现在做不到」与「若要启动需要什么」)与 §3(方向 8–9,每条有「为什么慢」)",
+      "note": "方向 7 结论段逐字写「这一条属『需外部数据』,不是『现在可做』」;方向 5、6 各有「为什么现在做不到」段。§4 记录与 项目介绍.md 的一致性,§6 记录限制。"
+    },
+    {
+      "criterion": "(4) 全部文献引用经二次拉取核对标题与年份,文中记录核对结果",
+      "verdict": "pass",
+      "scope_of_this_pass": "仅限 esummary 层(标题/年份/期刊/DOI),不含全文与摘要复取",
+      "locate": "§5 第 222 行的分层核对方式段;§6 限制 7(第 240 行)的 6 处不符表;docs/survey/reference_reconciliation.md 与 .json",
+      "evidence_added_this_revision": {
+        "snapshots": [
+          "docs/survey/lit_resnapshot_20261016.xml(19 条 DocSum,原始返回)",
+          "docs/survey/lit_resnapshot_gap_20261016.xml(4 条 DocSum)",
+          "docs/survey/_tmp_retry_esummary2.xml(10 条 DocSum)",
+          "docs/survey/_tmp_retry_efetch.xml(5 条 PubmedArticle)",
+          "docs/survey/_fetch_esummary_42800986.xml(1 条 DocSum)"
+        ],
+        "distinct_pmids_in_snapshot_union": 34,
+        "distinct_pmids_cited_in_artifact": 24,
+        "cited_pmids_without_snapshot": [],
+        "note": "rev3 的 23/21 是当时的量(只算了两份 esummary 快照),与 docs/survey/snapshot_article_count.json 的 34/24 不是同一个口径;2026-10-17 起以脚本重算的 34(distinct)/24(被引)为准,差值 10 条是快照命中了但正文未引用(清单见该 json 的 in_snapshot_but_not_cited)。"
+      },
+      "note": "rev2 把本条记为 pass 是**按声称而非按落盘凭据**判的,属自查缺陷,已在 revision 3 更正。2026-10-17 再更正一次:本条 rev3 记的 23(union)/21(被引)只算了两份 esummary 快照,未含 C/D/E 三份补拉快照;按 docs/survey/snapshot_article_count.json 脚本重算应为 34/24,差集仍为空(24 条被引**每一条**都有落盘快照)。verdict 与 scope_of_this_pass 未改动。",
+      "revision_of_this_update": 4
+    },
+    {
+      "criterion": "(5) 不把任何未验证的文献结论写成对本仓库的已验证结论",
+      "verdict": "pass",
+      "locate": "§1 开篇「它们检验的是工程与几何不变量,不是生物学有效性」;方向 2「这些是别的系统的证据,不能直接搬到本仓库」;方向 4「只证明计算可重复,不证明计算正确」;方向 6「本仓库的输入契约不含抗体序列或复合物结构」;方向 7「在拿到复合物结构前,产物的命名纪律必须保持」;方向 8「口径不同,不可换算——把覆盖率高写成 AUC 高属于跨口径换算」;§6 限制 4(未在本地复算任何公开基准指标)与限制 7(摘要层量一律标「底账转述,未回原文核」)",
+      "note": "本次新增的隔离动作有三条:① 39872490 的 105× 与零样本改为「系底账转述,未回原文核」并打 †;② 25048123 由「某研究实测」降为「数据库收录口径的范围说明」;③ §5 注脚不再声称全表经 esummary 核对,改按可复查凭据分三层。"
+    }
+  ],
+  "claims_checked": 47,
+  "verdicts": {
+    "supported": 41,
+    "corrected": 6,
+    "unsupported_fabricated": 1,
+    "note": "corrected 的 6 条即 §6 限制 7 表内 6 处;unsupported_fabricated 为 36871678 —— rev1/rev2 曾把它写入 §5 表并标 [A],实测该编号在任何快照与底账中均不存在,已从正文移除,并作为未解释项交评估者,不由我自行销案。"
+  },
+  "corrections_made": [
+    {
+      "pmid": "39872490",
+      "old": "Pythia 零样本 ΔΔG 与 105× 加速",
+      "new": "自监督学习做超快稳定性预测(标题无零样本/105×)",
+      "updated": true
+    },
+    {
+      "pmid": "42620036",
+      "old": "偏好有序区",
+      "new": "偏好有序区(原文作 a Bias for Orderness)",
+      "updated": true
+    },
+    {
+      "pmid": "39455825",
+      "old": "GeoDDG 的标注数据不足自述",
+      "new": "几何学习 + 预训练策略改进稳定性变化预测;摘要层自陈数据不足",
+      "updated": true
+    },
+    {
+      "pmid": "42252708",
+      "old": "SNAC-DB",
+      "new": "SNAC-DB:抗体与纳米抗体 VHH-抗原复合物的 ML-ready 数据库",
+      "updated": true
+    },
+    {
+      "pmid": "25048123",
+      "old": "AgAbDb 的条目也记着…(当作实测)",
+      "new": "数据库介绍章节,仅作收录口径的范围说明",
+      "updated": true
+    },
+    {
+      "pmid": "19055730",
+      "old": "ElliPro 不连续表位基准集",
+      "new": "ElliPro 工具论文;其数据集常被用作基准",
+      "updated": true
+    }
+  ],
+  "verified_references": [
+    {
+      "ref": "pipeline.py:66",
+      "what": "class PipelineRequest —— 字段表无抗体或复合物字段",
+      "status": "exists"
+    },
+    {
+      "ref": "pipeline.py:109-124",
+      "what": "__post_init__;:123 raise ValueError(\"Display target must be an integer from 10 to 15 residues\");:125-130 映射 maximum_sector_geodesic_diameter_a",
+      "status": "exists"
+    },
+    {
+      "ref": "exporting.py:221-226",
+      "what": "用固定表头 [\"design_id\",\"patch_id\",\"perturbed_fraction\"] 写 panel_coverage_matrix.csv,与源字段 probe_id/patch_id/scenario/predicted_coverage/evidence_type 不匹配",
+      "status": "exists"
+    },
+    {
+      "ref": "README.md:129",
+      "what": "把该 CSV 描述为 construct-by-patch 扰动矩阵",
+      "status": "exists"
+    },
+    {
+      "ref": "config.py::JOINT_V4_ML_PARAMETERS",
+      "what": "sectoring.policy=balanced_connected_v4、max_geodesic 30.0、max_euclidean 22.0、target 12、preferred 10–15",
+      "status": "exists"
+    },
+    {
+      "ref": "docs/survey/lit_resnapshot_20261016.xml",
+      "what": "19 条 DocSum 原始返回",
+      "status": "exists"
+    },
+    {
+      "ref": "docs/survey/lit_resnapshot_gap_20261016.xml",
+      "what": "4 条 DocSum 原始返回(本次补拉)",
+      "status": "exists"
+    },
+    {
+      "ref": "docs/survey/reference_reconciliation.md",
+      "what": "引用核对记录:两侧规模、6 处不符、3 处跨文件不一致、对结论的影响与残留限制",
+      "status": "exists"
+    },
+    {
+      "ref": "docs/survey/reference_reconciliation.json",
+      "what": "机器可核版本(6,408 B)",
+      "status": "exists"
+    },
+    {
+      "ref": "workspace_data/full_runtime_restore_20261012/outputs/484899e022f3/panel_identifiability_v41.json",
+      "what": "uncovered_hypotheses=54、单一未解组含 179 个签名",
+      "status": "exists"
+    }
+  ],
+  "artifact_numbers_verified": [
+    {
+      "number": "10 个分区 / 大小 [10,9,9,10,9,8,11,15,13,11] / 105 节点",
+      "source": "full_run_medium/scientific_acceptance.json",
+      "status": "matches"
+    },
+    {
+      "number": "最大测地 29.727 Å(上限 30.0)、最大 Cα 20.999 Å(上限 22.0)",
+      "source": "partition_diagnostics_v4.json",
+      "status": "matches"
+    },
+    {
+      "number": "179 个假设 / uncovered 54 / 最小签名距离 8.2e-05",
+      "source": "panel_identifiability_v41.json",
+      "status": "matches"
+    },
+    {
+      "number": "预算曲线 8 行,target 7、max 8、stop_reason=MAXIMUM_CONSTRUCT_BUDGET_REACHED",
+      "source": "panel_budget_decision_v411.json",
+      "status": "matches"
+    },
+    {
+      "number": "面板盲区仅 VS007(NO_SELECTED_FEASIBLE_CANDIDATE)",
+      "source": "outputs/484899e022f3/analysis.json",
+      "status": "matches"
+    },
+    {
+      "number": "60 候选 × 5 次 = 300 fresh 配对,复用 0",
+      "source": "full_run_medium/foldx_pair_acceptance.json",
+      "status": "matches"
+    }
+  ],
+  "literature_check": {
+    "distinct_pmids_in_artifact": 21,
+    "distinct_pmids_in_snapshot_union": 23,
+    "pmids_not_found": [],
+    "ledger_cross_check_mismatches": 0,
+    "cross_file_title_inconsistencies": [
+      "42620036:plan 版作 Ordered Regions / 快照 txt 与 addendum 作 Orderness / method_landscape.json 更短",
+      "42252708:快照为全称含 NANOBODY® VHH,底账与正文均缩略",
+      "38197311 / 31243847 / 38177393 / 19055730:正文记卷期正式年,快照 PubDate 记在线先发年,混用使机械核对失效"
+    ],
+    "note": "均为 esummary 层;未通读全文。ledger_cross_check_mismatches=0 只覆盖各底账自身范围,不能代替正文 vs 快照的对照。"
+  },
+  "limits_of_this_check": [
+    "只核到 esummary 层(标题/年份/期刊/DOI),未取全文,也未重取摘要;「105×」「标注数据不足」这类摘要层或正文层的量一律未验证。",
+    "本文件是自查,不是独立核验;判据(1)的两格判定与 6 处更正的充分性,都需由独立评估者与人裁定。",
+    "36871678 的编造事实已登记但未销案,处置权不在我。",
+    "方向 1–4 的通过判据是本次新写的,一次都没执行过;本文只主张它们可执行,不主张它们会通过。",
+    "本次核对只覆盖编号与标题层;编号之外的代码事实(如 exporting.py:221-226)只做了引用存在性核对,未复跑验证。"
+  ]
+}

@@ -302,11 +302,11 @@ def _spurs_rows(rows: list[dict[str, Any]] | None) -> dict[tuple[int, str], floa
 def stability_band(value: float | None, params: dict[str, Any]) -> str:
     if value is None or not math.isfinite(value):
         return "NOT_SCORED"
-    if value <= float(params.get("preferred_max_ddg", 0.0)):
+    if value <= float(params.get("preferred_max_ddg", 0.5)):
         return "PREFERRED"
-    if value <= float(params.get("acceptable_max_ddg", 0.5)):
+    if value <= float(params.get("acceptable_max_ddg", 1.0)):
         return "ACCEPTABLE"
-    if value <= float(params.get("review_max_ddg", 1.0)):
+    if value <= float(params.get("review_max_ddg", 2.0)):
         return "REVIEW"
     return "REJECT"
 

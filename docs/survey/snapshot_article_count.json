@@ -1,0 +1,355 @@
+{
+  "generated_by": "docs/survey/_count_snapshot_articles.py",
+  "method": "xml.etree.ElementTree parsing; never physical-line counting",
+  "per_file": {
+    "A_docsum": {
+      "file": "lit_resnapshot_20261016.xml",
+      "root_tag": "eSummaryResult",
+      "child_elements": 19,
+      "pmids": [
+        "42620036",
+        "42412842",
+        "27216816",
+        "38197311",
+        "38844044",
+        "32761082",
+        "39455825",
+        "39872490",
+        "31243847",
+        "38227011",
+        "36611255",
+        "42252708",
+        "42719814",
+        "25048123",
+        "38177393",
+        "42824475",
+        "19055730",
+        "21846404",
+        "1537828"
+      ],
+      "pmid_count": 19,
+      "open_tag_occurrences": 19,
+      "close_tag_occurrences": 19,
+      "chars": 49583,
+      "physical_line_count": 1024
+    },
+    "B_docsum_gap": {
+      "file": "lit_resnapshot_gap_20261016.xml",
+      "root_tag": "eSummaryResult",
+      "child_elements": 4,
+      "pmids": [
+        "31675414",
+        "38496213",
+        "39915771",
+        "42241701"
+      ],
+      "pmid_count": 4,
+      "open_tag_occurrences": 4,
+      "close_tag_occurrences": 4,
+      "chars": 27611,
+      "physical_line_count": 536
+    },
+    "C_docsum_retry": {
+      "file": "_tmp_retry_esummary2.xml",
+      "root_tag": "eSummaryResult",
+      "child_elements": 10,
+      "pmids": [
+        "38514204",
+        "27401684",
+        "32286507",
+        "35483271",
+        "33205122",
+        "30971826",
+        "41107899",
+        "35277501",
+        "29141660",
+        "31240330"
+      ],
+      "pmid_count": 10,
+      "open_tag_occurrences": 10,
+      "close_tag_occurrences": 10,
+      "chars": 28478,
+      "physical_line_count": 570
+    },
+    "D_efetch_retry": {
+      "file": "_tmp_retry_efetch.xml",
+      "root_tag": "PubmedArticleSet",
+      "child_elements": 5,
+      "pmids": [
+        "27401684",
+        "33205122",
+        "35277501",
+        "35483271",
+        "42800986"
+      ],
+      "pmid_count": 5,
+      "open_tag_occurrences": 5,
+      "close_tag_occurrences": 5,
+      "chars": 105868,
+      "physical_line_count": 4
+    },
+    "E_esummary_42800986": {
+      "file": "_fetch_esummary_42800986.xml",
+      "root_tag": "eSummaryResult",
+      "child_elements": 1,
+      "pmids": [
+        "42800986"
+      ],
+      "pmid_count": 1,
+      "open_tag_occurrences": 1,
+      "close_tag_occurrences": 1,
+      "chars": 3325,
+      "physical_line_count": 68
+    }
+  },
+  "cross_file_counts": {
+    "A": 19,
+    "B": 4,
+    "C": 10,
+    "D": 5,
+    "E": 1
+  },
+  "distinct_pmids": 34,
+  "pmid_snapshot_membership": {
+    "42620036": [
+      "A_docsum"
+    ],
+    "42412842": [
+      "A_docsum"
+    ],
+    "27216816": [
+      "A_docsum"
+    ],
+    "38197311": [
+      "A_docsum"
+    ],
+    "38844044": [
+      "A_docsum"
+    ],
+    "32761082": [
+      "A_docsum"
+    ],
+    "39455825": [
+      "A_docsum"
+    ],
+    "39872490": [
+      "A_docsum"
+    ],
+    "31243847": [
+      "A_docsum"
+    ],
+    "38227011": [
+      "A_docsum"
+    ],
+    "36611255": [
+      "A_docsum"
+    ],
+    "42252708": [
+      "A_docsum"
+    ],
+    "42719814": [
+      "A_docsum"
+    ],
+    "25048123": [
+      "A_docsum"
+    ],
+    "38177393": [
+      "A_docsum"
+    ],
+    "42824475": [
+      "A_docsum"
+    ],
+    "19055730": [
+      "A_docsum"
+    ],
+    "21846404": [
+      "A_docsum"
+    ],
+    "1537828": [
+      "A_docsum"
+    ],
+    "31675414": [
+      "B_docsum_gap"
+    ],
+    "38496213": [
+      "B_docsum_gap"
+    ],
+    "39915771": [
+      "B_docsum_gap"
+    ],
+    "42241701": [
+      "B_docsum_gap"
+    ],
+    "38514204": [
+      "C_docsum_retry"
+    ],
+    "27401684": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "32286507": [
+      "C_docsum_retry"
+    ],
+    "35483271": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "33205122": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "30971826": [
+      "C_docsum_retry"
+    ],
+    "41107899": [
+      "C_docsum_retry"
+    ],
+    "35277501": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "29141660": [
+      "C_docsum_retry"
+    ],
+    "31240330": [
+      "C_docsum_retry"
+    ],
+    "42800986": [
+      "D_efetch_retry",
+      "E_esummary_42800986"
+    ]
+  },
+  "distinct_pmids_breakdown": {
+    "note": "distinct_pmids above is every PMID that appears in ANY snapshot; it is NOT the number of cited references. The two buckets below partition it exactly and must sum to distinct_pmids.",
+    "cited_in_document": 24,
+    "in_snapshot_but_not_cited": 10,
+    "cited_pmid_list": [
+      "19055730",
+      "25048123",
+      "27216816",
+      "27401684",
+      "31243847",
+      "31675414",
+      "32761082",
+      "35277501",
+      "36611255",
+      "38177393",
+      "38197311",
+      "38227011",
+      "38496213",
+      "38844044",
+      "39455825",
+      "39872490",
+      "39915771",
+      "42241701",
+      "42252708",
+      "42412842",
+      "42620036",
+      "42719814",
+      "42800986",
+      "42824475"
+    ],
+    "not_cited_pmid_list": [
+      "1537828",
+      "21846404",
+      "29141660",
+      "30971826",
+      "31240330",
+      "32286507",
+      "33205122",
+      "35483271",
+      "38514204",
+      "41107899"
+    ],
+    "sums_to_distinct_pmids": true
+  },
+  "efetch_pubmedarticle_count": 5,
+  "efetch_pmids": [
+    "27401684",
+    "33205122",
+    "35277501",
+    "35483271",
+    "42800986"
+  ],
+  "efetch_physical_line_count": 4,
+  "line_vs_element_note": "The efetch return has very few physical lines because PubMed does not wrap records; scanning line by line reports far fewer records than parsing XML elements. Element count is authoritative.",
+  "cited_pmids_total": 24,
+  "cited_with_snapshot": {
+    "19055730": [
+      "A_docsum"
+    ],
+    "25048123": [
+      "A_docsum"
+    ],
+    "27216816": [
+      "A_docsum"
+    ],
+    "27401684": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "31243847": [
+      "A_docsum"
+    ],
+    "31675414": [
+      "B_docsum_gap"
+    ],
+    "32761082": [
+      "A_docsum"
+    ],
+    "35277501": [
+      "C_docsum_retry",
+      "D_efetch_retry"
+    ],
+    "36611255": [
+      "A_docsum"
+    ],
+    "38177393": [
+      "A_docsum"
+    ],
+    "38197311": [
+      "A_docsum"
+    ],
+    "38227011": [
+      "A_docsum"
+    ],
+    "38496213": [
+      "B_docsum_gap"
+    ],
+    "38844044": [
+      "A_docsum"
+    ],
+    "39455825": [
+      "A_docsum"
+    ],
+    "39872490": [
+      "A_docsum"
+    ],
+    "39915771": [
+      "B_docsum_gap"
+    ],
+    "42241701": [
+      "B_docsum_gap"
+    ],
+    "42252708": [
+      "A_docsum"
+    ],
+    "42412842": [
+      "A_docsum"
+    ],
+    "42620036": [
+      "A_docsum"
+    ],
+    "42719814": [
+      "A_docsum"
+    ],
+    "42800986": [
+      "D_efetch_retry",
+      "E_esummary_42800986"
+    ],
+    "42824475": [
+      "A_docsum"
+    ]
+  },
+  "cited_without_snapshot": []
+}

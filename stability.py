@@ -52,6 +52,8 @@ def _run_engine(command: list[str], cwd: Path, timeout: int) -> subprocess.Compl
                 command, cwd=cwd, capture_output=True, text=True,
                 timeout=timeout, check=False,
             )
+        (cwd / 'engine_stdout.txt').write_text(result.stdout or '', encoding='utf-8')
+        (cwd / 'engine_stderr.txt').write_text(result.stderr or '', encoding='utf-8')
         write_json(cwd / 'engine_execution.json', {
             'command': command, 'timeout_seconds': timeout,
             'runtime_seconds': time.perf_counter() - started,
@@ -453,20 +455,16 @@ def score_many_with_foldx(
     max_workers: int | None = None,
     time_seed_rotabase: bool = False,
 ) -> list[float | None]:
-    """Score all constructs, splitting the batch across parallel FoldX processes.
-
-    FoldX is single-core per invocation; on a multi-core host the batch is cut
-    into near-equal chunks that run in isolated engine directories and are
-    re-aggregated in input order.  Group indices in Dif row names are per-chunk,
-    so each chunk is parsed independently -- no cross-chunk coupling.
-    """
+    """Use one canonical construct per process; neighbours must not advance its sampler."""
     if not mutation_groups:
         return []
     workers = max_workers or config.FOLDX_MAX_WORKERS
     workers = max(1, min(int(workers), len(mutation_groups)))
+    chunks = [[sorted(group, key=lambda item: (item[2], item[1], item[0], item[3]))]
+              for group in mutation_groups]
     if workers <= 1:
-        return _run_foldx_batch(binary, pdb_path, mutation_groups, workdir, runs, already_repaired, time_seed_rotabase)
-    chunks = _split_groups(mutation_groups, workers)
+        return [value for chunk in chunks for value in _run_foldx_batch(
+            binary, pdb_path, chunk, workdir, runs, already_repaired, time_seed_rotabase)]
     results: list[list[float | None] | None] = [None] * len(chunks)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
@@ -522,20 +520,42 @@ def _run_foldx_batch(
             for group in mutation_groups
         ]
         (temp / "individual_list.txt").write_text("\n".join(lines) + "\n", encoding="ascii")
-        build = _run_engine(
-            [
+        # Freeze the actual rotabase instead of depending on a mutable working directory.
+        rotabase = Path(pdb_path).parent / 'rotabase.txt'
+        if rotabase.is_file():
+            shutil.copy2(rotabase, temp / 'rotabase.txt')
+        command = [
                 binary,
                 "--command=BuildModel",
                 f"--pdb={repaired.name}",
                 "--mutant-file=individual_list.txt",
                 f"--numberOfRuns={runs}",
-                *(["--timeSeedRotabase=true"] if time_seed_rotabase else []),
-            ],
+                f"--timeSeedRotabase={'true' if time_seed_rotabase else 'false'}",
+            ]
+        from .util import sha256_file, write_json
+        receipt = {
+            'schema_version': '1.0',
+            'execution_layout': 'candidate_isolated_v1' if len(mutation_groups) == 1 else 'legacy_batch',
+            'command': command, 'ordered_mutations': lines, 'number_of_runs': runs,
+            'time_seed_rotabase': time_seed_rotabase,
+            'replay_mode': 'archived_evidence_only' if time_seed_rotabase else 'deterministic_native_reexecution',
+            'binary_sha256': sha256_file(Path(binary)),
+            'input_sha256': sha256_file(repaired),
+            'mutant_file_sha256': sha256_file(temp / 'individual_list.txt'),
+            'rotabase_sha256': sha256_file(temp / 'rotabase.txt') if (temp / 'rotabase.txt').is_file() else None,
+        }
+        write_json(temp / 'buildmodel_request.json', receipt)
+        build = _run_engine(
+            command,
             temp,
             _buildmodel_timeout(len(mutation_groups), runs),
         )
         if build is None or build.returncode:
             return [None] * len(mutation_groups)
+        receipt['rotabase_sha256'] = sha256_file(temp / 'rotabase.txt') if (temp / 'rotabase.txt').is_file() else None
+        receipt['output_sha256'] = {path.name: sha256_file(path) for path in sorted(temp.iterdir())
+            if path.is_file() and path.suffix in {'.pdb', '.fxout'}}
+        write_json(temp / 'buildmodel_request.json', receipt)
         rows: list[tuple[str, float]] = []
         for path in temp.glob("Dif_*.fxout"):
             rows.extend(_parse_dif_rows(path))

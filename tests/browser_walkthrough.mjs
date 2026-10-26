@@ -1,7 +1,7 @@
 /* Real-browser walkthrough verification for the integrated online UI.
    Boots nothing itself: expects the workbench server on 127.0.0.1:8765.
    Checks (frozen PD-L1 demo):
-     1. the 6 step pills sit on ONE horizontal row
+     1. the 7 step pills sit on ONE horizontal row
      2. every step switches the right panel
      3. the bottom sequence bar is visible with 4 copy buttons
      4. clicking a sequence token fills the residue detail
@@ -13,12 +13,11 @@ import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 
-const pw = await import(
-  pathToFileURL("C:/Users/陈淏文/.workbuddy/binaries/node/workspace/node_modules/playwright-core/index.js").href
-);
+const modulePath = process.argv[2] || "playwright";
+const pw = await import(path.isAbsolute(modulePath) ? pathToFileURL(modulePath).href : modulePath);
 const chromium = pw.chromium || (pw.default && pw.default.chromium);
 
-const outDir = "E:/user/New project/ecd_epitope_scanner/test_output/ui_check";
+const outDir = process.argv[3] || "test_output/ui_check";
 fs.mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({
@@ -40,7 +39,7 @@ await page.waitForTimeout(2500); // let Mol* settle
 const boxes = await page.$$eval("#steps .step-pill", (els) =>
   els.map((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; })
 );
-ok(boxes.length === 6, `6 step pills rendered (got ${boxes.length})`);
+ok(boxes.length === 7, `7 step pills rendered (got ${boxes.length})`);
 const rowTolerance = 4;
 const sameRow = boxes.every((b) => Math.abs(b.y - boxes[0].y) <= rowTolerance);
 ok(sameRow, "step pills share one row (horizontal nav)");
@@ -52,11 +51,12 @@ await page.screenshot({ path: path.join(outDir, "01_full.png"), fullPage: false 
 /* 2. each step switches the panel */
 const expectations = [
   [1, "#residue-list"],
-  [2, "#foldx-table"],
+  [2, "#foldx-status"],
   [3, "#region-list"],
   [4, "#iface-partners"],
   [5, "#design-list"],
   [6, "#custom-mutations"],
+  [7, "#task-overview"],
 ];
 for (const [n, selector] of expectations) {
   await page.click(`#steps [data-step="${n}"]`);
@@ -72,13 +72,13 @@ for (const [n, selector] of expectations) {
 
 /* 2.5 persistent seqdock: visible on EVERY step */
 const dockPerStep = [];
-for (const n of [1, 2, 3, 4, 5, 6]) {
+for (const n of [1, 2, 3, 4, 5, 6, 7]) {
   await page.click(`#steps [data-step="${n}"]`);
   await page.waitForTimeout(120);
   const dock = await page.$(".seqdock");
   const vis = dock ? await dock.isVisible() : false;
   const box = dock ? await dock.boundingBox() : null;
-  dockPerStep.push(vis && box && box.height > 60);
+  dockPerStep.push(vis && box && box.height >= 40);
 }
 ok(dockPerStep.every(Boolean), `persistent seqdock visible on all steps (${dockPerStep})`);
 await page.click('#steps [data-step="1"]');
@@ -87,6 +87,8 @@ await page.click('#steps [data-step="1"]');
 await page.click('#steps [data-step="1"]');
 const seqBar = await page.$(".seqdock");
 ok(seqBar && await seqBar.isVisible(), "persistent sequence dock visible");
+ok(await page.locator("#sequence-content").isHidden(), "sequence defaults to compact summary");
+await page.locator("#toggle-sequence").click();
 for (const id of ["copy-wt-aa", "copy-wt-nt", "copy-design-aa", "copy-design-nt"]) {
   const btn = await page.$(`#${id}`);
   ok(btn && await btn.isVisible(), `copy button #${id} visible`);

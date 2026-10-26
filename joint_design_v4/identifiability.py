@@ -22,6 +22,15 @@ def panel_metrics(selected, hypotheses):
     pair_weight = sum(prior[p["left"]]*prior[p["right"]] for p in pairs)
     weighted_mean = sum(p["distance"]*prior[p["left"]]*prior[p["right"]] for p in pairs) / max(1e-12, pair_weight)
     near = [p for p in pairs if p["distance"] < 0.1]
+    exact = [p for p in pairs if signatures[p["left"]] == signatures[p["right"]]]
+    ordered_distances = sorted(distances)
+    def percentile(values, fraction):
+        if not values:
+            return None
+        index = (len(values) - 1) * fraction
+        lower = math.floor(index)
+        upper = math.ceil(index)
+        return values[lower] + (values[upper] - values[lower]) * (index - lower)
     resolved_fraction = (len(pairs)-len(near))/max(1, len(pairs))
     information = .5*(uniform_coverage+weighted_coverage) + .75*(mean+weighted_mean) + .5*min(distances, default=0) + .25*resolved_fraction
     adjacency = {hid: set() for hid in ids}
@@ -44,7 +53,20 @@ def panel_metrics(selected, hypotheses):
                 weighted_coverage=weighted_coverage, mean_separation=mean,
                 weighted_separation=weighted_mean, minimum_distance=min(distances, default=0),
                 near_pairs=near, pairwise_distances=pairs, groups=groups,
-                uncovered=[hid for hid in ids if coverage[hid] < .1], signatures=signatures)
+                uncovered=[hid for hid in ids if coverage[hid] < .1], signatures=signatures,
+                identifiability_diagnostics={
+                    "pair_count": len(pairs),
+                    "near_pair_count_rms_lt_0_1": len(near),
+                    "exact_response_vector_pair_count": len(exact),
+                    "rms_normalization": "sqrt(8); legacy V4 normalization",
+                    "near_pair_threshold": 0.1,
+                    "rms_distance_distribution": {
+                        "minimum": ordered_distances[0] if ordered_distances else None,
+                        "median": percentile(ordered_distances, .5),
+                        "p95": percentile(ordered_distances, .95),
+                        "maximum": ordered_distances[-1] if ordered_distances else None,
+                    },
+                })
 
 
 def construct_signature(candidate):
@@ -155,3 +177,99 @@ def exhaustive_comparison(pool, hypotheses, budget, risk_function, risk_weights=
                 selection_priority="coverage_then_information_then_risk",
                 greedy_objective=greedy_value, absolute_gap=max(0., best_value-greedy_value),
                 relative_gap=max(0., best_value-greedy_value)/max(best_value,1e-12))
+
+
+def interface_focused_comparison(pool, full_surface_candidate_ids, hypotheses, surface_areas,
+                                 interface_positions, sectors, risk_function, risk_weights=None,
+                                 capacity=8, higher_order_max=2):
+    """Read-only lexicographic panel comparison from the same formal candidate pool."""
+    if capacity < 1:
+        raise ValueError("capacity must be positive")
+    interface = set(interface_positions)
+    areas = {int(position): max(0.0, float(area)) for position, area in surface_areas.items()}
+    sector_positions = {sector.sector_id: set(sector.residue_positions) for sector in sectors}
+    pool = [candidate for candidate in pool if candidate.formal_eligible and candidate.order in (2, 3)
+            and candidate.connected and candidate.qualification != "REVIEW_REQUIRED"]
+    pool = sorted({construct_signature(candidate): candidate for candidate in pool}.values(),
+                  key=lambda item: item.candidate_id)
+    selected = []
+    interface_covered: set[int] = set()
+    total_covered: set[int] = set()
+    while len(selected) < capacity:
+        choices = []
+        for candidate in pool:
+            if candidate in selected or (candidate.order > 2 and sum(c.order > 2 for c in selected) >= higher_order_max):
+                continue
+            positions = {mutation.residue.uniprot_pos for mutation in candidate.mutations}
+            new_interface = (positions & interface) - interface_covered
+            new_total = positions - total_covered
+            value, metrics, risk, _ = objective(selected + [candidate], hypotheses, risk_function, risk_weights)
+            choices.append((sum(areas.get(p, 0.0) for p in new_interface),
+                            sum(areas.get(p, 0.0) for p in new_total),
+                            candidate.geometry_support.get("mean_marginal_area_a2", 0.0),
+                            metrics["information"], -risk, candidate.candidate_id,
+                            candidate, positions))
+        if not choices:
+            break
+        winner = min(choices, key=lambda row: (-row[0], -row[1], -row[2], -row[3], -row[4], row[5]))
+        selected.append(winner[6])
+        total_covered.update(winner[7])
+        interface_covered.update(winner[7] & interface)
+
+    total_area = sum(areas.values())
+    interface_area = sum(areas.get(p, 0.0) for p in interface)
+    selected_ids = [candidate.candidate_id for candidate in selected]
+    standard_ids = list(full_surface_candidate_ids)
+    selected_slots = sum(mutation.residue.uniprot_pos in interface
+                         for candidate in selected for mutation in candidate.mutations)
+    radius_coverage = {}
+    for radius in (9, 12, 15):
+        covered = set().union(*(set(c.covered_positions_by_scenario.get(f"geodesic_{radius}", []))
+                                for c in selected)) if selected else set()
+        radius_coverage[str(radius)] = {
+            "covered_area_a2": sum(areas.get(p, 0.0) for p in covered),
+            "fraction": sum(areas.get(p, 0.0) for p in covered) / total_area if total_area else None,
+        }
+    region_coverage = {
+        sector_id: {
+            "selected_direct_area_a2": sum(areas.get(p, 0.0) for p in positions & total_covered),
+            "region_area_a2": sum(areas.get(p, 0.0) for p in positions),
+            "fraction": (sum(areas.get(p, 0.0) for p in positions & total_covered)
+                         / sum(areas.get(p, 0.0) for p in positions))
+            if sum(areas.get(p, 0.0) for p in positions) else None,
+        }
+        for sector_id, positions in sector_positions.items()
+    }
+    by_id = {c.candidate_id: c for c in pool}
+    baseline = [by_id[cid] for cid in standard_ids if cid in by_id]
+    baseline_sites = {m.residue.uniprot_pos for c in baseline for m in c.mutations}
+    baseline_slots = sum(m.residue.uniprot_pos in interface for c in baseline for m in c.mutations)
+    union = {construct_signature(c) for c in [*selected, *baseline]}
+    return {
+        "full_surface_metrics": {
+            "construct_count": len(baseline), "interface_mutation_slot_fraction": baseline_slots / max(1, sum(c.order for c in baseline)),
+            "direct_interface_area_a2": sum(areas.get(p,0.) for p in baseline_sites & interface),
+            "direct_total_area_a2": sum(areas.get(p,0.) for p in baseline_sites),
+            "proxy_coverage_by_radius": {str(radius): sum(areas.get(p,0.) for p in
+                set().union(*(set(c.covered_positions_by_scenario.get(f"geodesic_{radius}", [])) for c in baseline)))
+                for radius in (9,12,15)},
+            "region_direct_area_a2": {sid: sum(areas.get(p,0.) for p in positions & baseline_sites) for sid,positions in sector_positions.items()}},
+        "procurement": {"deduplicated_mutant_constructs": len(union), "wt_controls": 1,
+            "additional_experimental_controls": "USER_EXPERIMENT_DESIGN_REQUIRED"},
+        "interface_definition": "native_partner_chain_contacts_only; intrachain_domain_interfaces_excluded",
+        "ranking": "marginal_direct_interface_area_then_total_direct_area_then_existing_geometry_information_risk",
+        "selection_capacity": capacity,
+        "pool_candidate_count": len(pool),
+        "candidate_ids": selected_ids,
+        "full_surface_candidate_ids": standard_ids,
+        "intersection_candidate_ids": sorted(set(selected_ids) & set(standard_ids)),
+        "interface_residue_count": len(interface),
+        "interface_area_a2": interface_area,
+        "interface_selected_mutation_slots": selected_slots,
+        "interface_selected_slot_fraction": selected_slots / max(1, sum(c.order for c in selected)),
+        "direct_interface_area_a2": sum(areas.get(p, 0.0) for p in interface_covered),
+        "direct_total_area_a2": sum(areas.get(p, 0.0) for p in total_covered),
+        "proxy_coverage_by_radius": radius_coverage,
+        "region_coverage": region_coverage,
+        "interpretation": "Read-only comparison using the same formally qualified pool; geometric areas are proxies, not measured binding effects.",
+    }

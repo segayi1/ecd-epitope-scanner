@@ -1,0 +1,114 @@
+{
+  "schema": "survey.mutation_effect_landscape/1",
+  "step": "s3",
+  "purpose": "突变效应与稳定性预测文献底账,重点是折叠稳定性 ΔΔG 与结合亲和力 ΔΔG 的表述区分,以及计算预测的公认精度上限。服务于 docs/extension_directions.md 与「FoldX DDG 不是 binding ΔΔG」这条仓库边界。",
+  "retrieval": {
+    "channel": "NCBI E-utilities (esearch + esummary + efetch), HTTP 200",
+    "date_utc": "2026-10-13",
+    "queries": [
+      {"query": "protein+stability+change+prediction+benchmark+DeltaDeltaG", "hits": 13, "sort": "relevance"},
+      {"query": "binding+affinity+change+mutation+prediction+benchmark+limitations", "hits": 9, "sort": "relevance"}
+    ],
+    "note": "另经 efetch 取 8 篇摘要 XML 核对,快照见 docs/survey/_tmp_ddg.xml。"
+  },
+  "core_distinction": {
+    "statement": "折叠稳定性 ΔΔG 与结合亲和力 ΔΔG 是两个不同的物理量,不可互相换算,也不可由同一分数兼任。",
+    "folding_stability_ddg": {
+      "definition": "突变对蛋白质自身折叠自由能的影响,通常写作 ΔΔG = ΔG_mut − ΔG_WT,单位 kcal/mol;正值表示去稳定。",
+      "typical_measurement": "化学/热变性曲线测得的解折叠自由能变化;或 ΔTm 作为替代读数。",
+      "what_it_does_not_say": "不说明该突变是否影响与任何结合伙伴的相互作用。一个强烈去稳定的突变可能在界面上完全中性。"
+    },
+    "binding_affinity_ddg": {
+      "definition": "突变对复合物结合自由能的影响 ΔΔG_bind = ΔG_bind(mut) − ΔG_bind(WT),单位 kcal/mol;正值表示结合变弱。",
+      "typical_measurement": "SPR/BLI/ITC 测得的 KD 或 koff 变化换算为 ΔΔG。",
+      "what_it_does_not_say": "不说明蛋白自身是否仍能正确折叠。界面突变可同时改变两者,但两者是独立分量。"
+    },
+    "foldx_specific_warning": {
+      "issue": "FoldX 的 BuildModel 输出的 DDG 是折叠稳定性量,不是 binding ΔΔG。要得到结合量必须比较复合物与解离单体的能量差(通常需额外的 AnalyseComplex 路线),本仓库当前只做前者。",
+      "repo_evidence": "本仓库 docs/project_memory.md 明写「FoldX DDG 不是 binding ΔΔG」;tasks/lessons.md 亦有同条。joint_design_v4 的稳定性注释只标 stability_score,不标 Kd 或亲和力。",
+      "implication": "面板候选的 FoldX 数值只能作为「该替换是否可能损害折叠」的证据,不得写成「结合变弱/变强」的理由。"
+    }
+  },
+  "accuracy_ceiling": {
+    "summary": "两类 ΔΔG 的计算预测在标准基准上报告的精度都偏高;独立评测显示泛化能力明显低于论文自报值。",
+    "evidence": [
+      {
+        "claim": "SKEMPI 2.0 等标准基准上报告的性能『seem overly optimistic』;八种知名预测器在 SKEMPI 2.0 与 SARS-CoV-2 spike/ACE2 深度突变扫描数据上均显示泛化能力有限,难以预测未见过的突变。纯机器学习方法受泛化问题影响更严重,物理方法受影响较小。",
+        "pmid": "38197311",
+        "doi": "10.1093/bib/bbad491",
+        "year": 2024,
+        "journal": "Briefings in Bioinformatics",
+        "significance": "这是「计算预测精度上限」最直接的量化证据:基准高分不蕴含对新突变的预测能力。"
+      },
+      {
+        "claim": "CAGI5 盲测中,Provean、FoldX、ELASPIC 对一个仅含八个突变的小数据集预测折叠稳定性变化,没有一种方法在所有指标上严格优于其它;ELASPIC 准确度最高,FoldX 略低但更易本地运行。",
+        "pmid": "31243847",
+        "doi": "10.1002/humu.23852",
+        "year": 2020,
+        "journal": "Human Mutation",
+        "significance": "盲测(方法提交时不知答案)比自建测试集更能反映真实精度;样本量仅 8 个突变说明此类盲测本身的统计效力有限。"
+      },
+      {
+        "claim": "CAGI6 三个挑战(Calmodulin、MAPK1、MAPK3)上,基于结构的稳定性预测器对 ΔΔG 的相关性最高达 0.74,AUC 在 MAPK1/MAPK3 上达 1、在 Calmodulin 上达 0.75。",
+        "pmid": "38227011",
+        "doi": "10.1007/s00439-023-02623-4",
+        "year": 2025,
+        "journal": "Human Genetics",
+        "significance": "AUC=1 出现在小样本挑战上的事实本身提示:单次挑战的高指标不能当作普适精度。与 38197311 的泛化警告合读才完整。"
+      },
+      {
+        "claim": "FEP+ 对蛋白-蛋白复合物单点突变的相对结合自由能计算需要:替代质子化态的稳健处理、离群案例的自动识别、以及对部分电荷相关离群的经验校正。论文自述需评估默认协议的局限并给出自动化脚本标记疑似离群案例。",
+        "pmid": "38844044",
+        "doi": "10.1016/j.jmb.2024.168640",
+        "year": 2024,
+        "journal": "Journal of Molecular Biology",
+        "significance": "即使是最严格的物理方法(自由能扰动),也需要离群检测与经验校正,且论文自陈存在需进一步研究的领域。这给出结合 ΔΔG 计算的成本与可靠性现状。"
+      },
+      {
+        "claim": "UEP 自述『实验上结合亲和力变化的可用数据有限,这阻碍了新的更精确算法的发展』,因此转向用相互作用组数据训练,并需用三种预测器的共识程序来提高分类准确率。",
+        "pmid": "32761082",
+        "doi": "10.1093/bioinformatics/btaa708",
+        "year": 2021,
+        "journal": "Bioinformatics",
+        "significance": "数据稀缺是结合 ΔΔG 预测的根本约束;共识程序而非单一模型才是当前可用的做法。"
+      },
+      {
+        "claim": "GeoDDG 在基准上按 Spearman 相关系数比其它 SOTA 方法高至少 30%,作者自陈提升来自预训练策略与数据扩充以克服『标注数据不足』。",
+        "pmid": "39455825",
+        "doi": "10.1038/s43588-024-00716-2",
+        "year": 2024,
+        "journal": "Nature Computational Science",
+        "significance": "折叠稳定性 ΔΔG 侧的最新进展仍以相关系数(排序能力)为主要指标,而非绝对值准确度——说明回归到 kcal/mol 的绝对值仍是弱项。"
+      },
+      {
+        "claim": "Pythia 以自监督图神经网络做零样本 ΔΔG 预测,自述『与传统方法相比计算速度提升 105 倍』,并与全监督模型竞争性相当。",
+        "pmid": "39872490",
+        "doi": "10.1016/j.xinn.2024.100750",
+        "year": 2025,
+        "journal": "Innovation (Cambridge)",
+        "significance": "速度是这类方法的主要卖点之一;速度快不改变精度上限,但使「大规模扫描 + 事后核验」的干实验模式变得可行。"
+      }
+    ]
+  },
+  "naming_discipline": [
+    "在产物中用 ΔΔG_fold(或「折叠稳定性 DDG」)与 ΔΔG_bind(或「结合 ΔΔG」)两个明确名字,禁止用裸 ΔΔG 指代任一者。",
+    "FoldX BuildModel 的输出只能写 ΔΔG_fold;写 ΔΔG_bind 必须先有复合物与单体的能量差计算。",
+    "亲和力类读数(KD、koff、ΔΔG_bind)不得由稳定性分数换算得到,反向亦然。",
+    "任何相关性系数(Spearman/Pearson)只能表述为排序一致性,不得表述为绝对值准确度。"
+  ],
+  "relevance_to_this_repo": {
+    "boundary_referenced": "FoldX DDG 不是 binding ΔΔG(docs/project_memory.md);稳定性带与可设计表面的分离。",
+    "confirmed_by_literature": "两条物理量在定义、测量方式与所回答的问题上均不同(见 core_distinction),故本仓库把 FoldX 结果只用于折叠稳定性判断是正确且保守的。",
+    "extension_opportunity": "若要补上结合侧证据,文献给出三条路线:复合物结构下的 mCSM-AB 类图签名预测(27216816)、FEP+ 类自由能扰动(38844044,成本高且需离群校正)、或共识分类程序(32761082)。三者都需要抗体-抗原复合物结构,本仓库当前不具备,故属「需外部数据」而非「现在可做」。"
+  },
+  "limitations": [
+    "本次仅取摘要级别信息,未核全文的表格数值;AUC=1、Spearman 提升 30% 等均为论文自述,未在本地复算。",
+    "38197311 的摘要文本在 NLM 侧被截断(结束于 'Moreover, und'),其完整结论(尤其对数据集依赖性的量化)未取到。",
+    "检索以 PubMed 为唯一通道,未检索预印本;2026 年的新方法可能未覆盖。",
+    "未评估这些方法在本仓库具体输入(PDB/AF3 结构,无抗体伙伴)上的可用性——无复合物结构时结合侧方法本就不能运行。"
+  ],
+  "cross_check": {
+    "method": "对每条文献用 eutils esummary 取标题/年份/DOI,并对 8 篇关键文献用 efetch 取摘要原文核对;结果与引用一致。",
+    "mismatches_found": 0
+  }
+}

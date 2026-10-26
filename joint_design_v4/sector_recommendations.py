@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from pathlib import Path
 
 from ..stability import AUTO_EXCLUDED_MUTANTS
@@ -250,6 +251,7 @@ def _checks(candidate, parameters):
     params = parameters.get("spurs_multi", {})
     contract = (evidence.provenance.get("stability_contract") if evidence else None) or params.get("stability_contract", "legacy")
     primary = contract == "spurs_primary_foldx_sanity_v3"
+    ordinary = contract == "ordinary_v4_directional_v1"
     checks = []
     def add(gate, value, threshold, required=True, *, lower=False, unit="kcal/mol"):
         known = _finite(value)
@@ -260,11 +262,11 @@ def _checks(candidate, parameters):
                        "excess": max(0.0, threshold - value if lower else value - threshold) if known else None,
                        "comparison": "minimum" if lower else "maximum",
                        "unit": unit, "contract": contract})
-    add("combination_spurs", spurs, 1.0 if primary else float(params.get("preferred_max_ddg", .5)),
+    add("combination_spurs", spurs, 1.0 if primary or ordinary else float(params.get("preferred_max_ddg", .5)),
         not (primary and candidate.order == 3))
     add("combination_foldx", foldx, 2.0 if primary else float(parameters.get("foldx_confirmation", {}).get("combination_gate_kcal_mol", 2.0)))
     add("model_agreement", abs(spurs - foldx) if _finite(spurs) and _finite(foldx) else None,
-        float(params.get("disagreement_gate_kcal_mol", 1.5)), not primary)
+        float(params.get("disagreement_gate_kcal_mol", 1.5)), not (primary or ordinary))
     if candidate.order == 3:
         regional = "regional_gain_basis" in candidate.risk_components
         gain = candidate.risk_components.get("regional_higher_order_gain") if regional else candidate.risk_components.get("higher_order_information_gain")
@@ -300,11 +302,20 @@ def _checks(candidate, parameters):
 
 
 def build_sector_recommendations(candidates, sectors, surface_areas, parameters, selected=(), *,
-                                 graph=None, records=None, source_provenance=None, epitope_evidence=()):
+                                 graph=None, records=None, source_provenance=None, epitope_evidence=(),
+                                 confirmation_planning=False):
     """Exclusive sector primary plus independently qualified alternatives."""
     if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
         return _legacy_sector_recommendations(candidates, sectors, surface_areas, parameters, selected)
     from dataclasses import replace
+    from .regional_perturbation import POLICY, candidate_impact, rank_impacts, dominates, complete_candidate_impact
+    # Enrich display metadata without rewriting scored mutation records.
+    candidates = [replace(candidate, mutations=deepcopy(candidate.mutations)) for candidate in candidates]
+    complete_candidate_impact(candidates, records, graph)
+    if graph is not None and surface_areas is not None:
+        from .spatial_support import annotate_spatial_support
+        annotate_spatial_support(candidates, graph, surface_areas)
+    mechanism_policy = parameters.get("regional_recommendation_policy") == POLICY
     effective = []
     for candidate in candidates:
         missing = [reason for field, reason in (("spurs_multi_ddg_kcal_mol", "COMBINATION_SPURS_MISSING"),
@@ -337,10 +348,15 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 and membership & {option.residue.uniprot_pos for option in candidate.mutations}]
         for candidate in safe:
             row = _legacy_sector_recommendations([candidate], [sector], surface_areas, parameters, selected)[0]
+            row["impact_evidence"] = candidate.impact_evidence
+            row["sensitivity"] = candidate.impact_evidence.get("sensitivity", {})
             positions = {option.residue.uniprot_pos for option in candidate.mutations}
             from .spatial_support import candidate_region_membership
             assignment = candidate_region_membership(candidate, sectors)
             row["ownership"] = assignment["assignment"]
+            if mechanism_policy:
+                row["recommendation_policy"] = POLICY
+                row["impact_evidence"] = candidate.impact_evidence
             row["mutation_sector_ids"] = assignment["region_ids"]
             row["gate_checks"] = _checks(candidate, parameters)
             row["site_details"] = []
@@ -378,6 +394,7 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                     "native-interface": "位点位于输入结构记录的界面附近，可能影响相关接触；尚无实验功能影响结论。",
                     "domain-interface": "位点邻近结构域界面，需留意局部接触影响；不能仅凭此提示判定突变不稳定。",
                     "beta-strand": "位点位于β链二级结构，应留意局部构象影响；该注释本身不证明突变会破坏结构。",
+                    "salt-bridge": "输入结构提示该位点参与盐桥，电荷替换可能改变局部联系；这不等于已证实结构失稳或结合变化。",
                     "engineered-neighborhood": "位点邻近输入结构与参考序列不一致的位置，结构代表性可能受影响；这不是已证实的突变损伤。",
                 }
                 note_codes = sorted({"GLYCAN_SHIELDED" if code == "glycan-shielded" else code for code in codes})
@@ -390,6 +407,8 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                     "auth_seq_id": residue.auth_seq_id, "insertion_code": residue.insertion_code,
                     "label_seq_id": residue.label_seq_id, "model_id": residue.model_id,
                     "sasa_a2": getattr(record, "sasa", None), "sidechain_sasa_a2": getattr(record, "sidechain_sasa", None),
+                    "sidechain_exposure": option.impact_evidence.get("sidechain_exposure", {}),
+                    "chemical_descriptors": option.impact_evidence.get("chemical_descriptors", {}),
                     "rsasa": getattr(record, "rsasa", None), "plddt": getattr(record, "plddt", None),
                     "coordinate_confidence": confidence, "risk_assessment": risk,
                     "accessibility_score": option.accessibility_score,
@@ -427,6 +446,21 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 "foldx_ddg_kcal_mol": evidence.foldx_ddg_kcal_mol, "disagreement": evidence.disagreement,
                 "epistasis_estimate": evidence.epistasis_estimate, "consensus_status": evidence.consensus_status,
                 "provenance": evidence.provenance} if evidence else {})
+            repeat_diagnostic = candidate.impact_evidence.get("stability_repeat_audit", {})
+            row["stability_repeat_diagnostic"] = {key: repeat_diagnostic.get(key) for key in (
+                "foldx_repeat_gate_kcal_mol", "foldx_repeat_min_kcal_mol", "foldx_repeat_max_kcal_mol",
+                "foldx_repeat_above_gate_count", "foldx_repeat_at_or_below_gate_count",
+                "foldx_repeat_invalid_value_count", "sampling_decision_diagnostic_status",
+                "sampling_decision_sensitive", "cross_execution_conflict",
+                "cross_execution_evidence_status", "recommendation_risk_label")}
+            row["recommendation_risk_label"] = repeat_diagnostic.get("recommendation_risk_label", "REPEAT_EVIDENCE_INCOMPLETE")
+            row["recommendation_risk_explanation"] = (
+                "FoldX重复值跨越配置门限；中位数资格按现行合同保留，但结果对采样敏感，建议复核。"
+                if repeat_diagnostic.get("sampling_decision_sensitive") is True else
+                "FoldX重复证据缺失或含无效值，采样敏感性未知。"
+                if repeat_diagnostic.get("sampling_decision_diagnostic_status") != "COMPLETE" else
+                "本批FoldX重复值未跨越配置门限；请结合门限两侧槽数与中位数查看。"
+            )
             row["provenance"] = {"source": source_provenance or {}, "generation_anchor": candidate.sector_id,
                                   "targeted_hypotheses": candidate.targeted_hypotheses,
                                   "residue_numbering": "UniProt positions; author chain/residue mapping retained"}
@@ -450,6 +484,13 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                     if status == "NOT_SCHEDULED" and spurs_check["passed"] is False:
                         detail["description"] += f" 当前SPURS预测值{spurs_check['observed']:.3f} kcal/mol，高于门槛{spurs_check['threshold']:.3f} kcal/mol。"
             regional = row["regional_geometry_support"]
+            row["direct_area_a2"] = sum(surface_areas.get(position, 0) for position in positions & membership)
+            local_12 = regional.get("scenarios", {}).get("geodesic_12", {})
+            row["local_12_covered_area_a2"] = local_12.get("covered_area_a2")
+            row["local_12_coverage_fraction"] = local_12.get("coverage_fraction")
+            row["local_12_uncovered_positions"] = local_12.get("uncovered_positions", [])
+            row["local_12_uncovered_area_a2"] = (sum(surface_areas.get(position, 0) for position in membership)
+                - local_12["covered_area_a2"] if _finite(local_12.get("covered_area_a2")) else None)
             for name, scenario in regional.get("scenarios", {}).items():
                 union = set(candidate.geometry_support["scenarios"][name]["covered_positions"])
                 outside = union - membership
@@ -484,25 +525,61 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
             row["principles"] = []
             rows.append((candidate, row))
         exclusive = [(candidate, row) for candidate, row in rows if row["ownership"] == "EXCLUSIVE"]
+        exclusive.sort(key=lambda item: item[0].candidate_id)
         def coverage_key(item):
             candidate, row = item
             return (not candidate.formal_eligible, *row["ranking_key"])
-        primary = min(exclusive, key=coverage_key) if exclusive else None
+        coverage_choice = min(exclusive, key=coverage_key) if exclusive else None
+        primary = coverage_choice
+        if mechanism_policy:
+            regional_pool = [item for item in exclusive if item[0].impact_evidence.get("policy") == POLICY]
+            passed = [item for item in regional_pool if item[0].formal_eligible]
+            pool = passed or regional_pool
+            if not passed and pool:
+                nearest = min(tuple(item[1]["gate_distance"][key] for key in (
+                    "unmet_gate_count", "missing_evidence_count", "normalized_excess")) for item in pool)
+                pool = [item for item in pool if tuple(item[1]["gate_distance"][key] for key in (
+                    "unmet_gate_count", "missing_evidence_count", "normalized_excess")) == nearest]
+            doubles = [item[0] for item in pool if item[0].order == 2]
+            triples = [item[0] for item in pool if item[0].order == 3]
+            ranked_doubles = rank_impacts(doubles)
+            ranked_triples = rank_impacts(triples)
+            winner = ranked_doubles[0] if ranked_doubles else None
+            # Cross-order replacement requires raw-axis dominance and the existing gain gate.
+            if ranked_triples:
+                gain_limit = float(parameters.get("panel_optimizer", {}).get("minimum_coverage_gain", .05))
+                upgrades = [item for item in ranked_triples if item.risk_components.get("regional_higher_order_gain", -math.inf) is not None
+                    and item.risk_components.get("regional_higher_order_gain", -math.inf) >= gain_limit
+                    and (winner is None or dominates(candidate_impact(item), candidate_impact(winner)))]
+                if upgrades:
+                    winner = upgrades[0]
+            primary = next((item for item in pool if item[0] is winner), None)
+            for candidate, row in regional_pool:
+                row["impact_evidence"] = candidate.impact_evidence
+                row["sensitivity"] = candidate.impact_evidence.get("sensitivity", {})
         if primary:
             primary_row = primary[1]
-            primary_row["principles"] = ["sector_coverage"]
-            primary_row["recommendation_reasons"] = ["优先选择通过计算门槛的本区专属组合，并按本区三尺度平均估计覆盖排序。" if primary[0].formal_eligible else "本区没有合格专属组合；此组合最接近当前门槛，仍需审查。"]
+            primary_row["principles"] = ["mechanism_pareto" if mechanism_policy else "sector_coverage"]
+            primary_row["recommendation_reasons"] = [(
+                "本区合格候选中优先双点，按侧链暴露和六项化学变化的帕累托前沿选取；各化学机制组取最强轴效用，组间折中。表位倾向仅作注释，排序不是亲和力预测。" if mechanism_policy else
+                "优先选择通过计算门槛的本区专属组合，并按本区三尺度平均估计覆盖排序。") if primary[0].formal_eligible else "本区机制主代表仍需审查；本区其他正式合格组合请展开候选列表查看。"]
+            if mechanism_policy and primary[0].formal_eligible and primary[0].impact_evidence.get("missing_axes"):
+                primary_row["status"] = "EVIDENCE_LIMITED"
         else:
             primary_row = _legacy_sector_recommendations([], [sector], surface_areas, parameters, selected)[0]
             primary_row.update({"failed_gates": ["NO_SAFE_EXCLUSIVE_COMBINATION"], "ownership": "EXCLUSIVE",
                 "principles": ["sector_coverage"], "recommendation_reasons": ["本区没有安全的专属双点或三点组合；跨区组合仅列为补充建议。"]})
+        if mechanism_policy:
+            primary_row["recommendation_policy"] = POLICY
         primary_row["recommendation_role"] = "PRIMARY"
         alternatives = []
         def choose(pool, metric):
             passed = [item for item in pool if item[0].formal_eligible]
-            return min(passed or pool, key=lambda item: (() if passed else (
+            # Unscored principles still need confirmation priority before final qualification.
+            eligible = passed or pool
+            return min(eligible, key=lambda item: (() if passed else (
                 item[1]["gate_distance"]["unmet_gate_count"], item[1]["gate_distance"]["missing_evidence_count"],
-                item[1]["gate_distance"]["normalized_excess"])) + tuple(metric(item)) + tuple(item[1]["ranking_key"])) if pool else None
+                item[1]["gate_distance"]["normalized_excess"])) + tuple(metric(item)) + tuple(item[1]["ranking_key"])) if eligible else None
         def risk(item):
             checks = [check for check in item[1]["gate_checks"] if check.get("required")
                       and check["gate"] in {"combination_spurs", "combination_foldx"}]
@@ -515,11 +592,25 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
             ("cross_region_coverage", choose([item for item in rows if item[1]["ownership"] == "CROSS_REGION"], lambda item: (
                 -sum(scenario.get("additional_panel_area_a2", 0) for scenario in item[1]["regional_geometry_support"].get("scenarios", {}).values()),)),
                 "跨区组合优先补充当前合格主面板尚未覆盖的表面邻域；不增加主面板构建数量。")]
+        if mechanism_policy:
+            choices = [item for item in choices if item[0] != "epitope_support"]
+            choices.insert(0, ("sector_coverage", coverage_choice, "保留原覆盖优先方案作为面积对照；几何邻域不等于实际抗体受影响面积。"))
+            for principle, axes in (("charge_extreme", ("charge_delta",)),
+                                    ("volume_extreme", ("volume_delta_a3",)),
+                                    ("hydropathy_extreme", ("hydropathy_delta", "aromatic_delta")),
+                                    ("hbond_extreme", ("donor_delta", "acceptor_delta"))):
+                for axis in axes:
+                    known = [item for item in exclusive if item[0].impact_evidence.get("policy") == POLICY
+                             and _finite(item[0].impact_evidence.get("axes", {}).get(axis))]
+                    choices.append((principle, choose(known, lambda item, axis=axis: (
+                        -item[0].impact_evidence["axes"][axis],)), f"保留{axis}变化较大的机制备选；不能据此推断结合自由能变化。"))
         missing = []
         by_id = {primary_row["candidate_id"]: primary_row} if primary else {}
         for principle, choice, reason in choices:
-            if choice is None:
-                missing.append({"principle": principle, "reason": "没有符合此原则的安全候选。"})
+            if choice is None or (not choice[0].formal_eligible and not confirmation_planning):
+                missing.append({"principle": principle, "reason": "NO_QUALIFIED_PRINCIPLE_CANDIDATE",
+                    "candidate_id": choice[0].candidate_id if choice else None,
+                    "gate_details": deepcopy(choice[1]["gate_details"]) if choice else []})
                 continue
             row = choice[1]
             if row["candidate_id"] in by_id:
@@ -529,7 +620,8 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 row["recommendation_reasons"] = []
                 alternatives.append(row)
                 by_id[row["candidate_id"]] = row
-            row["principles"].append(principle)
+            if principle not in row["principles"]:
+                row["principles"].append(principle)
             row["recommendation_reasons"].append(reason)
         primary_row["alternatives"] = alternatives
         def comparison_metrics(candidate, row):
@@ -555,7 +647,19 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                                 ("mean_epitope_prior", "mean_epitope_prior_difference")]:
                 comparison[field] = metrics[name] - baseline[name] if _finite(metrics[name]) and _finite(baseline.get(name)) else None
             alternative["primary_comparison"] = comparison
-        primary_row["unavailable_principles"] = missing
+        for recommendation in [primary_row, *alternatives]:
+            if recommendation.get("candidate_id") is None:
+                continue
+            explanation = recommendation.get("recommendation_risk_explanation")
+            if explanation and explanation not in recommendation.setdefault("recommendation_reasons", []):
+                recommendation["recommendation_reasons"].append(explanation)
+        primary_row["formal_candidate_count"] = sum(c.formal_eligible for c, row in exclusive)
+        primary_row["confirmed_alternative_count"] = sum(row.get("status") == "PASSED" for row in alternatives)
+        primary_row["all_formal_local_candidates"] = [deepcopy(row) for c, row in exclusive if c.formal_eligible]
+        available = {principle for row in [primary_row, *alternatives] if row.get("formal_eligible")
+                     for principle in row["principles"]}
+        primary_row["unavailable_principles"] = list({row["principle"]: row for row in missing
+                                                    if row["principle"] not in available}.values())
         primary_row["sector_summary"] = {"residue_count": len(membership),
             "surface_area_a2": sum(surface_areas.get(position, 0) for position in membership),
             "mutable_site_count": len({option.residue.uniprot_pos for candidate in safe for option in candidate.mutations if option.residue.uniprot_pos in membership}),

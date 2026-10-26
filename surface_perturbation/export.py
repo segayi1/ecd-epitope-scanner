@@ -33,6 +33,8 @@ def evidence_archive(output, pairs, calibration_dir):
         portable[candidate]=[]
         for index,row in enumerate(rows):
             item=dict(row)
+            pair_root = (f"executions/{row['buildmodel_request_sha256']}" if row.get('buildmodel_request_sha256')
+                         else f'models/{candidate}/{index:03d}')
             item['source_execution_identity']={key:row.get(key) for key in ('batch_path','group','run')}
             if row.get('ddg_kcal_mol') is not None and not item.get('ddg_file_path'):
                 # Older lawful pairs retained the DDG value and batch directory,
@@ -44,19 +46,24 @@ def evidence_archive(output, pairs, calibration_dir):
                 if len(matching)!=1:raise ValueError('portable pair requires one matching original DDG table')
                 item['ddg_file_path']=str(matching[0]);item['ddg_file_sha256']=sha256_file(matching[0])
             for key in ('wt_path','mut_path','pdb_list_path'):
-                path=Path(row[key]); name=f'models/{candidate}/{index:03d}/{path.name}'
+                path=Path(row[key]); name=f'{pair_root}/{path.name}'
                 files[name]=path;item[key]=name
             if item.get('ddg_file_path'):
-                path=Path(item['ddg_file_path']);name=f'models/{candidate}/{index:03d}/{path.name}'
+                path=Path(item['ddg_file_path']);name=f'{pair_root}/{path.name}'
                 files[name]=path;item['ddg_file_path']=name
             # A portable pair must retain the exact input and group mutation
             # records, rather than hashes pointing at an absent batch folder.
             batch=Path(row['batch_path']) if row.get('batch_path') else None
-            for filename,key in (('input.pdb','input_path'),('individual_list.txt','mutant_file_path')):
+            for filename,key in (('input.pdb','input_path'),('individual_list.txt','mutant_file_path'),
+                                 ('buildmodel_request.json','buildmodel_request_path')):
                 if batch is not None and (batch/filename).is_file():
-                    name=f'models/{candidate}/{index:03d}/{filename}'
+                    name=f'{pair_root}/{filename}'
                     files[name]=batch/filename;item[key]=name
-            item['batch_path']=f'models/{candidate}/{index:03d}'
+            if row.get('buildmodel_request_sha256'):
+                for filename in ('rotabase.txt','Raw_input.fxout','Average_input.fxout',
+                                 'engine_execution.json','engine_stdout.txt','engine_stderr.txt','sampling_execution.json'):
+                    if (batch/filename).is_file():files[f'{pair_root}/{filename}']=batch/filename
+            item['batch_path']=pair_root
             portable[candidate].append(item)
     manifest={name:sha256_file(path) for name,path in files.items()}
     portable_bytes=json.dumps(portable,sort_keys=True).encode('utf-8')

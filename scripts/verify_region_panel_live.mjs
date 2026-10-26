@@ -33,13 +33,13 @@ try {
     assert.equal(await page.locator(".recommendation-region").count(), recommendations.length);
     const summary = await page.locator("#design-list").innerText();
     assert(!/VS\d{3}|geodesic_\d+|V41_[a-f\d]{12,}|COMBINATION_[A-Z_]+/.test(summary), "Internal code in default panel");
-    assert(summary.includes("本区估计覆盖") || !recommendations.some((item) => item.candidate_id));
+    assert(summary.includes("本区估计覆盖") || summary.includes("12 Å局部覆盖") || !recommendations.some((item) => item.candidate_id));
     assert.equal(await page.locator("#design-list .design-series").count(), 1, "Duplicate legacy patch panels");
     for (const item of recommendations) {
       const card = page.locator(`[data-recommendation-sector="${item.sector_id}"][data-recommendation-role="primary"]`);
       assert.equal(await card.count(), 1);
       const heading = await card.locator("h4").first().innerText();
-      assert(heading.includes("专属首选"));
+      assert(heading.includes("专属首选") || heading.includes("本区强扰动工程代表"));
       for (const mutation of item.mutation_notations || []) assert((await card.innerText()).includes(mutation));
       if (item.candidate_id) {
         const details = card.locator("details.recommendation-details");

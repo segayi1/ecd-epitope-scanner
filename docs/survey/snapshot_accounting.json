@@ -1,0 +1,248 @@
+{
+ "generated_from": [
+  "docs/survey/lit_resnapshot_20261016.xml",
+  "docs/survey/lit_resnapshot_gap_20261016.xml"
+ ],
+ "compared_against": "docs/extension_directions.md",
+ "snapshot_A": {
+  "path": "docs/survey/lit_resnapshot_20261016.xml",
+  "request": "esummary.fcgi?db=pubmed&retmode=xml&id=<19 PMIDs>",
+  "returned_docsum_count": 19,
+  "pmids": [
+   "42620036",
+   "42412842",
+   "27216816",
+   "38197311",
+   "38844044",
+   "32761082",
+   "39455825",
+   "39872490",
+   "31243847",
+   "38227011",
+   "36611255",
+   "42252708",
+   "42719814",
+   "25048123",
+   "38177393",
+   "42824475",
+   "19055730",
+   "21846404",
+   "1537828"
+  ],
+  "entries": {
+   "42620036": {
+    "title": "A Structural Antibody Benchmark of AlphaFold3 reveals Hallucinated Epitopes and a Bias for Orderness.",
+    "pubdate": "2026 Jul 31",
+    "journal": "bioRxiv : the preprint server for biology",
+    "doi": "10.64898/2026.07.30.741792",
+    "pubtype": []
+   },
+   "42412842": {
+    "title": "PU-GRAIL: residue-level graph learning for identifying protective bacterial antigens under positive-unlabeled supervision.",
+    "pubdate": "2026 Jul 1",
+    "journal": "Bioinformatics (Oxford, England)",
+    "doi": "10.1093/bioinformatics/btag263",
+    "pubtype": []
+   },
+   "27216816": {
+    "title": "mCSM-AB: a web server for predicting antibody-antigen affinity changes upon mutation with graph-based signatures.",
+    "pubdate": "2016 Jul 8",
+    "journal": "Nucleic acids research",
+    "doi": "10.1093/nar/gkw458",
+    "pubtype": []
+   },
+   "38197311": {
+    "title": "Quantification of biases in predictions of protein-protein binding affinity changes upon mutations.",
+    "pubdate": "2023 Nov 22",
+    "journal": "Briefings in bioinformatics",
+    "doi": "10.1093/bib/bbad491",
+    "pubtype": []
+   },
+   "38844044": {
+    "title": "Robust Prediction of Relative Binding Energies for Protein-Protein Complex Mutations Using Free Energy Perturbation Calculations.",
+    "pubdate": "2024 Aug 15",
+    "journal": "Journal of molecular biology",
+    "doi": "10.1016/j.jmb.2024.168640",
+    "pubtype": []
+   },
+   "32761082": {
+    "title": "UEP: an open-source and fast classifier for predicting the impact of mutations in protein-protein complexes.",
+    "pubdate": "2021 Apr 20",
+    "journal": "Bioinformatics (Oxford, England)",
+    "doi": "10.1093/bioinformatics/btaa708",
+    "pubtype": []
+   },
+   "39455825": {
+    "title": "Improving the prediction of protein stability changes upon mutations by geometric learning and a pre-training strategy.",
+    "pubdate": "2024 Nov",
+    "journal": "Nature computational science",
+    "doi": "10.1038/s43588-024-00716-2",
+    "pubtype": []
+   },
+   "39872490": {
+    "title": "Structure-based self-supervised learning enables ultrafast protein stability prediction upon mutation.",
+    "pubdate": "2025 Jan 6",
+    "journal": "Innovation (Cambridge (Mass.))",
+    "doi": "10.1016/j.xinn.2024.100750",
+    "pubtype": []
+   },
+   "31243847": {
+    "title": "Predicting changes in protein stability caused by mutation using sequence-and structure-based methods in a CAGI5 blind challenge.",
+    "pubdate": "2019 Sep",
+    "journal": "Human mutation",
+    "doi": "10.1002/humu.23852",
+    "pubtype": []
+   },
+   "38227011": {
+    "title": "Exploring the effects of missense mutations on protein thermodynamics through structure-based approaches: findings from the CAGI6 challenges.",
+    "pubdate": "2025 Mar",
+    "journal": "Human genetics",
+    "doi": "10.1007/s00439-023-02623-4",
+    "pubtype": []
+   },
+   "36611255": {
+    "title": "Critical review of conformational B-cell epitope prediction methods.",
+    "pubdate": "2023 Jan 19",
+    "journal": "Briefings in bioinformatics",
+    "doi": "10.1093/bib/bbac567",
+    "pubtype": []
+   },
+   "42252708": {
+    "title": "SNAC-DB: An ML-ready database for antibody and NANOBODY® VHH-antigen complexes with expanded structural diversity and real-world benchmarking.",
+    "pubdate": "2026 Jul",
+    "journal": "Protein science : a publication of the Protein Society",
+    "doi": "10.1002/pro.70655",
+    "pubtype": []
+   },
+   "42719814": {
+    "title": "Benchmarking antibody modeling tools across structure prediction, docking, and paratope-epitope interface analysis.",
+    "pubdate": "2026",
+    "journal": "Bioinformatics advances",
+    "doi": "10.1093/bioadv/vbag223",
+    "pubtype": []
+   },
+   "25048123": {
+    "title": "Antigen-Antibody Interaction Database (AgAbDb): a compendium of antigen-antibody interactions.",
+    "pubdate": "2014",
+    "journal": "Methods in molecular biology (Clifton, N.J.)",
+    "doi": "10.1007/978-1-4939-1115-8_8",
+    "pubtype": []
+   },
+   "38177393": {
+    "title": "Unconstrained generation of synthetic antibody-antigen structures to guide machine learning methodology for antibody specificity prediction.",
+    "pubdate": "2022 Dec",
+    "journal": "Nature computational science",
+    "doi": "10.1038/s43588-022-00372-4",
+    "pubtype": []
+   },
+   "42824475": {
+    "title": "Computational identification of B- and T-cell epitopes: a unified task taxonomy and review of databases, datasets, predictive pipelines, and gaps.",
+    "pubdate": "2026",
+    "journal": "Frontiers in immunology",
+    "doi": "10.3389/fimmu.2026.1873135",
+    "pubtype": []
+   },
+   "19055730": {
+    "title": "ElliPro: a new structure-based tool for the prediction of antibody epitopes.",
+    "pubdate": "2008 Dec 2",
+    "journal": "BMC bioinformatics",
+    "doi": "10.1186/1471-2105-9-514",
+    "pubtype": []
+   },
+   "21846404": {
+    "title": "Prediction of conformational B-cell epitopes from 3D structures by random forests with a distance-based feature.",
+    "pubdate": "2011 Aug 17",
+    "journal": "BMC bioinformatics",
+    "doi": "10.1186/1471-2105-12-341",
+    "pubtype": []
+   },
+   "1537828": {
+    "title": "A new RNA helicase isolated from HeLa cells that catalytically translocates in the 3' to 5' direction.",
+    "pubdate": "1992 Mar 5",
+    "journal": "The Journal of biological chemistry",
+    "doi": null,
+    "pubtype": []
+   }
+  }
+ },
+ "snapshot_B": {
+  "path": "docs/survey/lit_resnapshot_gap_20261016.xml",
+  "request": "esummary.fcgi?db=pubmed&retmode=xml&id=31675414,38496213,39915771,42241701",
+  "returned_docsum_count": 4,
+  "pmids": [
+   "31675414",
+   "38496213",
+   "39915771",
+   "42241701"
+  ],
+  "entries": {
+   "31675414": {
+    "title": "Sharing interoperable workflow provenance: A review of best practices and their practical application in CWLProv.",
+    "pubdate": "2019 Nov 1",
+    "journal": "GigaScience",
+    "doi": "10.1093/gigascience/giz095",
+    "pubtype": []
+   },
+   "38496213": {
+    "title": "Julearn: an easy-to-use library for leakage-free evaluation and inspection of ML models.",
+    "pubdate": "2024",
+    "journal": "GigaByte (Hong Kong, China)",
+    "doi": "10.46471/gigabyte.113",
+    "pubtype": []
+   },
+   "39915771": {
+    "title": "Same data, different analysts: variation in effect sizes due to analytical decisions in ecology and evolutionary biology.",
+    "pubdate": "2025 Feb 6",
+    "journal": "BMC biology",
+    "doi": "10.1186/s12915-024-02101-x",
+    "pubtype": []
+   },
+   "42241701": {
+    "title": "Detecting Uncoded Self-Harm in Veterans' Electronic Health Records Using Positive and Unlabeled Learning: Retrospective Cohort Study.",
+    "pubdate": "2026 Jun 4",
+    "journal": "Journal of medical Internet research",
+    "doi": "10.2196/89071",
+    "pubtype": []
+   }
+  }
+ },
+ "snapshot_overlap": [],
+ "doc_cited_pmids": [
+  "19055730",
+  "25048123",
+  "27216816",
+  "31243847",
+  "31675414",
+  "32761082",
+  "36611255",
+  "38177393",
+  "38197311",
+  "38227011",
+  "38496213",
+  "38844044",
+  "39455825",
+  "39872490",
+  "39915771",
+  "42241701",
+  "42252708",
+  "42412842",
+  "42620036",
+  "42719814",
+  "42824475"
+ ],
+ "doc_cited_count": 21,
+ "delta_vs_snapshot_A_only": {
+  "covered": 17,
+  "missing": [
+   "31675414",
+   "38496213",
+   "39915771",
+   "42241701"
+  ]
+ },
+ "delta_vs_union": {
+  "covered": 21,
+  "missing": []
+ },
+ "note": "23 = snapshot_A 19 + snapshot_B 4; the two files are disjoint. Any statement of 23/21 must be read as union-based."
+}

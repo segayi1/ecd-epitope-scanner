@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>CTLA-4 六个双点突变体结构</title>
+<link rel="stylesheet" href="/assets/workbench.css">
 <style>
 :root{color-scheme:light;--ink:#23313d;--muted:#6c7882;--line:#dce3e8;--paper:#f3f6f7;--card:#fff;--accent:#d96a42;--blue:#547d99;--warn:#8a5a16;--green:#2e6b55}
 *{box-sizing:border-box}
@@ -45,19 +46,39 @@ select,.tool{font:inherit;border:1px solid var(--line);border-radius:8px;backgro
 #error{display:none;padding:10px;color:#8f2828;background:#fff0ef;border:1px solid #f2c9c5;border-radius:8px;margin:10px}
 @media(max-width:1100px){main{grid-template-columns:230px minmax(380px,1fr)}main>aside:last-child{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:0 18px}.detail-title{grid-column:1/-1}}
 @media(max-width:720px){header{align-items:flex-start;flex-direction:column}main{display:flex;flex-direction:column;padding:9px}.candidate-list{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace{order:2}.workspace #viewer{min-height:58vh}.workspace{grid-template-rows:auto minmax(58vh,1fr) auto}main>aside:first-child{order:1}main>aside:last-child{order:3;display:block}}
+:root{--ink:#172b35;--muted:#657780;--line:#dce5e8;--paper:#f3f6f7;--card:#fff;--accent:#127c80;--blue:#0b5c60}
+body{background:var(--paper);color:var(--ink)}
+.site-header{padding:12px 22px}
+.site-brand{white-space:nowrap}
+.site-page-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px 0}
+.site-page-intro h1{margin:0;font-size:clamp(20px,2vw,26px)}
+.page-title-copy{min-width:0}
+.page-title-copy p{margin:3px 0 0;color:var(--muted);font-size:12px}
+.page-meta-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.page-meta-actions>a{color:var(--teal-dark,#0b5c60);text-decoration:none;font-size:12px}
+main{grid-template-columns:minmax(190px,.62fr) minmax(0,2fr) minmax(235px,.78fr);gap:12px;padding:12px 18px;min-height:0;height:calc(100vh - 150px)}
+main>aside{max-height:100%;overflow:auto;padding:12px}
+.workspace{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(410px,1fr) auto;min-height:0}
+#viewer{min-height:0;background:#f6f9fa}
+.card{border-radius:11px;box-shadow:0 2px 8px #172b3508}
+.candidate.active{border-color:var(--teal);box-shadow:0 0 0 2px #127c801c;background:#f2f9f8}
+.tool[aria-pressed="true"]{background:#e8f4f3;border-color:#77aead;color:var(--teal-dark,#0b5c60)}
+@media(max-width:1100px){main{height:auto}.workspace{grid-template-rows:auto minmax(410px,65vh) auto}main>aside:first-child,main>aside:last-child{max-height:none}}
+@media(max-width:720px){.site-header{align-items:flex-start;flex-direction:column;padding:12px 16px}.site-page-intro{align-items:flex-start;flex-direction:column;padding:12px 16px 0}main{height:auto}.workspace{grid-template-rows:auto minmax(52vh,1fr) auto}.workspace #viewer{min-height:340px}.viewer-hint{min-width:0;overflow-wrap:anywhere}}
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>CTLA-4 六个双点突变体</h1>
-    <p>P16410 · 1AH1 链 A · 五个固定生产槽位 · 可切换配对 WT / Mut 结构</p>
-  </div>
-  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <span class="badge" id="identity-badge">结构身份核验中</span>
-    <a href="/assets/data/ctla4_six_mutants/CTLA4_field_fusion_completion_20261007.md">研究报告</a>
-  </div>
+<header class="site-header">
+  <a class="site-brand" href="/" aria-label="ECD Epitope Workbench 首页"><span class="site-mark" aria-hidden="true">E</span><span>ECD Epitope Workbench</span></a>
+  <nav class="site-links" aria-label="主导航">
+    <a href="/">结构设计</a><a href="/experiments">实验项目</a>
+    <details class="site-nav-menu"><summary>结构图册</summary><div><a href="/assets/surface_partitions.html">分区表面</a><a href="/assets/ctla4_six_mutants.html" aria-current="page">CTLA-4 结构</a><a href="/pd1-antibodies">PD-1 抗体</a></div></details>
+  </nav>
 </header>
+<section class="site-page-intro site-heading">
+  <div class="page-title-copy"><p class="site-kicker">结构图册 · 研究结构展示</p><h1>CTLA-4 六个双点突变体</h1><p>P16410 · 1AH1 链 A · 五个固定生产槽位 · 可切换配对 WT / Mut 结构</p></div>
+  <div class="page-meta-actions"><span class="badge" id="identity-badge">结构身份核验中</span><a href="/assets/data/ctla4_six_mutants/CTLA4_field_fusion_completion_20261007.md">研究报告</a></div>
+</section>
 <main>
   <aside class="card">
     <h2>构建体</h2>

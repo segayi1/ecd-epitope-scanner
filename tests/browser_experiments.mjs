@@ -21,6 +21,19 @@ const check = (condition, label) => {
   if (!condition) failures.push(label);
 };
 const pageErrors = [];
+async function expandOperations(target) {
+  await target.waitForSelector(".operation-details", {state: "attached"});
+  await target.locator(".operation-details:not([open]) > summary").evaluateAll(summaries => {
+    summaries.forEach(summary => summary.click());
+  });
+}
+async function guardWrites(target) {
+  await target.route("**/api/**", route => {
+    if (["GET", "HEAD"].includes(route.request().method()) || /\/(?:plot-data|antigen-constructs\/preview)$/.test(new URL(route.request().url()).pathname)) return route.fallback();
+    throw new Error(`Unmocked write in browser verification: ${route.request().method()} ${route.request().url()}`);
+  });
+}
+await guardWrites(page);
 page.on("pageerror", error => pageErrors.push(error.message));
 page.on("console", message => {
   if (message.type() === "error") pageErrors.push(message.text());
@@ -87,13 +100,14 @@ try {
   await page.waitForSelector("#project-list article button", {timeout: 15000});
   const projectButton = page.locator("#project-list article button").filter({hasText: project.project_id}).first();
   await projectButton.click();
+  await expandOperations(page);
   await page.waitForFunction(() => {
     const detail = document.querySelector("#project-content");
     return detail?.textContent.includes("GRASP IR 导出");
   }, {timeout: 15000});
 
   check(await page.locator("#project-detail").isVisible(), "project detail panel is visible");
-  check(await page.locator("#project-content").getByText("GRASP IR 导出").isVisible(), "GRASP export panel is rendered");
+  check(await page.locator("#project-content").getByRole("heading", {name: "GRASP IR 导出", exact: true}).isVisible(), "GRASP export panel is rendered");
   check(await page.locator("#structure-effects").getByText("残基可靠性", {exact: true}).count() === 1,
     "residue reliability summary is rendered separately");
   check(await page.locator("#structure-effects").getByText("SASA 方法比较", {exact: true}).count() === 1,
@@ -123,6 +137,7 @@ try {
     "SASA layer distinguishes context-sensitive residues from algorithm disagreement");
 
   const freezePage = await browser.newPage({viewport: {width: 1280, height: 900}});
+  await guardWrites(freezePage);
   let freezeRequestRevision = null;
   let mockedEvidenceFrozen = false;
   let freezeContextRequests = 0;
@@ -151,6 +166,7 @@ try {
   });
   await freezePage.goto(`${server}/experiments`, {waitUntil: "domcontentloaded"});
   await freezePage.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
+  await expandOperations(freezePage);
   const freezeEvidenceButton = freezePage.getByRole("button", {name: "冻结来源的结构可靠性/SASA证据"});
   try {
     await freezeEvidenceButton.waitFor({state: "visible", timeout: 15000});
@@ -202,7 +218,7 @@ try {
   await supportCheckbox.uncheck();
   const projectStatus = await page.locator("#project-content").innerText();
   check(projectStatus.includes("COMPLETE"), "project integrity status is visible");
-  check(await page.getByText("历史 Myc 汇总（summary-only）").count() === 1,
+  check(await page.getByRole("heading", {name: "历史 Myc 汇总（summary-only）", exact: true}).count() === 1,
     "historical Myc summary-only panel is rendered");
   check(await page.getByRole("heading", {name: "事件分布图（抽样显示）"}).count() === 1,
     "display-only event plot panel is rendered");
@@ -470,6 +486,7 @@ try {
   await page.waitForSelector("#project-list article button", {timeout: 15000});
   await page.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
   await page.waitForFunction(() => document.querySelector("#project-content")?.textContent.includes("GRASP IR 导出"), {timeout: 15000});
+  await expandOperations(page);
   const windowForm = page.locator("#project-content form").filter({
     has: page.getByRole("button", {name: "排除所选窗口并重新分析"}),
   });
@@ -481,6 +498,7 @@ try {
   await windowForm.locator('input[name="reason"]').fill("browser time-window review");
   await windowForm.getByRole("button", {name: "排除所选窗口并重新分析"}).click();
   await page.waitForFunction(() => document.querySelector("#project-content")?.textContent.includes("本分析继承已审核时间窗排除"), {timeout: 15000});
+  await expandOperations(page);
   check(submittedWindowExclusion?.source_gate_analysis_id === testGateAnalysisId
     && submittedWindowExclusion?.exclusion_reviewer === "browser reviewer"
     && submittedWindowExclusion?.exclusion_reason === "browser time-window review"
@@ -539,6 +557,7 @@ try {
   await page.waitForSelector("#project-list article button", {timeout: 15000});
   await page.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
   await page.waitForFunction(() => document.querySelector("#project-content")?.textContent.includes("双侧交互：百分点差中之差"), {timeout: 15000});
+  await expandOperations(page);
   check((await page.locator("#project-content").innerText()).includes("10.00 pp")
     && (await page.locator("#project-content").innerText()).includes("不足 3 个独立批次")
     && await page.locator('table[aria-label="逐探针独立批次效应热图"]').count() === 0,
@@ -563,6 +582,7 @@ try {
   await page.waitForSelector("#project-list article button", {timeout: 15000});
   await page.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
   await page.waitForFunction(() => document.querySelector("#project-content")?.textContent.includes("亲本与变体 Fab：各自 NC 校正的 WT 阳性率窗口"), {timeout: 15000});
+  await expandOperations(page);
   const antibodyEffectTable = page.locator('table[aria-label="亲本与变体抗体各自 NC 校正的 WT 窗口"]');
   const antibodySummaryTable = page.locator('table[aria-label="跨批次抗体变体效应汇总"]');
   check(await antibodyEffectTable.count() === 1 && await antibodyEffectTable.locator("tr").count() === 2
@@ -599,6 +619,7 @@ try {
   const mismatchPreviewId = "browser-fixture-mismatch-preview";
   const mismatchImportId = "browser-fixture-mismatch-import";
   const mismatchPage = await browser.newPage({viewport: {width: 1280, height: 900}});
+  await guardWrites(mismatchPage);
   await mismatchPage.route(`**/api/v4/experiment-projects/${project.project_id}`, async route => {
     const response = await route.fetch();
     const body = await response.json();
@@ -625,6 +646,7 @@ try {
   }}));
   await mismatchPage.goto(`${server}/experiments`, {waitUntil: "domcontentloaded"});
   await mismatchPage.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
+  await expandOperations(mismatchPage);
   await mismatchPage.waitForFunction(() => document.querySelector("#project-content")?.textContent
     .includes("与 FlowJo 保存的百分比不同属于方法差异提示"), {timeout: 15000});
   check((await mismatchPage.locator("#project-content").innerText())
@@ -658,6 +680,7 @@ try {
   await page.waitForSelector("#project-list article button", {timeout: 15000});
   await page.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
   await page.waitForFunction(() => document.querySelector("#project-content")?.textContent.includes("EllipsoidGate"), {timeout: 15000});
+  await expandOperations(page);
   const rebuildGateForm = page.locator("#project-content form").filter({
     has: page.getByRole("button", {name: "保存修订并对已匹配 FCS 执行"}),
   });
@@ -674,6 +697,7 @@ try {
     "manual WSP rebuild requires a complete internal gate tree");
 
   const mappingPage = await browser.newPage({viewport: {width: 1440, height: 1000}});
+  await guardWrites(mappingPage);
   let temporaryMatchPayload = null;
   let resolveTemporaryMatch;
   const temporaryMatchRequest = new Promise(resolve => { resolveTemporaryMatch = resolve; });
@@ -694,6 +718,7 @@ try {
   await mappingPage.locator("#project-list article button").filter({hasText: project.project_id}).first().click();
   await mappingPage.waitForFunction(() => document.querySelector("#project-content")?.textContent
     .includes("FCS 导入与样本匹配"), {timeout: 15000});
+  await expandOperations(mappingPage);
   await mappingPage.locator('#project-content input[name="files"]').setInputFiles({
     name: "E1.fcs", mimeType: "application/octet-stream", buffer: Buffer.from("browser fixture"),
   });
@@ -715,6 +740,7 @@ try {
     && temporaryMatchPayload.matches[0].temporary_identity?.panel_label === "L32",
   "sample matching preserves explicit temporary labels without inventing construct sequences");
   await temporarySection.waitFor({state: "detached", timeout: 10000});
+  await expandOperations(mappingPage);
   await mappingPage.waitForFunction(() => {
     const root = document.querySelector("#project-content");
     const fileInput = root?.querySelector('input[name="files"]');

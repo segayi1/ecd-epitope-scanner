@@ -4,65 +4,119 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>实验项目 · ECD Epitope Workbench</title>
+  <link rel="stylesheet" href="/assets/workbench.css">
   <style>
-    body { font: 16px/1.5 system-ui, sans-serif; color: #172b39; background: #f5f8fa; max-width: 1040px; margin: auto; padding: 24px; }
-    a { color: #075f8d; } header { display: flex; align-items: center; justify-content: space-between; }
-    main { display: grid; gap: 18px; } section, article { background: white; padding: 20px; border: 1px solid #d8e2e8; border-radius: 10px; }
-    form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; } label { display: grid; gap: 5px; flex: 1 1 250px; }
-    input, select, button { font: inherit; padding: 9px; border-radius: 5px; border: 1px solid #a9bbc5; }
-    input[type="checkbox"] { width: 18px; height: 18px; padding: 0; }
-    fieldset { min-width: 0; margin: 8px 0; border: 1px solid #c6d4dc; border-radius: 6px; }
-    legend { padding: 0 6px; font-weight: 600; }
-    button { background: #075f8d; color: white; cursor: pointer; } button:disabled { opacity: .55; cursor: wait; }
-    .muted { color: #5d707c; font-size: .9em; } .error { color: #a22626; } .hash { font: 12px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
-    dt { font-weight: 600; } dd { margin: 0 0 10px; } ul { padding-left: 20px; }
-    table { border-collapse: collapse; width: 100%; } th, td { text-align: left; border-bottom: 1px solid #d8e2e8; padding: 8px; }
-    .flowjo-percentage-qc-form { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr); gap: 4px; min-width: 230px; }
-    .flowjo-percentage-qc-form input { min-width: 0; width: auto; padding: 5px; font-size: 12px; }
-    .flowjo-percentage-qc-form select, .flowjo-percentage-qc-form button { padding: 5px; font-size: 12px; }
-    .flowjo-percentage-qc-reviewer-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 8px 0; }
-    .flowjo-percentage-qc-reviewer-tools label { flex: 1 1 260px; }
-    .flowjo-qc-worksheet-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 12px; }
+    .experiments-page { margin: 0; font-size: 14px; line-height: 1.55; --exp-line: var(--line, #dce5e8); --exp-surface: var(--surface, #fff); }
+    .experiments-shell { width: min(100% - 40px, 1440px); margin: 0 auto; padding: 26px 0 48px; }
+    .experiments-heading { margin: 0 0 20px; }
+    .experiments-heading h1 { margin: 3px 0 6px; font-size: clamp(1.5rem, 2vw, 2rem); letter-spacing: -.025em; }
+    .experiments-heading p { max-width: 760px; margin: 0; color: var(--muted, #657780); font-size: .95rem; line-height: 1.5; font-weight: 400; letter-spacing: normal; }
+    .project-create, .project-browser, #project-detail { min-width: 0; margin: 16px 0; padding: 18px 20px; border: 1px solid var(--exp-line); border-radius: 12px; background: var(--exp-surface); box-shadow: 0 2px 8px #172b3508; }
+    .project-create summary, .operation-details summary, .flowjo-percentage-replicate-details summary { cursor: pointer; color: var(--ink, #172b35); font-weight: 650; }
+    .project-create summary { font-size: 1.02rem; }
+    .project-create form { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(220px, 1.2fr) auto; align-items: end; gap: 12px; margin-top: 16px; }
+    .experiments-page form label { min-width: 0; }
+    .experiments-page form { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+    .experiments-page form label { display: grid; gap: 5px; flex: 1 1 200px; }
+    .experiments-page :is(input, select, textarea, button) { padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; color: var(--ink); }
+    .experiments-page input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--teal); }
+    .experiments-page fieldset { min-width: 0; border: 1px solid var(--exp-line); border-radius: 8px; margin: 8px 0; }
+    .experiments-page legend { padding: 0 6px; font-weight: 600; }
+    .experiments-page form button { background: var(--teal-dark); color: #fff; border-color: var(--teal-dark); }
+    .experiments-page .project-create form { display: grid; }
+    .flowjo-percentage-qc-form { display: grid !important; grid-template-columns: repeat(2, minmax(90px, 1fr)); gap: 4px !important; min-width: 230px; }
+    .flowjo-percentage-qc-form :is(input, select, button) { font-size: 12px; padding: 5px; }
+    .flowjo-percentage-qc-reviewer-tools, .flowjo-qc-worksheet-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 10px 0; }
+    .flowjo-percentage-qc-reviewer-tools label { display: grid; gap: 5px; flex: 1 1 260px; }
     .flowjo-qc-worksheet-tools input[type="file"] { max-width: min(100%, 360px); }
     .flowjo-qc-worksheet-tools .muted { flex-basis: 100%; }
+    .experiments-page input, .experiments-page select, .experiments-page textarea, .experiments-page button { max-width: 100%; }
+    .experiments-page input:not([type=checkbox]):not([type=radio]), .experiments-page select, .experiments-page textarea { width: 100%; min-width: 0; }
+    .experiments-page button { cursor: pointer; }
+    .experiments-page button:disabled { cursor: wait; opacity: .6; }
+    .experiments-page .muted { color: var(--muted); font-size: 12px; }
+    .experiments-page .error { color: #a32e2e; }
+    .experiments-page .hash { font: 12px/1.5 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+    .project-browser h2, #project-detail > h2 { margin: 0 0 12px; font-size: 1.12rem; }
+    #project-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 10px; }
+    #project-list article { min-width: 0; margin: 0; padding: 12px 14px; border: 1px solid var(--exp-line); border-radius: 9px; background: #fbfcfc; }
+    #project-list article[aria-current=true] { border-color: var(--teal, #127c80); box-shadow: inset 3px 0 var(--teal, #127c80); background: #f5fbfa; }
+    #project-list article button { padding: 0; border: 0; background: none; color: var(--ink, #172b35); font-weight: 650; text-align: left; }
+    #project-list article p { margin: 6px 0 0; overflow-wrap: anywhere; }
+    #project-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+    #project-content > p:first-child { margin: 0; color: var(--muted, #657780); }
+    #project-content > dl, #project-content > ul { margin: 0; padding: 12px 16px; border: 1px solid var(--exp-line); border-radius: 9px; background: #fbfcfc; }
+    #project-content > dl { overflow-wrap: anywhere; }
+    .project-provenance { min-width: 0; padding: 12px 16px; border: 1px solid var(--exp-line); border-radius: 9px; background: #fbfcfc; }
+    .project-provenance summary { cursor: pointer; color: var(--ink, #172b35); font-weight: 600; }
+    .project-provenance[open] dl { overflow-wrap: anywhere; }
+    .project-provenance .hash { overflow-wrap: anywhere; }
+    #project-content > section, #project-data { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--exp-line); border-radius: 10px; background: var(--exp-surface); }
+    #project-data { overflow-wrap: anywhere; }
+    #project-data > h3 { margin: 24px 0 10px; padding-top: 14px; border-top: 1px solid var(--exp-line); color: var(--ink, #172b35); font-size: 1.05rem; scroll-margin-top: 92px; }
+    #project-data > h3:first-of-type { margin-top: 4px; border-top: 0; padding-top: 0; }
+    #project-data > h4 { margin: 18px 0 8px; color: var(--ink, #172b35); font-size: .96rem; }
+    .project-section-nav { position: sticky; z-index: 3; top: 0; display: flex; gap: 7px; overflow-x: auto; padding: 8px; border: 1px solid var(--exp-line); border-radius: 9px; background: #fffffff2; }
+    .project-section-nav a { flex: 0 0 auto; padding: 6px 10px; border-radius: 999px; color: var(--muted, #657780); font-size: .88rem; text-decoration: none; }
+    .project-section-nav a:hover, .project-section-nav a:focus-visible { background: #eaf4f3; color: var(--teal-dark, #0b5c60); outline: none; }
+    .operation-details { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--exp-line); border-radius: 8px; background: #fbfcfc; }
+    .operation-details[open] { background: #fff; }
+    .operation-details > form { margin-top: 12px; }
+    #project-content table { display: block; width: 100%; max-width: 100%; overflow: auto; border-collapse: collapse; font-size: 12px; }
+    #project-content :is(th, td) { padding: 8px; border-bottom: 1px solid var(--exp-line); text-align: left; }
     table[aria-label="每批四条件对照窗口"], table[aria-label="跨批次效应汇总"] { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
-    figure { margin: 12px 0; padding: 12px; background: #fbfcfd; border: 1px solid #d8e2e8; border-radius: 8px; }
-    figcaption { margin-bottom: 8px; font-weight: 600; }
-    svg[aria-label="逐孔阳性比例图"] { display: block; width: 100%; min-width: 620px; height: auto; }
-    #project-content section:has(> figure) { overflow-x: auto; }
-    .structure-effect-view { height: 520px; min-height: 360px; position: relative; background: #f4f0e7; border: 1px solid #d8e2e8; border-radius: 8px; overflow: hidden; }
-    .structure-effect-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
-    .structure-evidence-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
-    .structure-evidence-summary article { display: grid; gap: 5px; padding: 12px; margin: 0; }
-    .structure-evidence-summary span { font-weight: 600; }
-    .structure-evidence-summary small { color: #5d707c; overflow-wrap: anywhere; }
+    #project-content th, #project-content td { white-space: nowrap; }
+    #project-data figure { max-width: 100%; overflow-x: auto; }
+    #project-data svg { max-width: 100%; }
+    .structure-effect-view { height: clamp(390px, 63vh, 680px); min-height: 360px; position: relative; overflow: hidden; border: 1px solid var(--exp-line); border-radius: 10px; background: #f7fafb; }
+    .structure-effect-view > div { position: absolute; inset: 0; }
+    .structure-effect-detail { min-height: 2em; }
+    .structure-effect-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+    .structure-evidence-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
+    .structure-evidence-summary article { display: grid; gap: 5px; margin: 0; padding: 12px; border: 1px solid var(--exp-line); border-radius: 8px; }
+    .structure-evidence-summary small { color: var(--muted, #657780); overflow-wrap: anywhere; }
     .antibody-mutation-tracks { display: grid; gap: 10px; overflow: hidden; }
     .antibody-mutation-tracks h4, .antibody-mutation-tracks h5 { margin: 4px 0; }
-    .antibody-mutation-track-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); align-items: center; gap: 12px; }
-    .sequence-track-scroll { overflow-x: auto; padding: 12px 0 20px; }
-    .sequence-track-lane { height: 6px; position: relative; border-radius: 4px; background: #d8e2e8; }
-    .sequence-track-tick { position: absolute; top: 10px; transform: translateX(-50%); color: #5d707c; font: 11px/1 ui-monospace, monospace; }
+    .antibody-mutation-track-row { display: grid; grid-template-columns: minmax(130px, 190px) minmax(0, 1fr); align-items: center; gap: 12px; }
+    .sequence-track-scroll { min-width: 0; overflow-x: auto; padding: 12px 0 20px; }
+    .sequence-track-lane { height: 6px; position: relative; border-radius: 4px; background: var(--exp-line); }
+    .sequence-track-tick { position: absolute; top: 10px; transform: translateX(-50%); color: var(--muted, #657780); font: 11px/1 ui-monospace, monospace; }
     .antibody-track-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; padding: 0; border: 2px solid white; border-radius: 50%; background: #c3443d; box-shadow: 0 0 0 1px #8e2f2b; }
-    .antibody-track-marker:focus-visible { outline: 3px solid #075f8d; outline-offset: 2px; }
-    @media (max-width: 700px) { .antibody-mutation-track-row { grid-template-columns: 1fr; gap: 4px; } }
-    .structure-effect-detail { min-height: 2em; }
+    .antibody-track-marker:focus-visible { outline: 3px solid var(--teal, #127c80); outline-offset: 2px; }
+    @media (max-width: 760px) {
+      .experiments-shell { width: min(100% - 24px, 1440px); padding-top: 18px; }
+      .project-create form { grid-template-columns: 1fr; }
+      .antibody-mutation-track-row { grid-template-columns: 1fr; gap: 4px; }
+      .structure-effect-view { height: 56vh; min-height: 340px; }
+      #project-detail, .project-browser, .project-create { padding: 14px; }
+    }
   </style>
 </head>
-<body>
-  <header><h1>实验项目</h1><a href="/">返回结构设计</a></header>
-  <main>
-    <section>
-      <h2>从已完成的 v4 作业创建</h2>
-      <p class="muted">创建时复制抗原序列、结构、残基映射、分区和表面图。来源缺文件或哈希不符时会拒绝创建。</p>
-      <form id="create-form">
-        <label>来源作业 ID <input id="source-job" required maxlength="64" autocomplete="off"></label>
-        <label>项目名称 <input id="project-name" required maxlength="120" autocomplete="off"></label>
-        <button id="create-button" type="submit">创建冻结项目</button>
-      </form>
-      <p id="create-message" role="status"></p>
+<body class="experiments-page">
+  <header class="site-header">
+    <a class="site-brand" href="/" aria-label="ECD Epitope Workbench 首页"><span class="site-mark" aria-hidden="true">E</span><span>ECD Epitope Workbench</span></a>
+    <nav class="site-links" aria-label="主导航">
+      <a href="/">结构设计</a>
+      <a href="/experiments" aria-current="page">实验项目</a>
+      <details class="site-nav-menu"><summary>结构图册</summary><div><a href="/assets/surface_partitions.html">分区表面</a><a href="/assets/ctla4_six_mutants.html">CTLA‑4 结构</a><a href="/pd1-antibodies">PD‑1 抗体</a></div></details>
+    </nav>
+  </header>
+  <main class="experiments-shell">
+    <div class="experiments-heading site-heading"><p class="site-kicker">实验记录与质量审查</p><h1>实验项目</h1><p>按项目管理样本、批次、门控、QC 与结果；项目内容会校验冻结来源并保留审计信息。</p></div>
+    <section class="project-create">
+      <details>
+        <summary>创建冻结实验项目</summary>
+        <p class="muted">创建时复制抗原序列、结构、残基映射、分区和表面图。来源缺文件或哈希不符时会拒绝创建。</p>
+        <form id="create-form">
+          <label>来源作业 ID <input id="source-job" required maxlength="64" autocomplete="off"></label>
+          <label>项目名称 <input id="project-name" required maxlength="120" autocomplete="off"></label>
+          <button id="create-button" type="submit">创建冻结项目</button>
+        </form>
+        <p id="create-message" role="status" aria-live="polite"></p>
+      </details>
     </section>
-    <section><h2>已有项目</h2><div id="project-list" aria-live="polite">加载中…</div></section>
-    <section id="project-detail" hidden><h2>项目详情</h2><div id="project-content"></div></section>
+    <section class="project-browser"><h2>项目导航</h2><div id="project-list" aria-live="polite">正在加载项目…</div></section>
+    <section id="project-detail" hidden><h2>项目工作区</h2><div id="project-content"></div></section>
   </main>
   <script src="/assets/vendor/3Dmol-min.js"></script>
   <script src="/assets/experiments.js" defer></script>

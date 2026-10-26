@@ -32,7 +32,7 @@ def test_display_api_is_optional_and_preserves_full_result(monkeypatch, tmp_path
 
 @pytest.mark.parametrize("field,value", [
     ("target_sector_residues", 0), ("target_sector_residues", True),
-    ("target_sector_residues", 9), ("target_sector_residues", 16),
+    ("target_sector_residues", 6), ("target_sector_residues", 16),
     ("maximum_sector_geodesic_diameter_a", float("nan")),
     ("maximum_sector_ca_diameter_a", float("inf")),
     ("maximum_sector_ca_diameter_a", -1),
@@ -42,10 +42,11 @@ def test_display_request_rejects_invalid_settings(field, value):
         PipelineRequest(input_type="uniprot", identifier="Q9NZQ7", **{field: value})
 
 
-def test_json_and_upload_propagate_display_settings(monkeypatch, tmp_path):
+@pytest.mark.parametrize("target", [7, 8, 12])
+def test_json_and_upload_propagate_display_settings(monkeypatch, tmp_path, target):
     monkeypatch.setattr(api, "STORE", JobStore(tmp_path / "jobs"))
     monkeypatch.setattr(api.RUNNER, "submit", lambda job_id: None)
-    values = {"target_sector_residues": 12, "maximum_sector_geodesic_diameter_a": 30,
+    values = {"target_sector_residues": target, "maximum_sector_geodesic_diameter_a": 30,
               "maximum_sector_ca_diameter_a": 22}
     client = TestClient(api.app)
     responses = [client.post("/api/jobs", json={"identifier": "Q9NZQ7", **values}),
@@ -55,7 +56,7 @@ def test_json_and_upload_propagate_display_settings(monkeypatch, tmp_path):
         assert response.status_code == 202, response.text
         request = api.STORE.request_for(response.json()["id"])
         settings = request.metadata["joint_v4_ml"]["sectoring"]
-        assert settings["target_sector_residues"] == 12
+        assert settings["target_sector_residues"] == target
         assert settings["maximum_geodesic_diameter_a"] == 30
         assert settings["maximum_euclidean_diameter_a"] == 22
         assert api.STORE.request_for(response.json()["id"]).as_dict() == request.as_dict()

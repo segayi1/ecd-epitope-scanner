@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -69,6 +70,7 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.db_path = self.root / "jobs.sqlite3"
         self._lock = threading.RLock()
+        self._timing_cache = {}
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -205,6 +207,40 @@ class JobStore:
     def request_for(self, job_id: str, owner_id: str = "local") -> PipelineRequest:
         return PipelineRequest(**self.get(job_id, owner_id)["request"])
 
+    def time_estimate(self, job: dict[str, Any]) -> dict[str, Any] | None:
+        if job["status"] != "RUNNING":
+            return None
+        from .job_timing import read_timing, remaining_time, timing_key
+        key = (job.get("owner_id", "local"), timing_key(job["request"]))
+        cached_at, references = self._timing_cache.get(key, (0., []))
+        if time.monotonic() - cached_at >= 60 or key not in self._timing_cache:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT request_json,workdir,created_at,updated_at FROM jobs WHERE owner_id=? AND status='COMPLETE' ORDER BY created_at DESC LIMIT 80",
+                    (key[0],),
+                ).fetchall()
+            references = []
+            for row in rows:
+                try:
+                    if timing_key(json.loads(row["request_json"])) != key[1]:
+                        continue
+                    reference = read_timing(row["workdir"])
+                    if reference:
+                        if dt.datetime.fromisoformat(row["created_at"]) > reference["started_at"]:
+                            continue  # A published replay may contain its source run's older trace.
+                        finished = dt.datetime.fromisoformat(row["updated_at"])
+                        reference["total_seconds"] = max(reference["elapsed_seconds"],
+                            (finished - reference["started_at"]).total_seconds())
+                        references.append(reference)
+                except (ValueError, TypeError, KeyError):
+                    continue
+            self._timing_cache[key] = (time.monotonic(), references)
+        current = read_timing(job["workdir"])
+        if job.get("message") == "Starting pipeline" or (
+                job["stage"] == "FETCHING" and current and current["stage"] not in {None, "STARTING", "FETCHING"}):
+            current = None  # A resumed worker has not replaced the old execution trace yet.
+        return remaining_time(current, references, dt.datetime.now(dt.UTC))
+
     def cleanup_preview(self, include_test_output: bool = False) -> list[dict[str, Any]]:
         """Return removable successful-run diagnostics without changing data."""
         candidates: list[dict[str, Any]] = []
@@ -257,11 +293,24 @@ class JobRunner:
                 message="Starting pipeline",
                 error=None,
             )
-            # Final artefacts and source data remain; FoldX diagnostics are
-            # reproducible and are discarded only after a successful export.
-            engine_runs = Path(self.store.get(job_id)["workdir"]) / "engine_runs"
+            job = self.store.get(job_id)
+            request.metadata = {**request.metadata, "execution_queue": {
+                "job_id": job_id, "created_at": job["created_at"],
+                "worker_started_at": dt.datetime.now(dt.UTC).isoformat()}}
+            # Keep raw model paths stable; snapshot metadata before a resumed attempt.
+            workdir = Path(job["workdir"]).resolve()
+            engine_runs = workdir / "engine_runs"
             if engine_runs.exists():
-                shutil.rmtree(engine_runs)
+                history = workdir / "prior_attempts" / uuid.uuid4().hex
+                if not engine_runs.resolve().is_relative_to(workdir) or not history.resolve().is_relative_to(workdir):
+                    raise ValueError("Engine-run history must remain within the task directory")
+                history.mkdir(parents=True)
+                sources = [p for p in workdir.iterdir() if p.is_file()]
+                sources += [p for p in engine_runs.rglob("*") if p.is_file() and p.suffix in {".json", ".jsonl", ".log", ".txt"}]
+                for source in sources:
+                    target = history / source.relative_to(workdir)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target)
 
             def progress(stage: str, value: float, message: str) -> None:
                 # Publish terminal state only with the result below.

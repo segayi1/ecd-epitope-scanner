@@ -84,10 +84,10 @@ def test_sector_ui_uses_explicit_design_and_shows_gate_values(tmp_path):
     app = (ROOT / "web/app.js").read_text(encoding="utf-8")
     renderer = (ROOT / "web/recommendations.js").read_text(encoding="utf-8").replace("export function", "function", 1)
     code = renderer + app[app.index("const { sectorRecommendationText,"):app.index("function renderStep4()")]
-    code += app[app.index("function renderStep5()"):app.index("function renderStep6()")]
+    code += app[app.index("function renderRunDiagnostics()"):app.index("function renderStep6()")]
     setup = """
 const assert = require('assert');
-const elements = {'region-list':{previousElementSibling:null}, 'design-list':{}};
+const elements = {'region-list':{previousElementSibling:null}, 'design-list':{previousElementSibling:{textContent:''}}};
 const $ = id => elements[id];
 const h = value => String(value ?? '');
 const t = (key, fallback) => fallback;
@@ -113,6 +113,7 @@ renderStep3();
 assert(elements['region-list'].innerHTML.includes('C2W'));
 assert(!elements['region-list'].innerHTML.includes('A1E'));
 renderStep5();
+assert(elements['design-list'].previousElementSibling.textContent.includes('数量不受全局精简面板预算限制'));
 const output = elements['design-list'].innerHTML;
 assert(output.includes('2.1'));
 assert(!output.includes('geodesic_'));
@@ -120,7 +121,7 @@ assert(output.includes('9 Å') && output.includes('12 Å') && output.includes('1
 assert(output.includes('25 Å²'));
 assert(!output.includes('3 Å²'));
 assert(output.includes('40%'));
-assert(output.includes('几何估计'));
+assert(output.includes('表面邻域距离'));
 assert(output.includes('75%'));
 assert(output.includes('未计算／缺少证据'));
 assert(output.includes('10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24'));
@@ -136,6 +137,18 @@ delete state.result.joint_v4_ml.selected_panel.sector_recommendations;
 renderStep3();
 assert(elements['region-list'].innerHTML.includes('A1W'));
 assert(!elements['region-list'].innerHTML.includes('A1E'));
+state.result.joint_v4_ml.selected_panel.sector_recommendations=[];
+state.result.designs[0].status='RECOMMENDED_LOW_PREDICTED_RISK';
+state.result.designs[0].foldx_diagnostics={recommendation_risk_label:'REPEAT_EVIDENCE_INCOMPLETE',
+  stability_repeat_diagnostic:{recommendation_risk_label:'REPEAT_EVIDENCE_INCOMPLETE',sampling_decision_diagnostic_status:'INCOMPLETE',
+    sampling_decision_sensitive:null,foldx_repeat_count:4,foldx_repeat_slots:[0,1,2,3,4],foldx_repeat_values_kcal_mol:[1,1,1,1],
+    foldx_repeat_slot_values_kcal_mol:[1,1,1,1,null],foldx_repeat_gate_kcal_mol:2,foldx_repeat_min_kcal_mol:1,
+    foldx_repeat_max_kcal_mol:1,foldx_repeat_above_gate_count:0,foldx_repeat_at_or_below_gate_count:4}};
+renderStep5();
+const legacyDesignHtml=elements['design-list'].innerHTML;
+assert(legacyDesignHtml.includes('重复证据不完整'));
+assert(legacyDesignHtml.includes('槽值 0: 1 / 1: 1 / 2: 1 / 3: 1 / 4: 缺失'));
+assert(!legacyDesignHtml.includes('RECOMMENDED_LOW_PREDICTED_RISK'));
 """
     script = tmp_path / "sector_ui.cjs"
     script.write_text(setup + code + checks, encoding="utf-8")
@@ -151,7 +164,7 @@ def test_offline_sector_review_rendering_includes_failed_gate_details(tmp_path):
     code = renderer + template[template.index("function stepDesign()"):template.index("function stepCustom()")]
     setup = "const D=" + json.dumps({"joint_v4_ml": {"selected_panel": {"sector_recommendations": _recommendations()}}}) + ";"
     setup += "D.designs=[]; D.regions=[]; D.residues=[]; D.joint_v4_ml.sectors=D.joint_v4_ml.selected_panel.sector_recommendations; const LANG='en';const designs=[]; const state={}; const esc=value=>String(value??''); const t=key=>key; const chip=()=>'';"
-    checks = "const assert=require('assert');const output=stepDesign();assert(output.includes('2.100'));assert(output.includes('Missing evidence'));assert(output.includes('Unmapped review item'));assert(output.includes('data-review-design=\"D2\"'));assert(output.includes('No safe exclusive combination'));assert(!output.includes('geodesic_'));assert(output.includes('25.000 Å²'));assert(!output.includes('3.000 Å²'));assert(output.includes('geometric estimate'));"
+    checks = "const assert=require('assert');const output=stepDesign();assert(output.includes('2.100'));assert(output.includes('Missing evidence'));assert(output.includes('Unmapped review item'));assert(output.includes('data-review-design=\"D2\"'));assert(output.includes('No safe exclusive combination'));assert(!output.includes('geodesic_'));assert(output.includes('25.000 Å²'));assert(!output.includes('3.000 Å²'));assert(output.includes('surface geodesic distance'));"
     checks += "assert(output.includes('75%'));assert(output.includes('Not computed / missing evidence'));assert(output.includes('10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24'));assert(output.includes('View detailed evidence'));"
     script = tmp_path / "sector_offline.cjs"
     script.write_text(setup + code + checks, encoding="utf-8")

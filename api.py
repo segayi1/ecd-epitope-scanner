@@ -84,7 +84,7 @@ class JobCreate(BaseModel):
     case_time_budget_seconds: float | None = Field(default=None,gt=0,allow_inf_nan=False)
     case_byte_budget: int | None = Field(default=None,gt=0)
     max_sectors: int = 7
-    target_sector_residues: int | None = Field(default=None, ge=10, le=15)
+    target_sector_residues: int | None = Field(default=None, ge=7, le=15)
     maximum_sector_geodesic_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     maximum_sector_ca_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     max_primary_constructs: int | None = Field(default=None, ge=1, le=12)
@@ -369,6 +369,7 @@ def _public_job(job: dict[str, Any], *, view: str = "full") -> dict[str, Any]:
             result = project_display_analysis(result)
     output = dict(job)
     output["result"] = result
+    output["time_estimate"] = STORE.time_estimate(job)
     request = dict(output.get("request") or {})
     if request.get("original_cds"):
         request["original_cds"] = "<provided>"
@@ -728,6 +729,7 @@ async def job_events(job_id: str) -> StreamingResponse:
                     "progress": job["progress"],
                     "message": job["message"],
                     "error": job["error"],
+                    "time_estimate": job["time_estimate"],
                 },
                 ensure_ascii=False,
             )
@@ -897,13 +899,14 @@ def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]
     analysis["design_summary"]["final_library_size"] = len(designs)
     analysis["summary"]["custom_constructs"] = sum(item.custom for item in designs)
     output_dir = Path(job["workdir"])
-    from .exporting import write_scientific_outputs
+    from .exporting import finalize_scientific_bundle, write_scientific_outputs
 
     files = write_scientific_outputs(
         output_dir, analysis, protein, records, regions, designs, original_cds=original_cds
     )
     analysis["files"] = files
     write_json(output_dir / "analysis.json", analysis)
+    finalize_scientific_bundle(output_dir)
     STORE.update(job_id, result_json=analysis, message=f"Custom design {design.id} saved")
     return {"design": to_dict(design), "job": _public_job(STORE.get(job_id))}
 

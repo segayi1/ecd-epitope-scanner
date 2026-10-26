@@ -136,6 +136,7 @@ class ResidueRecord:
     coordinate_status: str = "NOT_ASSESSED"
     mutation_qualification: str = "NOT_ASSESSED"
     review_reasons: list[str] = field(default_factory=list)
+    sidechain_exposure: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

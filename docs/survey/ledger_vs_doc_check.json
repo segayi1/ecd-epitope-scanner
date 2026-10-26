@@ -1,0 +1,259 @@
+{
+  "generated_by": "docs/survey/_check_ledger_vs_doc.py",
+  "note": "fenced code blocks are stripped before counting",
+  "ledger_section1_rows": 24,
+  "ledger_section1_unique": 24,
+  "doc_pmid_rows": 24,
+  "doc_unique": 24,
+  "cited_but_not_in_ledger": [],
+  "in_ledger_but_not_cited": [],
+  "canonical_pmid_count": 24,
+  "year_checked_count": 24,
+  "year_exceptions": {
+    "19055730": "快照 PubDate 2008-12-02,本文按期刊卷期年取 2009"
+  },
+  "year_mismatches": [],
+  "journal_checked_count": 24,
+  "journal_notes": {
+    "25048123": "快照 FullJournalName 为 Methods in molecular biology (Clifton, N.J.),本文写作 Methods Mol Biol"
+  },
+  "journal_mismatches": [],
+  "title_fragment_checked_count": 1,
+  "title_fragment_missing": [],
+  "text_vs_xml_title_checked_count": 18,
+  "text_vs_xml_title_mismatches": [],
+  "cited_pmids_without_snapshot": [],
+  "year_table": {
+    "19055730": {
+      "doc": "2009",
+      "ledger_current": "2009",
+      "ledger_superseded": null
+    },
+    "25048123": {
+      "doc": "2014",
+      "ledger_current": "2014",
+      "ledger_superseded": null
+    },
+    "27216816": {
+      "doc": "2016",
+      "ledger_current": "2016",
+      "ledger_superseded": "2026"
+    },
+    "27401684": {
+      "doc": "2016",
+      "ledger_current": "2016",
+      "ledger_superseded": "2017"
+    },
+    "31243847": {
+      "doc": "2019",
+      "ledger_current": "2019",
+      "ledger_superseded": "2020"
+    },
+    "31675414": {
+      "doc": "2019",
+      "ledger_current": "2019",
+      "ledger_superseded": null
+    },
+    "32761082": {
+      "doc": "2021",
+      "ledger_current": "2021",
+      "ledger_superseded": null
+    },
+    "35277501": {
+      "doc": "2022",
+      "ledger_current": "2022",
+      "ledger_superseded": null
+    },
+    "36611255": {
+      "doc": "2023",
+      "ledger_current": "2023",
+      "ledger_superseded": null
+    },
+    "38177393": {
+      "doc": "2022",
+      "ledger_current": "2022",
+      "ledger_superseded": "2024"
+    },
+    "38197311": {
+      "doc": "2023",
+      "ledger_current": "2023",
+      "ledger_superseded": "2024"
+    },
+    "38227011": {
+      "doc": "2025",
+      "ledger_current": "2025",
+      "ledger_superseded": null
+    },
+    "38496213": {
+      "doc": "2024",
+      "ledger_current": "2024",
+      "ledger_superseded": null
+    },
+    "38844044": {
+      "doc": "2024",
+      "ledger_current": "2024",
+      "ledger_superseded": null
+    },
+    "39455825": {
+      "doc": "2024",
+      "ledger_current": "2024",
+      "ledger_superseded": null
+    },
+    "39872490": {
+      "doc": "2025",
+      "ledger_current": "2025",
+      "ledger_superseded": null
+    },
+    "39915771": {
+      "doc": "2025",
+      "ledger_current": "2025",
+      "ledger_superseded": null
+    },
+    "42241701": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42252708": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42412842": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42620036": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42719814": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42800986": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    },
+    "42824475": {
+      "doc": "2026",
+      "ledger_current": "2026",
+      "ledger_superseded": null
+    }
+  },
+  "journal_table": {
+    "19055730": {
+      "doc": "BMC Bioinformatics",
+      "snapshot": "BMC bioinformatics"
+    },
+    "25048123": {
+      "doc": "Methods Mol Biol",
+      "snapshot": "Methods in molecular biology (Clifton, N.J.)"
+    },
+    "27216816": {
+      "doc": "Nucleic Acids Res",
+      "snapshot": "Nucleic acids research"
+    },
+    "27401684": {
+      "doc": "GigaScience",
+      "snapshot": "GigaScience"
+    },
+    "31243847": {
+      "doc": "Hum Mutat",
+      "snapshot": "Human mutation"
+    },
+    "31675414": {
+      "doc": "GigaScience",
+      "snapshot": "GigaScience"
+    },
+    "32761082": {
+      "doc": "Bioinformatics",
+      "snapshot": "Bioinformatics (Oxford, England)"
+    },
+    "35277501": {
+      "doc": "Scientific Data",
+      "snapshot": "Scientific data"
+    },
+    "36611255": {
+      "doc": "Brief Bioinform",
+      "snapshot": "Briefings in bioinformatics"
+    },
+    "38177393": {
+      "doc": "Nat Comput Sci",
+      "snapshot": "Nature computational science"
+    },
+    "38197311": {
+      "doc": "Brief Bioinform",
+      "snapshot": "Briefings in bioinformatics"
+    },
+    "38227011": {
+      "doc": "Hum Genet",
+      "snapshot": "Human genetics"
+    },
+    "38496213": {
+      "doc": "GigaByte",
+      "snapshot": "GigaByte (Hong Kong, China)"
+    },
+    "38844044": {
+      "doc": "J Mol Biol",
+      "snapshot": "Journal of molecular biology"
+    },
+    "39455825": {
+      "doc": "Nat Comput Sci",
+      "snapshot": "Nature computational science"
+    },
+    "39872490": {
+      "doc": "Innovation (Camb)",
+      "snapshot": "Innovation (Cambridge (Mass.))"
+    },
+    "39915771": {
+      "doc": "BMC Biol",
+      "snapshot": "BMC biology"
+    },
+    "42241701": {
+      "doc": "J Med Internet Res",
+      "snapshot": "Journal of medical Internet research"
+    },
+    "42252708": {
+      "doc": "Protein Sci",
+      "snapshot": "Protein science : a publication of the Protein Society"
+    },
+    "42412842": {
+      "doc": "Bioinformatics",
+      "snapshot": "Bioinformatics (Oxford, England)"
+    },
+    "42620036": {
+      "doc": "bioRxiv(**预印本,未经同行评审**)",
+      "snapshot": "bioRxiv : the preprint server for biology"
+    },
+    "42719814": {
+      "doc": "Bioinform Adv",
+      "snapshot": "Bioinformatics advances"
+    },
+    "42800986": {
+      "doc": "Array",
+      "snapshot": "Array (New York, N.Y.)"
+    },
+    "42824475": {
+      "doc": "Front Immunol",
+      "snapshot": "Frontiers in immunology"
+    }
+  },
+  "title_fragment_table": {
+    "42620036": {
+      "quoted": [
+        "Hallucinated Epitopes",
+        "a Bias for Orderness"
+      ],
+      "found_in_title": [
+        "Hallucinated Epitopes",
+        "a Bias for Orderness"
+      ]
+    }
+  },
+  "pass": true
+}

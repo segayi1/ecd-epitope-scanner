@@ -144,14 +144,18 @@ def test_exact_point_state_cache_reuses_subset_but_computes_whole_partial_miss(t
     points=np.random.default_rng(17).uniform(-.2,1.2,(64,3))
     mesh.signed_distance(points,return_projection=True)
     subset=points[8:24][::-1]
+    # BLAS may round a reversed subset differently; exact-state caches must miss then.
+    same_state=((points@mesh.ray_basis)[8:24][::-1].tobytes()==(subset@mesh.ray_basis).tobytes()
+        and mesh.tree.query(points)[1][8:24][::-1].tobytes()==mesh.tree.query(subset)[1].tobytes())
     expected=cube().signed_distance(subset,return_projection=True)
     actual=mesh.signed_distance(subset,return_projection=True)
     for left,right in zip(actual,expected):np.testing.assert_array_equal(left,right)
-    assert calls==[64] and tools.calls['cache_hits']==1
+    expected_calls=[64] if same_state else [64,16]
+    assert calls==expected_calls and tools.calls['cache_hits']==int(same_state)
     mixed=np.array([points[0],[2.1,.13,.27]])
     actual=mesh.signed_distance(mixed,return_projection=True)
     for left,right in zip(actual,cube().signed_distance(mixed,return_projection=True)):np.testing.assert_array_equal(left,right)
-    assert calls==[64,2] # The original batch path, not a one-point miss query.
+    assert calls==expected_calls+[2] # The original batch path, not a one-point miss query.
     bank=next((tmp_path/'triangle_queries').glob('points_*.npz'));bank.write_bytes(b'corrupt')
     with pytest.raises(ValueError,match='point cache changed'):mesh.signed_distance(subset,return_projection=True)
 
@@ -741,7 +745,7 @@ def test_spurs_auto_cuda_cache_reuses_only_exact_weights(tmp_path,monkeypatch):
     for name in ('spurs_gpu_worker.py','gpu_runtime.py'):
         path=repo/'integrations'/'workers'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('worker')
     monkeypatch.setattr(cache.subprocess,'run',lambda argv,**kwargs:SimpleNamespace(
-        stdout=b'{}' if '-c' in argv else b'test-driver, test-gpu'))
+        stdout=b'{"python":"test-python","torch":"test-torch"}' if '-c' in argv else b'test-driver, test-gpu'))
     model=tmp_path/'native.pdb';model.write_text('model')
     request=SimpleNamespace(structure_path=str(model),chain_id='A',sequence='A',structure_type='pdb',
                             mutations=[],parameters={},device='auto')
@@ -1119,6 +1123,33 @@ def test_outer_bundle_audit_detects_mutated_disk_file_and_manifest(tmp_path):
     with pytest.raises(ValueError,match='manifest differs'):audit_run_bundle(tmp_path)
 
 
+def test_outer_bundle_audit_accepts_safe_nested_offline_assets(tmp_path):
+    import hashlib, json, zipfile
+    from ecd_epitope_scanner.scripts.audit_run_bundle import audit_run_bundle
+
+    assets = tmp_path / 'assets' / 'vendor'
+    assets.mkdir(parents=True)
+    content = b'offline dependency'
+    (assets / 'viewer.js').write_bytes(content)
+    manifest = {'files': {'assets/vendor/viewer.js': hashlib.sha256(content).hexdigest()}}
+    (tmp_path / 'run_manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    with zipfile.ZipFile(tmp_path / 'ecd_epitope_design.zip', 'w') as archive:
+        archive.write(assets / 'viewer.js', 'assets/vendor/viewer.js')
+        archive.write(tmp_path / 'run_manifest.json', 'run_manifest.json')
+
+    assert audit_run_bundle(tmp_path)['status'] == 'PASS'
+
+
+@pytest.mark.parametrize('unsafe_name', ['../outside.json', 'C:/outside.json', 'assets\\viewer.js', 'assets/../outside.json'])
+def test_outer_bundle_audit_rejects_unsafe_manifest_paths(tmp_path, unsafe_name):
+    import json
+    from ecd_epitope_scanner.scripts.audit_run_bundle import audit_run_bundle
+
+    (tmp_path / 'run_manifest.json').write_text(json.dumps({'files': {unsafe_name: 'hash'}}), encoding='utf-8')
+    with pytest.raises(ValueError, match='unsafe artifact name'):
+        audit_run_bundle(tmp_path)
+
+
 def test_benchmark_preview_migrates_legacy_engine_preserving_af3_inputs():
     from ecd_epitope_scanner.scripts.benchmark_surface_perturbation import preview_request
     saved={'design_engine':'joint_v3','input_type':'af3_upload','structure_path':'saved_model.cif',
@@ -1130,42 +1161,65 @@ def test_benchmark_preview_migrates_legacy_engine_preserving_af3_inputs():
     assert replay['target_constructs']==8 and replay['maximum_constructs']==12
 
 
-@pytest.mark.parametrize('matching_input',[True,False])
-def test_foldx_worker_appends_only_missing_repeats_and_keeps_model_identities(tmp_path,monkeypatch,capsys,matching_input):
+@pytest.mark.parametrize('matching_input,isolated_cache,cached_sampling,requested_sampling',[(True,True,None,None),(False,True,None,None),(True,False,None,None),(True,True,'time_rotabase_v3',None),(True,True,'time_rotabase_v3','time_rotabase_v3')])
+def test_foldx_worker_resumes_frozen_models_without_restarting_a_default_prefix(tmp_path,monkeypatch,capsys,matching_input,isolated_cache,cached_sampling,requested_sampling):
     import io,sys,hashlib
+    from pathlib import Path
     from ecd_epitope_scanner.integrations.workers import foldx_worker as worker
     from ecd_epitope_scanner.surface_perturbation import paired
     from ecd_epitope_scanner import stability
     binary=tmp_path/'foldx.exe';binary.write_bytes(b'fixture binary')
     source=tmp_path/'source.pdb';source.write_text('fixture input')
-    saved=[{'mutations':['A1V'],'batch_path':'saved_batch','group':1,'run':i,'ddg_kcal_mol':float(i)} for i in range(3)]
+    saved=[{'mutations':['A1V'],'batch_path':'saved_batch','group':1,'run':i,'ddg_kcal_mol':float(i),
+        'execution_layout':'candidate_isolated_v1','buildmodel_request_sha256':'fixture-receipt'} for i in range(3)]
+    if cached_sampling:
+        for i,pair in enumerate(saved):pair.update(sampling_protocol=cached_sampling,sampling_role='production',sampling_cohort='test',sampling_slot=i)
     manifest={'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),
         'input_structure_sha256':hashlib.sha256(source.read_bytes()).hexdigest() if matching_input else 'different',
         'records':[{'mutations':['A1V'],'paired_models':saved},
                    {'mutations':['A1L'],'paired_models':[{'fixture':'unrequested record must not be loaded'}]}]}
+    root=worker._project_root()
+    manifest['execution_identity']={
+        'execution_layout':'candidate_isolated_v1' if isolated_cache else 'legacy_batch',
+        'worker_sha256':hashlib.sha256(Path(worker.__file__).read_bytes()).hexdigest(),
+        'repaired_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),
+        'rotabase_sha256':None,
+        'parameters':{'sampling_protocol':cached_sampling},
+        'support_sha256':{rel:hashlib.sha256((root/rel).read_bytes()).hexdigest() for rel in
+            ('stability.py','surface_perturbation/paired.py','surface_perturbation/sampling_v3.py')}}
     cache=tmp_path/'cache';cache.mkdir();(cache/'paired_model_manifest.json').write_text(json.dumps(manifest))
     output=tmp_path/'output';output.mkdir();old=output/'paired_model_manifest.json';old.write_text(json.dumps(manifest))
     request={'mutations':[['A1V']],'sequence':'A','chain_id':'A','structure_path':str(source),'output_dir':str(output),
-        'parameters':{'binary':str(binary),'emit_paired_models':True,'number_of_runs':5,'paired_cache_roots':[str(cache)]}}
+        'parameters':{'binary':str(binary),'emit_paired_models':True,'number_of_runs':5,'paired_cache_roots':[str(cache)],'sampling_protocol':requested_sampling,'sampling_cohort':'test'}}
     calls=[];validated=[]
     monkeypatch.setattr(sys,'stdin',io.StringIO(json.dumps(request)))
     monkeypatch.setattr(stability,'repair_with_foldx',lambda *args,**kw:source)
-    def score(*args,**kw):calls.append((args[3],kw['runs']));return [9.]
+    def score(*args,**kw):
+        calls.append((args[3],kw['runs']))
+        args[3].mkdir(parents=True,exist_ok=True)
+        (args[3]/'sampling_execution.json').write_text('{}')
+        return [9.]
     monkeypatch.setattr(stability,'score_many_with_foldx',score)
     def scan(root):
         count=calls[-1][1]
-        return ([{'mutations':['A1V'],'batch_path':str(root),'group':1,'run':i,'ddg_kcal_mol':9.} for i in range(count)],[])
+        return ([{'mutations':['A1V'],'batch_path':str(root),'group':1,'run':i,'ddg_kcal_mol':9.,
+            'execution_layout':'candidate_isolated_v1','buildmodel_request_sha256':'fixture-receipt'} for i in range(count)],[])
     monkeypatch.setattr(paired,'scan_pairs',scan)
     monkeypatch.setattr(paired,'validate_pair',lambda row:validated.append(row))
     assert worker.main()==0;result=json.loads(capsys.readouterr().out)
     assert result['status']=='success',result
-    assert calls[0][1]==(2 if matching_input else 5)
+    reused=matching_input and isolated_cache and cached_sampling==requested_sampling and requested_sampling is not None
+    assert calls[0][1]==(2 if reused else 5)
     assert calls[0][0]!=output # Old model batches are not overwritten.
     rows=result['records'][0]['paired_models']
     assert len(rows)==5 and len({(r['batch_path'],r['group'],r['run']) for r in rows})==5
-    assert result['records'][0]['ddg']==(2. if matching_input else 9.)
-    if matching_input:assert rows[:3]==saved
-    assert len(validated)==5
+    assert result['records'][0]['ddg']==(2. if reused else 9.)
+    if reused:assert rows[:3]==saved
+    if matching_input and (not isolated_cache or cached_sampling != requested_sampling):
+        assert result['provenance']['cache_rejections']['execution_protocol_mismatch']
+    if matching_input and isolated_cache and cached_sampling is requested_sampling is None:
+        assert result['provenance']['cache_rejections']['deterministic_prefix_restart']==3
+    assert len(validated)==(8 if matching_input and isolated_cache and cached_sampling is requested_sampling is None else 5)
     history=list((output/'paired_manifest_history').glob('*/paired_model_manifest.json'))
     assert len(history)==1 and json.loads(history[0].read_text())==manifest
     # The completed own output is a lawful cache even when the caller only

@@ -189,6 +189,7 @@ def _select_panel(
     hypothesis_signatures: dict[str, list[float]] = {}
     budget_decision = None
     nearby_pairs = []
+    identifiability_diagnostics = {}
     if panel_budget is not None or surface_areas is not None or hypotheses:
         from .identifiability import greedy_panel
         effective_budget = panel_budget or dict(
@@ -207,6 +208,7 @@ def _select_panel(
         minimum_distance = metrics["minimum_distance"]
         prior_weighted_separation = metrics["weighted_separation"]
         nearby_pairs = metrics["near_pairs"]
+        identifiability_diagnostics = metrics["identifiability_diagnostics"]
         indistinguishable = len(nearby_pairs)
         unresolved_groups = metrics["groups"]
         uncovered_hypotheses = metrics["uncovered"]
@@ -300,5 +302,6 @@ def _select_panel(
         marginal_information_gain=marginal_information_gain,
         budget_decision=budget_decision,
         nearby_hypothesis_pairs=nearby_pairs,
+        identifiability_diagnostics=identifiability_diagnostics,
     )
     return panel, selected

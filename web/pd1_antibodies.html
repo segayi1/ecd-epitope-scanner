@@ -3,28 +3,37 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PD-1 抗体结合表面 | ECD Epitope Workbench</title>
+<link rel="stylesheet" href="/assets/workbench.css">
 <style>
-  *{box-sizing:border-box}body{margin:0;background:#f3f6f7;color:#26333a;font:15px/1.5 system-ui,"Microsoft YaHei",sans-serif}
-  header{display:flex;align-items:center;gap:18px;padding:14px 24px;background:#fff;border-bottom:1px solid #d9e1e2}header a{color:#1565c0;text-decoration:none}
-  main{max-width:1350px;margin:auto;padding:20px}h1{font-size:22px;margin:0 0 6px}p{margin:5px 0 14px;color:#52636d}
-  .layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px}.viewer{height:min(73vh,790px);min-height:480px;background:#fff;border:1px solid #d9e1e2;border-radius:12px;position:relative}
-  #mol{position:absolute;inset:0}.panel{background:#fff;border:1px solid #d9e1e2;border-radius:12px;padding:18px}.panel h2{font-size:17px;margin:0 0 12px}
-  .item{display:block;padding:10px 0;border-bottom:1px solid #e7eded;cursor:pointer}.item input{margin-right:7px}.swatch{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px}.item small{display:block;margin:4px 0 0 26px;color:#63747e}
-  select{display:block;width:100%;padding:8px;margin:8px 0 2px;border:1px solid #b9c9ce;border-radius:6px;background:white;color:#26333a}.detail{font-size:13px;color:#52636d;min-height:42px;margin-top:8px}
-  .gradient-key{display:flex;align-items:center;gap:4px;margin-top:10px;font-size:12px;color:#52636d}.gradient-key i{display:block;flex:1;height:12px;border-radius:2px}.gradient-key span{white-space:nowrap}
-  button{border:1px solid #b9c9ce;background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer;margin-top:14px}.note{font-size:13px;color:#667780;margin-top:17px}#status{position:absolute;left:16px;bottom:15px;background:#ffffffdd;padding:5px 9px;border-radius:6px}
-  @media(max-width:760px){.layout{grid-template-columns:1fr}.viewer{height:60vh;min-height:360px}}
+  .pd1-page{margin:0;--pd1-line:var(--line,#dce5e8);--pd1-muted:var(--muted,#657780);--pd1-ink:var(--ink,#172b35)}
+  .pd1-shell{width:min(100% - 40px,1500px);margin:auto;padding:26px 0 40px}
+  .pd1-heading{margin-bottom:18px}.pd1-heading h1{margin:4px 0 6px;font-size:clamp(1.5rem,2vw,2rem);letter-spacing:-.025em}.pd1-heading > p:not(.site-kicker){max-width:820px;margin:0;color:var(--pd1-muted);font-size:.95rem;line-height:1.5;font-weight:400;letter-spacing:normal}
+  .layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(285px,.78fr);gap:16px;align-items:start}
+  .viewer{height:clamp(500px,68vh,760px);min-width:0;background:#f7fafb;border:1px solid var(--pd1-line);border-radius:12px;position:relative;overflow:hidden;box-shadow:0 3px 12px #172b350b}
+  #mol{position:absolute;inset:0}.panel{min-width:0;background:#fff;border:1px solid var(--pd1-line);border-radius:12px;padding:18px}.panel h2{font-size:1rem;margin:0 0 8px}.panel > p{margin:0 0 12px;color:var(--pd1-muted);font-size:.9rem}
+  .item{display:block;padding:11px 0;border-bottom:1px solid #e7edef;cursor:pointer}.item input{margin-right:8px;accent-color:var(--teal,#127c80)}.swatch{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:middle}.item small{display:block;margin:4px 0 0 27px;color:var(--pd1-muted)}
+  .panel label[for=focus]{display:block;margin-top:16px}.pd1-page select{display:block;width:100%;min-width:0;padding:9px;margin:8px 0 2px;border:1px solid var(--pd1-line);border-radius:7px;background:white;color:var(--pd1-ink)}.detail{font-size:13px;color:#435761;min-height:42px;margin-top:10px;padding:10px;border-radius:8px;background:#f5f8f9}
+  .gradient-key{display:flex;align-items:center;gap:4px;margin-top:10px;font-size:11px;color:var(--pd1-muted)}.gradient-key i{display:block;flex:1;height:10px;border-radius:3px}.gradient-key span{white-space:nowrap}
+  .pd1-page button{border:1px solid var(--pd1-line);background:#fff;border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--pd1-ink)}.pd1-page button:hover{border-color:var(--teal,#127c80);color:var(--teal-dark,#0b5c60)}.note{font-size:12px;line-height:1.65;color:var(--pd1-muted);margin-top:16px;padding-top:13px;border-top:1px solid var(--pd1-line)}#status{position:absolute;left:14px;bottom:14px;background:#ffffffed;border:1px solid var(--pd1-line);padding:6px 10px;border-radius:7px;color:var(--pd1-ink);font-size:13px}
+  @media(max-width:900px){.layout{grid-template-columns:minmax(0,1.45fr) minmax(255px,.9fr);gap:12px}.viewer{height:64vh;min-height:440px}.pd1-shell{width:min(100% - 28px,1500px)}}
+  @media(max-width:700px){.layout{grid-template-columns:minmax(0,1fr)}.viewer{height:56vh;min-height:360px}.panel{padding:15px}.pd1-shell{width:min(100% - 24px,1500px);padding-top:18px}}
 </style>
 </head>
-<body>
-<header><a href="/">← ECD Epitope Workbench</a><strong>PD-1 抗体结合表面</strong></header>
-<main>
-<h1>PD-1 表面的三种抗体结合方向</h1>
-<p>实验晶体结构按 PD-1 对齐；拖动旋转，滚轮缩放，右键平移。选择单个抗体可看到它在 PD-1 上的接触表位。</p>
+<body class="pd1-page">
+<header class="site-header">
+  <a class="site-brand" href="/" aria-label="ECD Epitope Workbench 首页"><span class="site-mark" aria-hidden="true">E</span><span>ECD Epitope Workbench</span></a>
+  <nav class="site-links" aria-label="主导航">
+    <a href="/">结构设计</a><a href="/experiments">实验项目</a>
+    <details class="site-nav-menu"><summary>结构图册</summary><div><a href="/assets/surface_partitions.html">分区表面</a><a href="/assets/ctla4_six_mutants.html">CTLA‑4 结构</a><a href="/pd1-antibodies" aria-current="page">PD‑1 抗体</a></div></details>
+  </nav>
+</header>
+<main class="pd1-shell">
+<div class="pd1-heading site-heading"><p class="site-kicker">实验复合物结构对照</p><h1>PD‑1 表面的三种抗体结合方向</h1><p>实验晶体结构按 PD‑1 对齐；拖动旋转，滚轮缩放，右键平移。选择单个抗体可查看其在 PD‑1 上的接触表位。</p></div>
 <div class="layout">
-  <div class="viewer"><div id="mol"></div><div id="status">正在加载结构…</div></div>
+  <div class="viewer" aria-label="PD-1 与抗体复合物三维结构"><div id="mol"></div><div id="status" role="status" aria-live="polite">正在加载结构…</div></div>
   <aside class="panel">
     <h2>分子表面</h2>
+    <p>勾选抗体以对照实验结合方向。图层范围由本页控制。</p>
     <label class="item"><input type="checkbox" data-key="pd1" checked><span class="swatch" style="background:#8eacb7"></span><b>人 PD-1</b><small>参考结构：5WT9，链 G；始终居中</small></label>
     <label class="item"><input type="checkbox" data-key="nivo" checked><span class="swatch" style="background:#d7adae"></span><b>纳武利尤单抗</b><small>Nivolumab · 5WT9 · N 端环</small></label>
     <label class="item"><input type="checkbox" data-key="pembro" checked><span class="swatch" style="background:#a6c6d8"></span><b>帕博利珠单抗</b><small>Pembrolizumab · 5GGS · C′D 环</small></label>

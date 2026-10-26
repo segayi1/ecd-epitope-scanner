@@ -7,6 +7,9 @@ Changing a value changes what the output means; keep it in one place.
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Any
+
 # --- Structure eligibility gate (UniProt/PDB candidate audit) ---------------
 MIN_ECD_COVERAGE = 0.95
 MAX_INTERNAL_GAP_AA = 8
@@ -29,6 +32,7 @@ JOINT_V4_ML_PARAMETERS = {
     "mode": "strict",
     "max_sectors": 7,
     "max_primary_constructs": 7,
+    "regional_recommendation_policy": "regional_mechanism_pareto_v1",
     "use_hypothesis_hierarchy": True,
     "hypothesis_hierarchy": {
         "weighted_jaccard": 0.75, "maximum_center_geodesic_a": 6.0,
@@ -61,9 +65,9 @@ JOINT_V4_ML_PARAMETERS = {
         "timeout_seconds": 900,
         "cuda_oom_retries": 1,
         "allow_cpu_fallback_on_oom": True,
-        "preferred_max_ddg": 0.0,
-        "acceptable_max_ddg": 0.5,
-        "review_max_ddg": 1.0,
+        "preferred_max_ddg": 0.5,
+        "acceptable_max_ddg": 1.0,
+        "review_max_ddg": 2.0,
         "max_options_per_site": 3,
     },
     "discotope": {
@@ -103,7 +107,17 @@ JOINT_V4_ML_PARAMETERS = {
         "global_shortlist_by_order": {},
         "orders": [2, 3],
         "primary_orders": [2, 3],
-        "exploratory_orders": [4],
+        "exploratory_orders": [],
+        "maximum_combination_order": 3,
+        "foldx_local_budget": 60,
+        "foldx_global_budget": 20,
+        "foldx_local_exploration_budget": 16,
+        "foldx_local_exploration_spurs_min_exclusive": 0.5,
+        "foldx_local_exploration_spurs_max_inclusive": 1.0,
+        "foldx_local_exploration_mechanism_percentile": 0.25,
+        "foldx_first_pass_runs": 3,
+        "foldx_second_pass_runs": 2,
+        "foldx_second_pass_max_candidates": 30,
         "maximum_geodesic_span_a": 24.0,
         "epitope_priority_weight": 1.0,
         "epitope_site_pool_fraction": 0.5,
@@ -123,8 +137,9 @@ JOINT_V4_ML_PARAMETERS = {
         "cuda_oom_retries": 1,
         "allow_cpu_fallback_on_oom": True,
         "preferred_max_ddg": 0.5,
-        "review_max_ddg": 1.0,
-        "disagreement_gate_kcal_mol": 1.5,
+        "acceptable_max_ddg": 1.0,
+        "review_max_ddg": 2.0,
+        "absolute_gap_diagnostic_kcal_mol": 1.5,
     },
     "foldx_confirmation": {
         "enabled": True,
@@ -137,7 +152,8 @@ JOINT_V4_ML_PARAMETERS = {
         "number_of_runs": 5,
         "max_workers": 8,
         "combination_gate_kcal_mol": 2.0,
-        "max_candidates": 60,
+        "review_max_kcal_mol": 3.0,
+        "max_candidates": 80,
     },
     "panel_optimizer": {
         "selection_priority": "direct_surface_coverage_then_geometric_complementarity_then_information_then_risk",
@@ -162,6 +178,62 @@ JOINT_V4_ML_PARAMETERS = {
     },
     "runtime": {"device": "cuda", "cache_dir": "", "license_id": "research_only"},
 }
+
+
+def display_sectoring_parameters(
+    chain_length: int,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return length-aware display-sector preferences without mutating defaults.
+
+    Small analyzed chains use a smaller preferred display footprint. Explicit
+    sectoring values override those defaults; hard geometry and minimum gates
+    remain the same for every chain length.
+    """
+    if isinstance(chain_length, bool) or not isinstance(chain_length, int) or chain_length < 0:
+        raise ValueError("chain_length must be a non-negative integer")
+
+    result = deepcopy(JOINT_V4_ML_PARAMETERS["sectoring"])
+    result.update(preferred_minimum_sector_count=4, preferred_maximum_sector_count=12)
+    if chain_length < 120:
+        result.update({
+            "target_sector_residues": 7,
+            "preferred_minimum_sector_residues": 6,
+            "preferred_maximum_sector_residues": 8,
+        })
+    elif chain_length <= 150:
+        result.update({
+            "target_sector_residues": 8,
+            "preferred_minimum_sector_residues": 6,
+            "preferred_maximum_sector_residues": 10,
+        })
+
+    overrides = dict(parameters or {})
+    result.update(overrides)
+
+    # An explicit request to keep the historical 10+ residue footprint also
+    # restores its established 10-15 preference interval unless the caller
+    # supplied its own bounds.
+    if "target_sector_residues" in overrides and int(overrides["target_sector_residues"]) >= 10:
+        if "preferred_minimum_sector_residues" not in overrides:
+            result["preferred_minimum_sector_residues"] = 10
+        if "preferred_maximum_sector_residues" not in overrides:
+            result["preferred_maximum_sector_residues"] = 15
+
+    # A caller specifying an 8- or 9-residue target without explicit size
+    # bounds should get a feasible preference interval around that target.
+    if result.get("target_sector_residues") in {7, 8, 9}:
+        target = int(result["target_sector_residues"])
+        if "preferred_minimum_sector_residues" not in overrides:
+            result["preferred_minimum_sector_residues"] = min(
+                int(result["preferred_minimum_sector_residues"]), target
+            )
+        if "preferred_maximum_sector_residues" not in overrides:
+            result["preferred_maximum_sector_residues"] = max(
+                int(result["preferred_maximum_sector_residues"]), target
+            )
+
+    return result
 
 JOINT_V4_ERROR_CODES = [
     "TOOL_NOT_CONFIGURED",

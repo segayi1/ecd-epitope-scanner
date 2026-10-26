@@ -117,6 +117,7 @@ class SingleMutationEvidence:
     pareto_layer: int | None = None
     menu_selected: bool = False
     selection_reason: str | None = None
+    impact_evidence: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -151,6 +152,8 @@ class V4MutationOption:
     glycan_risk: list[str] = field(default_factory=list)
     structural_risk_flags: list[str] = field(default_factory=list)
     review_required: bool = False
+
+    impact_evidence: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -187,6 +190,7 @@ class V4Candidate:
     positive_lower_bound_qualified: bool = False
     footprint_characterization_status: str = 'NOT_EVALUATED'
     geometry_support: dict[str, Any] = field(default_factory=dict)
+    impact_evidence: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -261,6 +265,8 @@ class V4Panel:
     marginal_information_gain: dict[str, float] = field(default_factory=dict)
     budget_decision: PanelBudgetDecision | None = None
     nearby_hypothesis_pairs: list[dict[str, Any]] = field(default_factory=list)
+    identifiability_diagnostics: dict[str, Any] = field(default_factory=dict)
+    interface_comparison: dict[str, Any] = field(default_factory=dict)
     hierarchy_resolution: dict[str, Any] = field(default_factory=dict)
     sector_recommendations: list[dict[str, Any]] = field(default_factory=list)
 

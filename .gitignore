@@ -32,3 +32,13 @@ vendor/*/*.zip
 web/demo/output/
 web/demo/results/
 .playwright-cli/
+
+# Generated project records and literature retrieval caches.
+/clear/
+/deliverables/
+/docs/survey/_*.xml
+/docs/survey/_*.txt
+/docs/survey/_*.json
+/docs/survey/lit_resnapshot_*.xml
+/docs/survey/lit_resnapshot_*.txt
+/docs/survey/lit_resnapshot_*_summary.json

@@ -82,6 +82,7 @@ def _parse_mutations(mutations: list[list[str]], chain_id: str, sequence: str):
 
 def main() -> int:
     started = time.perf_counter()
+    invocation_dir = None
     try:
         request = json.load(sys.stdin)
         root = _project_root()
@@ -92,6 +93,8 @@ def main() -> int:
         if not mutations:
             raise RuntimeError("FoldX received no mutation combinations")
         parameters = request.get("parameters", {})
+        if parameters.get('sampling_protocol') not in {None, 'time_rotabase_v3'}:
+            raise ValueError('Unsupported FoldX sampling protocol')
         sampling = parameters.get('sampling_protocol') == 'time_rotabase_v3'
         role = parameters.get('sampling_role', 'production')
         cohort = parameters.get('sampling_cohort', 'production_v3')
@@ -105,6 +108,15 @@ def main() -> int:
                 binary_digest.update(chunk)
         output_dir = Path(request["output_dir"])
         output_dir.mkdir(parents=True, exist_ok=True)
+        invocation_dir = output_dir/'foldx_invocations'/uuid4().hex
+        invocation_dir.mkdir(parents=True)
+        (invocation_dir/'request.json').write_text(json.dumps(request, indent=2), encoding='utf-8')
+        shutil.copy2(request['structure_path'], invocation_dir/'structure.pdb')
+        for relative in ('integrations/workers/foldx_worker.py', 'stability.py',
+                         'surface_perturbation/paired.py', 'surface_perturbation/sampling_v3.py'):
+            target = invocation_dir/'source'/relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root/relative, target)
         execution_root = _execution_root(root, output_dir, parameters)
         binary = _execution_binary(binary,execution_root,parameters)
         structure_path = Path(request["structure_path"])
@@ -119,23 +131,54 @@ def main() -> int:
         )
         runs = max(1, int(parameters.get("number_of_runs", 5)))
         workers = max(1, int(parameters.get("max_workers", 8)))
+        cache_identity = {
+            "execution_layout": "candidate_isolated_v1",
+            "worker_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "support_sha256": {str(rel): hashlib.sha256((root/rel).read_bytes()).hexdigest()
+                for rel in ("stability.py", "surface_perturbation/paired.py", "surface_perturbation/sampling_v3.py") if (root/rel).is_file()},
+            "binary_sha256": binary_digest.hexdigest(),
+            "structure_sha256": hashlib.sha256(structure_path.read_bytes()).hexdigest(),
+            "repaired_sha256": hashlib.sha256(repaired.read_bytes()).hexdigest(),
+            "rotabase_sha256": (hashlib.sha256((repaired.parent/'rotabase.txt').read_bytes()).hexdigest()
+                if (repaired.parent/'rotabase.txt').is_file() else None),
+            "chain": request.get("chain_id"), "sequence": request.get("sequence"),
+            "parameters": {k:v for k,v in parameters.items() if k not in
+                {"paired_cache_roots", "paired_cache_exclude_ids", "max_workers", "timeout_seconds"}},
+            "runtime": {"python": sys.version, "platform": sys.platform, "machine": __import__("platform").machine()},
+        }
+        cache_fingerprint = hashlib.sha256(json.dumps(cache_identity, sort_keys=True).encode()).hexdigest()
         reused_pairs = {}
         requested_signatures={tuple(sorted(group)) for group in mutations}
         excluded = {tuple(x) for x in parameters.get("paired_cache_exclude_ids", [])}
+        cache_rejections = {}
         if parameters.get("emit_paired_models"):
             from ecd_epitope_scanner.surface_perturbation.paired import validate_pair
             from ecd_epitope_scanner.util import sha256_file
             input_hash = sha256_file(structure_path)
-            cache_roots=list(dict.fromkeys([*parameters.get('paired_cache_roots',[]),str(output_dir)]))
+            cache_roots=list(dict.fromkeys([str(output_dir),*parameters.get('paired_cache_roots',[])]))
             for cache_root in cache_roots:
                 for manifest_path in sorted(Path(cache_root).rglob("paired_model_manifest.json")):
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                     if manifest.get("binary_sha256") != binary_digest.hexdigest() or manifest.get("input_structure_sha256") != input_hash:
                         continue
+                    identity = manifest.get('execution_identity', {})
+                    if (identity.get('execution_layout') != 'candidate_isolated_v1'
+                            or identity.get('worker_sha256') != cache_identity['worker_sha256']
+                            or identity.get('repaired_sha256') != cache_identity['repaired_sha256']
+                            or identity.get('rotabase_sha256') != cache_identity['rotabase_sha256']
+                            or identity.get('parameters', {}).get('sampling_protocol') != parameters.get('sampling_protocol')
+                            or identity.get('support_sha256') != cache_identity['support_sha256']):
+                        cache_rejections['execution_protocol_mismatch'] = cache_rejections.get('execution_protocol_mismatch', 0) + 1
+                        continue
+                    if cohort == "ordinary_v4_sequential_v1" and manifest.get("execution_fingerprint") != cache_fingerprint:
+                        continue
                     for row in manifest.get("records", []):
                         signature = tuple(sorted(row["mutations"]))
                         if signature not in requested_signatures:continue
                         for pair in row.get("paired_models", []):
+                            if pair.get('execution_layout') != 'candidate_isolated_v1' or not pair.get('buildmodel_request_sha256'):
+                                cache_rejections['execution_receipt_missing'] = cache_rejections.get('execution_receipt_missing', 0) + 1
+                                continue
                             if sampling and (pair.get('sampling_protocol') != 'time_rotabase_v3'
                                     or pair.get('sampling_role') != role or pair.get('sampling_cohort') != cohort
                                     or not slot_start <= pair.get('sampling_slot', -1) < slot_start + runs):
@@ -146,7 +189,19 @@ def main() -> int:
                             validate_pair(pair)
                             if pair.get("ddg_kcal_mol") is not None:
                                 reused_pairs.setdefault(signature, {})[identity] = pair
-        cached = [list(reused_pairs.get(tuple(sorted(group)), {}).values())[:runs] for group in mutations]
+        cached = []
+        for group in mutations:
+            pairs = list(reused_pairs.get(tuple(sorted(group)), {}).values())
+            if not sampling:
+                # A default stream is one frozen invocation, never a mixture of cache prefixes.
+                by_batch = {}
+                for pair in pairs:by_batch.setdefault(pair['batch_path'], []).append(pair)
+                complete = [sorted(rows, key=lambda p:int(p['run']))[:runs] for rows in by_batch.values()
+                    if set(range(runs)).issubset({int(p['run']) for p in rows})]
+                if pairs and not complete:
+                    cache_rejections['deterministic_prefix_restart'] = cache_rejections.get('deterministic_prefix_restart', 0) + len(pairs)
+                pairs = complete[0] if complete else []
+            cached.append(pairs)
         if sampling:
             for pairs in cached:
                 pairs.sort(key=lambda p: p['sampling_slot'])
@@ -219,15 +274,35 @@ def main() -> int:
                 if len(record["paired_models"]) < runs:
                     raise RuntimeError("FoldX paired structure output incomplete")
             manifest_path=output_dir/'paired_model_manifest.json'
+            slot_contract = ({
+                "protocol": parameters.get("sampling_protocol"),
+                "cohort": cohort,
+                "role": role,
+                "requested_slot_start": slot_start,
+                "requested_slot_end_exclusive": slot_start + runs,
+                "requested_slots": list(range(slot_start, slot_start + runs)),
+                "raw_pair_records_are_append_only": True,
+            } if sampling else None)
             if manifest_path.exists():
                 history=output_dir/'paired_manifest_history'/str(time.time_ns());history.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(manifest_path,history/'paired_model_manifest.json')
             write_json(manifest_path, {
                 "schema_version": "1.0", "binary_sha256": binary_digest.hexdigest(),
+                "execution_fingerprint": cache_fingerprint, "execution_identity": cache_identity,
                 "input_structure_sha256": hashlib.sha256(structure_path.read_bytes()).hexdigest(),
                 "repaired_structure_sha256": hashlib.sha256(repaired.read_bytes()).hexdigest(),
-                "number_of_runs": runs, "records": records,
+                "number_of_runs": runs, "sampling_slot_contract": slot_contract, "records": records,
             })
+        (invocation_dir/'execution_manifest.json').write_text(json.dumps({
+            'status': 'success', 'execution_identity': cache_identity,
+            'execution_fingerprint': cache_fingerprint,
+            'scores': [{'mutations': row['mutations'], 'ddg': row['ddg']} for row in records],
+            'reused_model_counts': [len(rows) for rows in cached],
+            'new_model_counts': [runs-len(rows) for rows in cached],
+            'engine_receipts': {str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest()
+                for fresh_root in fresh_roots for path in fresh_root.rglob('buildmodel_request.json')},
+            'cache_rejections': cache_rejections,
+        }, indent=2), encoding='utf-8')
         print(
             json.dumps(
                 {
@@ -237,12 +312,20 @@ def main() -> int:
                     "errors": [],
                     "provenance": {
                         "worker": "foldx_worker",
+                        "execution_layout": "candidate_isolated_v1",
+                        "invocation_directory": str(invocation_dir),
+                        "cache_rejections": cache_rejections,
                         "binary": str(binary),
                         "version": "5.1",
                         "weights_sha256": binary_digest.hexdigest(),
                         "device": "cpu",
                         "command": "RepairPDB + BuildModel",
                         "number_of_runs": runs,
+                        "sampling_protocol": parameters.get("sampling_protocol") if sampling else None,
+                        "sampling_role": role if sampling else None,
+                        "sampling_cohort": cohort if sampling else None,
+                        "sampling_slot_start": slot_start if sampling else None,
+                        "sampling_slots": list(range(slot_start, slot_start + runs)) if sampling else None,
                         "max_workers": workers,
                         "reused_model_counts": [len(rows) for rows in cached],
                         "new_model_counts": [runs-len(rows) for rows in cached],
@@ -257,6 +340,8 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
+        if invocation_dir is not None:
+            (invocation_dir/'failure.json').write_text(json.dumps({'status':'failed', 'error':str(exc)}), encoding='utf-8')
         traceback.print_exc(file=sys.stderr)
         print(
             json.dumps(

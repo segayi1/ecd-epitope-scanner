@@ -689,9 +689,27 @@ def _run_pipeline(
     request: PipelineRequest,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    progress = progress_callback or _noop
     output_dir = Path(request.output_dir or Path.cwd() / "results" / safe_name(request.identifier or "run"))
     output_dir.mkdir(parents=True, exist_ok=True)
+    from .joint_design_v4.run_audit import ExecutionTrace, source_snapshot
+    execution_trace = ExecutionTrace(output_dir / "execution_trace.jsonl")
+    queue = request.metadata.get("execution_queue")
+    if queue:
+        import datetime as queue_dt
+        created = queue_dt.datetime.fromisoformat(queue["created_at"])
+        started = queue_dt.datetime.fromisoformat(queue["worker_started_at"])
+        execution_trace.record("QUEUE_EXIT", "STARTING", 0., "Worker started",
+            job_id=queue["job_id"], queued_at_utc=queue["created_at"],
+            queue_elapsed_seconds=max(0., (started-created).total_seconds()))
+        execution_trace.queue_delay_captured = True
+
+    source_audit = source_snapshot(Path(__file__).resolve().parent, request.as_dict(),
+                                   output_dir / "executed_source_snapshot.zip")
+    write_json(output_dir / "run_source_snapshot_v1.json", source_audit)
+    def progress(stage: str, fraction: float, message: str) -> None:
+        if stage != "COMPLETE":
+            execution_trace.progress(stage, fraction, message)
+        (progress_callback or _noop)(stage, fraction, message)
     write_json(output_dir / "request.json", request.as_dict())
     try:
         assay_profile = get_assay_profile(request.assay_profile)
@@ -1165,6 +1183,8 @@ def _run_pipeline(
             output_dir=None, confidence=confidence, predicted=predicted,
             parameters=config.SURFACE_V2_PARAMETERS, reliability=reliability,
         )
+        write_json(output_dir / "surface_geometry_owner_diagnostics.json",
+                   v4_surface_result.surface.metadata.get("owner_diagnostics", {}))
         v4_params = dict(request.metadata.get("joint_v4_ml", {}))
         if request.analysis_target == "binder":
             v4_params["discotope"] = {**v4_params.get("discotope", {}), "enabled": False}
@@ -1208,7 +1228,54 @@ def _run_pipeline(
                 "structure_evidence": read_structure_evidence(parsed.path, predicted=predicted),
             },
             disable_external_engines=bool(request.metadata.get("disable_external_engines")),
+            execution_trace=execution_trace,
         )
+        graph_snapshot = read_json(output_dir / "surface_graph_v4.json")
+        graph_nodes = {int(row["uniprot_pos"]): row for row in graph_snapshot.get("nodes", [])}
+        sector_owner = {int(position): sector.sector_id for sector in joint_result.sectors
+                        for position in sector.residue_positions}
+        component_by_position = {}
+        geometry = v4_surface_result.surface
+        for position, component in zip(geometry.owner_residue.tolist(), geometry.component_id.tolist()):
+            component_by_position.setdefault(int(position), set()).add(int(component))
+        record_by_position = {int(row.uniprot_pos): row for row in records}
+        owner_audit = {}
+        for key, details in geometry.metadata.get("owner_diagnostics", {}).items():
+            position = int(key)
+            record = record_by_position.get(position)
+            owner_audit[key] = {
+                **details,
+                "residue_mapping": ({"uniprot_pos": position, "chain_id": record.chain_id,
+                    "author_residue_number": record.auth_seq_id,
+                    "insertion_code": record.insertion_code, "residue_name": record.residue_name,
+                    "amino_acid": record.aa} if record else None),
+                "surface_graph_node": position in graph_nodes,
+                "graph_surface_area_a2": graph_nodes.get(position, {}).get("surface_area_a2"),
+                "display_region_id": sector_owner.get(position),
+                "geometry_component_ids": sorted(component_by_position.get(position, set())),
+                "observed_exclusion_reasons": (list(record.hard_exclusions) +
+                    ([] if record.coordinate_eligible else [record.coordinate_status])) if record else [],
+            }
+        write_json(output_dir / "surface_geometry_owner_diagnostics.json", {
+            "schema_version": "surface_geometry_owner_diagnostics_v2",
+            "sampling": {key: geometry.metadata.get(key) for key in
+                         ("probe_radius", "sampling_points_per_atom", "point_graph_max_distance", "normal_cosine_min")},
+            "geometry_backend": geometry.backend,
+            "point_count": len(geometry.vertices), "edge_count": len(geometry.edges),
+            "graph_node_count": len(graph_nodes),
+            "interpretation": "Observed owner mapping, sampling, retained area, graph membership and explicit upstream exclusions; no unobserved geometric cause is inferred.",
+            "residues": owner_audit,
+        })
+        identity_path = output_dir / "run_source_identity_v1.json"
+        if identity_path.is_file():
+            identity = read_json(identity_path)
+            identity["executed_source_snapshot"] = {
+                "metadata_file": "run_source_snapshot_v1.json",
+                "archive_file": source_audit["source_archive"]["path"],
+                "archive_sha256": source_audit["source_archive"]["sha256"],
+                "snapshot_id": source_audit["snapshot_id"],
+            }
+            write_json(identity_path, identity)
         regions = joint_result.legacy_regions
         designs = joint_result.legacy_designs
         partition_summary = {
@@ -1269,6 +1336,30 @@ def _run_pipeline(
                     "uncovered_hypotheses": joint_result.panel.uncovered_hypotheses,
                 },
                 "soft_target": True,
+            },
+        }
+        design_summary["budget_scopes"] = {
+            "display_regions": {
+                "requested_maximum": request.max_sectors,
+                "actual_count": len(joint_result.sectors),
+                "semantic_scope": "display segmentation; soft target, independent of construct and model budgets",
+            },
+            "primary_construct_panel": {
+                "effective_budget": to_dict(joint_result.panel.budget_decision),
+                "semantic_scope": "selected primary constructs only",
+            },
+            "candidate_generation": {
+                key: v4_params.get("candidate_search", {}).get(key)
+                for key in ("orders", "maximum_combination_order", "site_pool_per_sector",
+                            "options_per_site", "beam_width", "shortlist_per_sector",
+                            "shortlist_per_order", "global_shortlist_per_order",
+                            "exclusive_groups_by_order")
+            },
+            "foldx_confirmation": {
+                "unique_combination_cap": v4_params.get("foldx_confirmation", {}).get("max_candidates"),
+                "repeats_per_combination": v4_params.get("foldx_confirmation", {}).get("number_of_runs"),
+                "maximum_workers": v4_params.get("foldx_confirmation", {}).get("max_workers"),
+                "semantic_scope": "unique scored combinations and repeat slots; independent of display-region and construct counts",
             },
         }
         stage2_presets = [
@@ -1337,6 +1428,9 @@ def _run_pipeline(
             "conditional_on_parent_probe_hit": True,
         } for item in stage2_presets]
         joint_v4_payload = {
+            "surface_gate": read_json(output_dir / "run_source_identity_v1.json").get("surface_gate"),
+            "compute_budget": joint_result.provenance.get("global_candidate_pool", {}),
+            "model_evidence_diagnostics": read_json(output_dir / "model_evidence_diagnostics_v1.json"),
             "schema_version": "4.0", "recommendation_status": joint_result.recommendation_status,
             "schema_extension_version": "4.1",
             "tool_inventory": to_dict(joint_result.tool_inventory),
@@ -1570,6 +1664,11 @@ def _run_pipeline(
         "created_at": dt.datetime.now(dt.UTC).isoformat(),
         "software": _software_versions(),
         "request": request.as_dict(),
+        "run_diagnostics": {
+            "source_snapshot_file": "run_source_snapshot_v1.json",
+            "execution_trace_file": "execution_trace.jsonl",
+            "execution_trace": execution_trace.summary(),
+        },
         "source": source,
         "assay_profile": assay_profile,
         "analysis_target": request.analysis_target,
@@ -1741,6 +1840,10 @@ def _run_pipeline(
             "epitope_hypotheses_v41.json", "hypothesis_membership_v41.csv",
             "probe_hypothesis_matrix_v41.csv", "panel_identifiability_v41.json",
             "recommendation_diagnostics_v41.json",
+            "run_source_snapshot_v1.json", "execution_trace.jsonl",
+            "executed_source_snapshot.zip",
+            "surface_geometry_owner_diagnostics.json", "run_source_identity_v1.json",
+            "model_evidence_diagnostics_v1.json",
         ):
             if (output_dir / name).exists():
                 analysis["files"][name] = name
@@ -1765,9 +1868,24 @@ def _run_pipeline(
     # The exporter creates the initial analysis file before it knows the
     # complete file map.  Persist the final analysis once more so V3 file
     # provenance and the legacy view agree on disk and in the API response.
+    execution_trace.record("ANALYSIS_READY_FOR_EXPORT", "EXPORTING", 0.98,
+                           "Analysis artifacts are ready; archive finalization is outside this trace.")
+    analysis["run_diagnostics"]["execution_trace"] = execution_trace.summary()
+    display_receipt = None
+    if request.design_engine == "joint_v4_ml" and request.surface_strategy == "legacy" and request.ml_mode == "strict":
+        from .joint_design_v4.impact_completeness import write_card_acceptance
+        display_receipt = write_card_acceptance(output_dir, analysis)
     write_json(output_dir / "analysis.json", analysis)
     if request.export_mode == "deliverable":
+        manifest_path = output_dir / "run_manifest.json"
+        manifest = read_json(manifest_path)
+        for name in analysis.get("files", {}).values():
+            if (output_dir / name).is_file():
+                manifest.setdefault("files", {}).setdefault(name, "")
+        write_json(manifest_path, manifest)
         finalize_scientific_bundle(output_dir)
+    if display_receipt and display_receipt["card_count"] and display_receipt["status"] != "PASS":
+        raise PipelineError("Recommendation-card evidence is incomplete; saved outputs and card_evidence_completeness.json retained")
     if request.surface_strategy!='legacy':
         from .surface_perturbation.runtime import ACTIVE_BUDGET
         if ACTIVE_BUDGET.get() is not None:ACTIVE_BUDGET.get().remaining()

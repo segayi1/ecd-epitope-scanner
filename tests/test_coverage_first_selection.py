@@ -205,7 +205,8 @@ def test_saved_ctla4_coverage_panel_and_region_recommendations_preserve_scientif
     assert len(rows) == 9
     assert [row["status"] for row in rows] == ["PASSED", "NO_COMBINATION", "NO_COMBINATION",
         "PASSED", "PASSED", "PASSED", "PASSED", "NO_COMBINATION", "NEAR_THRESHOLD"]
-    assert all(row["candidate_id"] or row["alternatives"] for row in rows)
+    assert all(row["candidate_id"] or row["alternatives"] or row["unavailable_principles"] for row in rows)
+    assert all(item["formal_eligible"] for row in rows for item in row["alternatives"])
     assert all(row["ownership"] == "EXCLUSIVE" for row in rows if row["candidate_id"])
     for item in candidates:
         assert scores_before[item.candidate_id] == (

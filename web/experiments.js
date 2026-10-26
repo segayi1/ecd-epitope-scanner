@@ -2,6 +2,7 @@
 
 const element = (id) => document.getElementById(id);
 let structureEffectViewer = null;
+let activeProjectId = null;
 
 async function request(url, options) {
   const response = await fetch(url, options);
@@ -220,10 +221,16 @@ async function showProjects() {
     if (!projects.length) { list.textContent = "尚无实验项目。"; return; }
     for (const project of projects) {
       const card = document.createElement("article");
+      card.dataset.projectId = project.project_id;
+      card.setAttribute("aria-current", String(project.project_id === activeProjectId));
       const title = document.createElement("button");
       title.type = "button";
+      title.className = "project-select";
       title.textContent = `${project.name} · ${project.project_id}`;
-      title.addEventListener("click", () => showProject(project.project_id));
+      title.addEventListener("click", async () => {
+        await showProject(project.project_id);
+        element("project-detail").scrollIntoView({block: "start"});
+      });
       const status = document.createElement("p");
       status.className = project.status === "COMPLETE" ? "muted" : "error";
       status.textContent = `状态：${project.status} · 来源：${project.source_job_id} · 修订：${project.revision}`;
@@ -234,6 +241,10 @@ async function showProjects() {
 }
 
 async function showProject(projectId) {
+  activeProjectId = projectId;
+  document.querySelectorAll("#project-list article").forEach(card => {
+    card.setAttribute("aria-current", String(card.dataset.projectId === projectId));
+  });
   const detail = element("project-detail");
   const content = element("project-content");
   detail.hidden = false;
@@ -256,7 +267,6 @@ async function showProject(projectId) {
       const hash = document.createElement("dd"); hash.className = "hash"; hash.textContent = value;
       hashes.append(key, hash);
     }
-    content.append(hashes);
     const files = document.createElement("ul");
     for (const artifact of project.artifacts) {
       const item = document.createElement("li");
@@ -265,7 +275,11 @@ async function showProject(projectId) {
       link.textContent = `${artifact.kind} · ${artifact.size_bytes} bytes`;
       item.append(link); files.append(item);
     }
-    content.append(files);
+    const provenance = document.createElement("details"); provenance.className = "project-provenance";
+    const provenanceSummary = document.createElement("summary");
+    provenanceSummary.textContent = `冻结来源与校验文件 · ${Object.keys(project.frozen_hashes || {}).length} 项哈希 · ${project.artifacts.length} 个文件`;
+    provenance.append(provenanceSummary, hashes, files);
+    content.append(provenance);
     const support = document.createElement("section");
     const supportTitle = document.createElement("h3"); supportTitle.textContent = "支持与审计";
     const includeOriginals = document.createElement("input");
@@ -286,6 +300,46 @@ async function showProject(projectId) {
     support.append(supportTitle, includeLabel, supportLink);
     content.append(support);
     await renderProjectTools(projectId, project, content);
+    const structureSection = content.querySelector("#structure-effects");
+    if (structureSection) content.insertBefore(structureSection, provenance);
+    const data = content.querySelector("#project-data");
+    if (data) {
+      const headings = [...data.querySelectorAll(":scope > h3")];
+      const sectionNav = document.createElement("nav");
+      sectionNav.className = "project-section-nav";
+      sectionNav.setAttribute("aria-label", "项目内容导航");
+      const structureTitle = content.querySelector("#structure-effects > h3");
+      if (structureTitle) {
+        const link = document.createElement("a");
+        link.href = "#structure-effects";
+        link.textContent = structureTitle.textContent;
+        sectionNav.append(link);
+      }
+      headings.forEach((heading, index) => {
+        const id = `project-section-${index + 1}`;
+        heading.id = id;
+        const link = document.createElement("a");
+        link.href = `#${id}`;
+        link.textContent = heading.textContent;
+        sectionNav.append(link);
+      });
+      if (headings.length) data.prepend(sectionNav);
+      data.querySelectorAll("form").forEach((form, index) => {
+        if (form.closest("table")) return;
+        const details = document.createElement("details");
+        details.className = "operation-details";
+        const summary = document.createElement("summary");
+        const precedingHeading = [...form.parentElement.children]
+          .slice(0, [...form.parentElement.children].indexOf(form))
+          .reverse().find(node => /^H[34]$/.test(node.tagName));
+        const label = form.querySelector("label")?.textContent?.trim().replace(/\s+/g, " ").slice(0, 46);
+        summary.textContent = precedingHeading?.textContent || (label ? `操作 · ${label}` : `展开操作 ${index + 1}`);
+        const output = form.nextElementSibling?.matches("pre, output") ? form.nextElementSibling : null;
+        form.replaceWith(details);
+        details.append(summary, form);
+        if (output) details.append(output);
+      });
+    }
   } catch (error) { content.textContent = `读取失败：${error.message}`; }
 }
 
@@ -299,7 +353,7 @@ async function renderProjectTools(projectId, project, root) {
     request(`${base}/effect-analyses`), request(`${base}/paraplume-runs`),
     request(`${base}/flowjo-percentage-imports`)
   ]);
-  const data = document.createElement("section");
+  const data = document.createElement("section"); data.id = "project-data";
   const constructTitle = document.createElement("h3"); constructTitle.textContent = "抗原构建体"; data.append(constructTitle);
   const constructList = document.createElement("ul");
   for (const construct of constructs) {
@@ -1904,7 +1958,7 @@ async function renderProjectTools(projectId, project, root) {
   }
   if (latestEffectDocument) appendWellEffectReadout(latestEffectDocument, antibodies, data);
   await renderStructureEffects(
-    projectId, project, constructs, antibodies, latestEffectDocument, summaryMeasurements, qcReviews, data,
+    projectId, project, constructs, antibodies, latestEffectDocument, summaryMeasurements, qcReviews, root,
   );
 
   const matchedArtifacts = unresolvedFlowJoRebuild
@@ -2229,7 +2283,7 @@ async function renderStructureEffects(
       scroll.append(lane); row.append(label, scroll); antibodyTrackSection.append(row);
     }
   }
-  section.append(evidenceSummary, controls, host, antibodyTrackSection, detail);
+  section.append(host, controls, evidenceSummary, antibodyTrackSection, detail);
   root.append(section);
   if (structureEffectViewer?.clear) structureEffectViewer.clear();
   structureEffectViewer = null;
@@ -2321,7 +2375,7 @@ async function renderStructureEffects(
     const structureResponse = await fetch(context.structure.url);
     if (!structureResponse.ok) throw new Error(`结构文件读取失败：HTTP ${structureResponse.status}`);
     const structureText = await structureResponse.text();
-    const viewer = window.$3Dmol.createViewer(host, {backgroundColor: "#f4f0e7", antialias: true});
+    const viewer = window.$3Dmol.createViewer(host, {backgroundColor: "#f1f5f7", antialias: true});
     structureEffectViewer = viewer;
     screenshotButton.addEventListener("click", () => {
       const image = viewer.pngURI();
