@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import platform
 import shutil
+from time import perf_counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -689,8 +690,14 @@ def _run_pipeline(
     request: PipelineRequest,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
+    pipeline_started = perf_counter()
     output_dir = Path(request.output_dir or Path.cwd() / "results" / safe_name(request.identifier or "run"))
     output_dir.mkdir(parents=True, exist_ok=True)
+    protocol_setting = request.metadata.get("joint_v4_ml", {}).get("execution_protocol")
+    protocol_name = protocol_setting.get("name") if isinstance(protocol_setting, dict) else protocol_setting
+    measure_runtime = protocol_name == "ordinary_site_first_v2" or request.metadata.get("measure_pipeline_performance", False)
+    score_cache = Path(request.metadata.get("joint_v4_ml", {}).get("runtime", {}).get("cache_dir") or output_dir / "cache")
+    cache_was_empty = not any(score_cache.rglob('*.json')) if measure_runtime else None
     from .joint_design_v4.run_audit import ExecutionTrace, source_snapshot
     execution_trace = ExecutionTrace(output_dir / "execution_trace.jsonl")
     queue = request.metadata.get("execution_queue")
@@ -1186,6 +1193,10 @@ def _run_pipeline(
         write_json(output_dir / "surface_geometry_owner_diagnostics.json",
                    v4_surface_result.surface.metadata.get("owner_diagnostics", {}))
         v4_params = dict(request.metadata.get("joint_v4_ml", {}))
+        v4_params.setdefault(
+            "execution_protocol",
+            config.JOINT_V4_ML_PARAMETERS["execution_protocol"],
+        )
         if request.analysis_target == "binder":
             v4_params["discotope"] = {**v4_params.get("discotope", {}), "enabled": False}
         if request.surface_strategy == "surface_perturbation_v1_preview":
@@ -1205,6 +1216,11 @@ def _run_pipeline(
             "use_hypothesis_hierarchy": assay_profile is None or int(assay_profile.get("version", 1)) >= 3,
             "surface": {**v4_params.get("surface", {}), "rsasa_threshold": methods["rsasa_threshold"]},
             "allow_spurs_only_final": request.allow_spurs_only_final,
+            "execution_protocol": (
+                "legacy"
+                if request.surface_strategy == "surface_perturbation_v1_preview"
+                else v4_params.get("execution_protocol", "ordinary_three_principle_adaptive_v1")
+            ),
             "use_surface_hypotheses": (
                 assay_profile is None or int(assay_profile.get("version", 1)) >= 2
             ),
@@ -1303,6 +1319,7 @@ def _run_pipeline(
             "engine": "joint_v4_ml", "schema_version": "4.0",
             "schema_extension_version": "4.1",
             "recommendation_status": joint_result.recommendation_status,
+            "execution_protocol": joint_result.execution_protocol,
             "recommendation_diagnostics": joint_result.provenance.get("recommendation_diagnostics", {}),
             "surface_perturbation": joint_result.provenance.get("surface_perturbation"),
             "tool_inventory": to_dict(joint_result.tool_inventory),
@@ -1356,8 +1373,17 @@ def _run_pipeline(
                             "exclusive_groups_by_order")
             },
             "foldx_confirmation": {
-                "unique_combination_cap": v4_params.get("foldx_confirmation", {}).get("max_candidates"),
-                "repeats_per_combination": v4_params.get("foldx_confirmation", {}).get("number_of_runs"),
+                "unique_combination_cap": (
+                    None
+                    if joint_result.execution_protocol.get("name")
+                    in {"ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}
+                    else v4_params.get("foldx_confirmation", {}).get("max_candidates")
+                ),
+                "pair_slot_cap": joint_result.execution_protocol.get("foldx_slot_limit"),
+                "repeats_per_combination": joint_result.execution_protocol.get(
+                    "foldx_repeat_slots",
+                    v4_params.get("foldx_confirmation", {}).get("number_of_runs"),
+                ),
                 "maximum_workers": v4_params.get("foldx_confirmation", {}).get("max_workers"),
                 "semantic_scope": "unique scored combinations and repeat slots; independent of display-region and construct counts",
             },
@@ -1432,6 +1458,7 @@ def _run_pipeline(
             "compute_budget": joint_result.provenance.get("global_candidate_pool", {}),
             "model_evidence_diagnostics": read_json(output_dir / "model_evidence_diagnostics_v1.json"),
             "schema_version": "4.0", "recommendation_status": joint_result.recommendation_status,
+            "execution_protocol": joint_result.execution_protocol,
             "schema_extension_version": "4.1",
             "tool_inventory": to_dict(joint_result.tool_inventory),
             "surface_evidence": to_dict(joint_result.surface_evidence),
@@ -1752,6 +1779,10 @@ def _run_pipeline(
         "partitioning": partition_summary,
         "design_summary": design_summary,
         "epitope_mapping_plan": design_summary.get("epitope_mapping_plan", {}),
+        "execution_protocol": (
+            joint_result.execution_protocol
+            if patch_engine == "joint_v4_ml" else {"name": "legacy"}
+        ),
         "summary": {
             "mapped_ecd_residues": len(records),
             "surface_accessible": sum(item.surface_accessible for item in records),
@@ -1797,6 +1828,7 @@ def _run_pipeline(
     if joint_v4_payload is not None:
         from .joint_design_v4.reporting import externalize_checkpoint_pair_diagnostics
         externalize_checkpoint_pair_diagnostics(analysis,output_dir)
+    export_started = perf_counter()
     progress("EXPORTING", 0.91, "Writing auditable JSON, CSV, FASTA, GenBank and methods outputs")
     # structure.cif was written before residue analysis; hashing it here lets
     # the export run exactly once instead of twice (the old second pass existed
@@ -1833,6 +1865,7 @@ def _run_pipeline(
             "surface_evidence.csv", "discotope_residues.csv", "single_mutation_options.csv",
             "mutation_menu_v2.json", "mutation_menu_v2.csv", "candidate_pool_v2.json",
             "candidate_combinations.csv.gz", "probe_sectors_v4.json", "panel_candidates.json",
+            "ordinary_candidate_ledger.json",
             "selected_panel_v4.json", "surface_hypotheses_v4.json",
             "sector_recommendations_v4.json", "sector_recommendations_v4.csv",
             "hypothesis_probe_matrix_v4.json", "v4_manifest.json", "v4_manifest_v41.json", "v4_scientific_report.md",
@@ -1883,7 +1916,9 @@ def _run_pipeline(
             if (output_dir / name).is_file():
                 manifest.setdefault("files", {}).setdefault(name, "")
         write_json(manifest_path, manifest)
-        finalize_scientific_bundle(output_dir)
+        finalized_receipt = finalize_scientific_bundle(output_dir, analysis)
+        if finalized_receipt is not None:
+            display_receipt = finalized_receipt
     if display_receipt and display_receipt["card_count"] and display_receipt["status"] != "PASS":
         raise PipelineError("Recommendation-card evidence is incomplete; saved outputs and card_evidence_completeness.json retained")
     if request.surface_strategy!='legacy':
@@ -1895,6 +1930,9 @@ def _run_pipeline(
         if final_status == "BLOCKED_EXTERNAL_EVIDENCE" else
         "Analysis and epitope-mapping panel design completed"
     )
+    if measure_runtime:
+        from .joint_design_v4.site_first_performance import write_performance
+        write_performance(output_dir, request, analysis, pipeline_started, export_started, cache_was_empty)
     progress("COMPLETE", 1.0, completion_message)
     return analysis
 

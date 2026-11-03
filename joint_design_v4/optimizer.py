@@ -138,7 +138,9 @@ def _select_panel(
     sectors=None, surface_areas=None, hypotheses=None, risk_penalty_weights=None,
     panel_budget=None, stop_parameters=None,
 ):
-    candidates = [c for c in candidates if c.qualification != "REVIEW_REQUIRED" and not any(m.review_required for m in c.mutations)]
+    candidates = [c for c in candidates if c.display_eligible
+                  and c.qualification != "REVIEW_REQUIRED"
+                  and not any(m.review_required for m in c.mutations)]
     # Legacy geometry spread and V4.1 objectives share review isolation.
     by_sector: dict[str, list[V4Candidate]] = defaultdict(list)
     for candidate in candidates:

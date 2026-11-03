@@ -80,6 +80,118 @@ def _parse_mutations(mutations: list[list[str]], chain_id: str, sequence: str):
     return groups
 
 
+def _site_first_repair(binary, source, workroot, binary_hash):
+    from ecd_epitope_scanner.stability import repair_with_foldx
+    from ecd_epitope_scanner.util import sha256_file, write_json
+    input_hash = sha256_file(source)
+    cache = Path(workroot).parent / 'foldx_repair_cache' / input_hash[:12] / binary_hash[:12]
+    receipt = cache / 'repair_identity.json'
+    repaired = cache / 'structure_Repair.pdb'
+    reused = repaired.is_file()
+    if reused:
+        identity = json.loads(receipt.read_text(encoding='utf-8'))
+        if identity != {'input_sha256': input_hash, 'binary_sha256': binary_hash,
+                        'repaired_sha256': sha256_file(repaired)}:
+            raise ValueError('Shared FoldX repair identity changed')
+        return repaired, False
+    repaired = repair_with_foldx(str(binary), source, Path(workroot), binary_sha256=binary_hash)
+    if repaired is None:
+        raise RuntimeError('FoldX RepairPDB failed')
+    write_json(receipt, {'input_sha256': input_hash, 'binary_sha256': binary_hash,
+                         'repaired_sha256': sha256_file(repaired)})
+    return repaired, True
+
+
+def _site_first_batch(request, binary, repaired, execution_root, output_dir,
+                      invocation_dir, cache_identity, repair_seconds, repair_executed):
+    """Collect isolated native candidate results without losing healthy peers."""
+    import math
+    import statistics
+    from ecd_epitope_scanner.stability import score_many_with_foldx
+    from ecd_epitope_scanner.surface_perturbation.paired import scan_pairs, validate_pair
+    from ecd_epitope_scanner.util import sha256_file, write_json
+    params = request['parameters']
+    mutations = request['mutations']
+    groups = _parse_mutations(mutations, str(request['chain_id']), str(request['sequence']))
+    runs = int(params['number_of_runs'])
+    start = int(params.get('sampling_slot_start', 0))
+    if (runs, start) not in {(3, 0), (7, 3)} or params.get('sampling_protocol') != 'time_rotabase_v3':
+        raise ValueError('Invalid site-first FoldX slot request')
+    workers = min(8, max(1, int(params.get('max_workers', 8))))
+    fresh_root = execution_root / ('fresh_' + uuid4().hex[:12])
+    failures = []
+    started = time.perf_counter()
+    values = score_many_with_foldx(str(binary), repaired, groups, fresh_root,
+        runs=runs, already_repaired=True, max_workers=workers,
+        time_seed_rotabase=True, candidate_errors=failures)
+    model_seconds = time.perf_counter() - started
+    pairs, scan_errors = [], []
+    listings = sorted(fresh_root.glob('engine_runs/*/PdbList_*.fxout'))
+    for listing in listings or [None]:
+        try:
+            rows, errors = scan_pairs(fresh_root, listing_paths=[listing]) if listing else scan_pairs(fresh_root)
+            pairs.extend(rows)
+            scan_errors.extend(errors)
+        except Exception as exc:
+            scan_errors.append({'listing': str(listing), 'message': str(exc)})
+    records, errors = [], []
+    if scan_errors:
+        errors.append({'code': 'PAIR_SCAN_ERRORS', 'message': str(scan_errors[:3])})
+    for index, group in enumerate(mutations):
+        selected = [pair for pair in pairs if tuple(sorted(pair['mutations'])) == tuple(sorted(group))]
+        selected.sort(key=lambda pair: (str(pair['batch_path']), int(pair['group']), int(pair['run'])))
+        row = {'mutations': group}
+        try:
+            if index >= len(values) or values[index] is None or not math.isfinite(float(values[index])):
+                raise ValueError('FoldX candidate score missing or invalid')
+            if len(selected) != runs:
+                raise ValueError('FoldX candidate paired repeats incomplete')
+            identities = {(str(pair['batch_path']), pair['group'], int(pair['run'])) for pair in selected}
+            observed_runs = {int(pair['run']) for pair in selected}
+            if (len({(pair['batch_path'], pair['group']) for pair in selected}) != 1
+                    or len(identities) != runs
+                    or observed_runs not in (set(range(runs)), set(range(1, runs + 1)))):
+                raise ValueError('FoldX physical repeat identities are incomplete or duplicated')
+            for slot, pair in enumerate(selected, start):
+                pair['binary_sha256'] = cache_identity['binary_sha256']
+                pair['normalized_input_sha256'] = cache_identity['structure_sha256']
+                validate_pair(pair)
+                sampling = Path(pair['batch_path']) / 'sampling_execution.json'
+                pair.update(sampling_protocol='time_rotabase_v3', sampling_role='production',
+                    sampling_cohort='ordinary_site_first_v2', sampling_slot=slot,
+                    sampling_execution=json.loads(sampling.read_text(encoding='utf-8')))
+            scores = [float(pair['ddg_kcal_mol']) for pair in selected]
+            if not all(math.isfinite(value) for value in scores):
+                raise ValueError('Non-finite paired energy')
+            median = statistics.median(scores)
+            # The shared FoldX API aggregates to four decimals; compare there, retain this raw median.
+            if not math.isclose(round(median, 4), float(values[index]), abs_tol=1e-6, rel_tol=0):
+                raise ValueError('FoldX aggregate differs from raw paired energy')
+            row.update(status='success', ddg=median, paired_models=selected, ddg_runs_kcal_mol=scores)
+        except Exception as exc:
+            error = {'code': 'CANDIDATE_TECHNICAL_FAILURE', 'mutations': group, 'message': str(exc)}
+            row.update(status='failed', errors=[error], paired_models=selected)
+            errors.append(error)
+        records.append(row)
+    status = 'partial' if errors else 'success'
+    manifest = {'schema_version': '1.0', 'execution_identity': cache_identity,
+        'binary_sha256': cache_identity['binary_sha256'],
+        'input_structure_sha256': cache_identity['structure_sha256'], 'number_of_runs': runs,
+        'sampling_slot_contract': {'requested_slots': list(range(start, start + runs)),
+                                   'raw_pair_records_are_append_only': True}, 'records': records}
+    write_json(output_dir / 'paired_model_manifest.json', manifest)
+    write_json(invocation_dir / 'execution_manifest.json', {
+        **manifest, 'status': status, 'candidate_errors': failures, 'pair_scan_errors': scan_errors,
+        'engine_receipts': {str(path): sha256_file(path) for path in fresh_root.rglob('buildmodel_request.json')}})
+    return {'status': status, 'records': records, 'warnings': [], 'errors': errors,
+        'provenance': {'worker': 'foldx_worker', 'execution_layout': 'candidate_isolated_v1',
+            'sampling_cohort': 'ordinary_site_first_v2', 'attempted_slots': runs * len(groups),
+            'repair_cache_path': str(repaired), 'repair_executed': repair_executed,
+            'repair_seconds': repair_seconds, 'buildmodel_seconds': model_seconds,
+            'max_workers': workers, 'invocation_directory': str(invocation_dir)},
+        'runtime_seconds': repair_seconds + model_seconds}
+
+
 def main() -> int:
     started = time.perf_counter()
     invocation_dir = None
@@ -120,10 +232,18 @@ def main() -> int:
         execution_root = _execution_root(root, output_dir, parameters)
         binary = _execution_binary(binary,execution_root,parameters)
         structure_path = Path(request["structure_path"])
-        repaired = repair_with_foldx(
-            str(binary), structure_path, execution_root,
-            binary_sha256=binary_digest.hexdigest(),
-        )
+        repair_started = time.perf_counter()
+        site_first = cohort == 'ordinary_site_first_v2'
+        repair_executed = False
+        if site_first:
+            repaired, repair_executed = _site_first_repair(binary, structure_path,
+                parameters['repair_work_root'], binary_digest.hexdigest())
+        else:
+            repaired = repair_with_foldx(
+                str(binary), structure_path, execution_root,
+                binary_sha256=binary_digest.hexdigest(),
+            )
+        repair_seconds = time.perf_counter() - repair_started
         if repaired is None:
             raise RuntimeError("FoldX RepairPDB failed")
         groups = _parse_mutations(
@@ -147,6 +267,11 @@ def main() -> int:
             "runtime": {"python": sys.version, "platform": sys.platform, "machine": __import__("platform").machine()},
         }
         cache_fingerprint = hashlib.sha256(json.dumps(cache_identity, sort_keys=True).encode()).hexdigest()
+        if site_first:
+            result = _site_first_batch(request, binary, repaired, execution_root, output_dir,
+                invocation_dir, cache_identity, repair_seconds, repair_executed)
+            print(json.dumps(result, sort_keys=True))
+            return 0
         reused_pairs = {}
         requested_signatures={tuple(sorted(group)) for group in mutations}
         excluded = {tuple(x) for x in parameters.get("paired_cache_exclude_ids", [])}

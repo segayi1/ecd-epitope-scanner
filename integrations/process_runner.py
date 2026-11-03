@@ -4,11 +4,54 @@ import json
 import os
 import subprocess
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections.abc import Sequence
 from pathlib import Path
 
 from ..joint_design_v4.models import PredictionRequest, PredictionResult
 from .base import ToolError
+
+_PERSISTENT = ContextVar('spurs_persistent_runners', default=None)
+
+
+def _managed_runner(command, timeout_seconds, log_path=None):
+    runners = _PERSISTENT.get()
+    if (runners is None or len(command) < 2 or Path(command[1]).name != 'wsl_bridge.py'
+            or not any(Path(arg).name == 'spurs_gpu_worker.py' for arg in command)):
+        return None
+    from .persistent_runner import PersistentRunner
+    key = tuple(command)
+    if key not in runners:
+        runners[key] = PersistentRunner([*command, '--persistent'], timeout_seconds, log_path)
+    return runners[key]
+
+
+def managed_spurs_environment(adapter, request):
+    if _PERSISTENT.get() is None:
+        return None
+    runner = _managed_runner(adapter.command, adapter.timeout_seconds)
+    if runner is None:
+        return None
+    return runner.run({'_environment': True, 'parameters': request.parameters})['environment'] | {'_persistent_worker': True}
+
+
+@contextmanager
+def persistent_spurs_scope():
+    runners = {}
+    token = _PERSISTENT.set(runners)
+    try:
+        yield
+        for runner in runners.values():
+            response = runner.run({'_finalize': True})
+            if not response.get('verified'):
+                raise ToolError('TOOL_CRASHED', 'Persistent worker final identity verification failed')
+    finally:
+        try:
+            for runner in runners.values():
+                runner.close()
+        finally:
+            _PERSISTENT.reset(token)
 
 
 class JsonWorkerRunner:
@@ -21,6 +64,18 @@ class JsonWorkerRunner:
     def run(self, request: PredictionRequest, *, log_path: Path | None = None) -> PredictionResult:
         if not self.command:
             raise ToolError("TOOL_NOT_CONFIGURED", "No external worker command was configured")
+        runners = _PERSISTENT.get()
+        if (runners is not None and len(self.command) >= 2
+                and Path(self.command[1]).name == 'wsl_bridge.py'
+                and any(Path(arg).name == 'spurs_gpu_worker.py' for arg in self.command)):
+            runner = _managed_runner(self.command, self.timeout_seconds, log_path)
+            payload = runner.run(request.as_dict())
+            if payload.get('status') not in {'success', 'partial', 'failed'}:
+                raise ToolError('OUTPUT_SCHEMA_INVALID', 'Worker JSON lacks a valid status')
+            return PredictionResult(status=payload['status'], records=list(payload.get('records', [])),
+                warnings=list(payload.get('warnings', [])), errors=list(payload.get('errors', [])),
+                provenance=dict(payload.get('provenance', {})) | {'persistent_worker': True},
+                runtime_seconds=float(payload.get('runtime_seconds', 0)))
         started = time.perf_counter()
         try:
             completed = subprocess.run(

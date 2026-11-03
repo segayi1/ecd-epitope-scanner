@@ -151,3 +151,9 @@ def test_median_chunking_positional_requires_exact_count() -> None:
     assert _median_per_group(rows, n_groups=2, runs=2) == [None, None]
     exact = [("model_0.pdb", 1.0), ("model_1.pdb", 2.0)]
     assert _median_per_group(exact, n_groups=1, runs=2) == [1.5]
+
+
+def test_median_grouping_keeps_existing_four_decimal_contract() -> None:
+    rows = [(f"structure_Repair_1_{index}.pdb", value) for index, value in enumerate(
+        (0.565976, 0.615856, 0.287897))]
+    assert _median_per_group(rows, n_groups=1, runs=3) == [0.566]

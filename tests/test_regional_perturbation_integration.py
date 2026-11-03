@@ -71,6 +71,7 @@ def test_default_engine_policy_scores_unique_normalized_requests_and_exports(tmp
     monkeypatch.setattr(engine, "_prediction", predict)
     result = engine.run_joint_v4_ml(records, protein, tmp_path,
         parameters={"mode": "strict", "use_hypothesis_hierarchy": False,
+                    "execution_protocol": {"name": "legacy"},
                     "candidate_search": {"exploratory_orders": []}}, prediction_results=supplied)
     assert result.provenance["sector_recommendation_policy"]["version"] == POLICY
     assert result.provenance["sector_recommendation_policy"]["ranking_version"] == "mechanism_channels_v2"

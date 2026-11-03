@@ -60,13 +60,16 @@ def sha256_file(path: Path) -> str:
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(value, ensure_ascii=False, indent=2)
     # Independent writers must never share a temporary file; close it before
     # replacing on Windows, where readers can briefly deny the replacement.
     descriptor, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     tmp = Path(name)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-        handle.write(payload)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     for attempt in range(12):
         try:
             os.replace(tmp, path)

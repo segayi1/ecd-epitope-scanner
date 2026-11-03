@@ -48,6 +48,7 @@ def _wsl_path(value: str, distro: str) -> str:
         return value
     completed = subprocess.run(
         ["wsl.exe", "-d", distro, "--exec", "wslpath", "-a", value],
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         check=False,
         timeout=30,
@@ -60,12 +61,52 @@ def _wsl_path(value: str, distro: str) -> str:
     return path
 
 
+def _serve(distro: str, python: str, worker: str, control_file: str) -> int:
+    persistent = str(Path(worker).with_name('spurs_persistent_worker.py'))
+    linux_worker = _wsl_path(persistent, distro)
+    control = _wsl_path(control_file, distro)
+    process = subprocess.Popen(['wsl.exe', '-d', distro, '--exec', python, linux_worker,
+                                '--control-file', control],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding='utf-8', bufsize=1)
+    try:
+        for line in sys.stdin:
+            envelope = json.loads(line)
+            request = envelope['request']
+            for key in ('structure_path', 'output_dir'):
+                if request.get(key):
+                    request[key] = _wsl_path(str(Path(request[key]).resolve()), distro)
+            if request.get('parameters', {}).get('model_assets_root'):
+                value = request['parameters']['model_assets_root']
+                request['parameters']['model_assets_root'] = _wsl_path(str(Path(value).resolve()), distro)
+            process.stdin.write(json.dumps(envelope, sort_keys=True) + '\n')
+            process.stdin.flush()
+            response = process.stdout.readline()
+            if not response:
+                raise RuntimeError('WSL persistent worker exited without a response')
+            sys.stdout.write(response)
+            sys.stdout.flush()
+    finally:
+        if process.poll() is None:
+            process.stdin.close()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--distro", default="Ubuntu-22.04")
     parser.add_argument("--python", required=True)
     parser.add_argument("--worker", required=True)
+    parser.add_argument("--persistent", action="store_true")
+    parser.add_argument("--control-file")
     args = parser.parse_args()
+
+    if args.persistent:
+        return _serve(args.distro, args.python, args.worker, args.control_file)
 
     started = time.perf_counter()
     try:

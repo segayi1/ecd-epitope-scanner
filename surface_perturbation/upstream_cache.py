@@ -76,15 +76,18 @@ def predict_cached(adapter,request):
                 "'python':sys.version,'torch':torch.__version__,'cuda_build':torch.version.cuda,"
                 "'gpu_capability':torch.cuda.get_device_capability(0) if torch.cuda.is_available() else None,"
                 "'deterministic_algorithms':torch.are_deterministic_algorithms_enabled()},sort_keys=True))")
-        runtime=subprocess.run(['wsl.exe','-d',distro,'--exec',python,'-c',script],capture_output=True,
+        from ..integrations.process_runner import managed_spurs_environment
+        versions = managed_spurs_environment(adapter, request)
+        if versions is None:
+            runtime=subprocess.run(['wsl.exe','-d',distro,'--exec',python,'-c',script],capture_output=True,
+                                   timeout=min(30,budget.remaining()) if budget else 30,check=True)
+            versions=json.loads(_decode_output(runtime.stdout).strip())
+            if not isinstance(versions, dict) or not versions.get('python') or not versions.get('torch'):
+                raise ValueError('SPURS runtime identity incomplete')
+            gpu=subprocess.run(['wsl.exe','-d',distro,'--exec','/usr/lib/wsl/lib/nvidia-smi',
+                                '--query-gpu=driver_version,name','--format=csv,noheader'],capture_output=True,
                                timeout=min(30,budget.remaining()) if budget else 30,check=True)
-        versions=json.loads(_decode_output(runtime.stdout).strip())
-        if not isinstance(versions, dict) or not versions.get('python') or not versions.get('torch'):
-            raise ValueError('SPURS runtime identity incomplete')
-        gpu=subprocess.run(['wsl.exe','-d',distro,'--exec','/usr/lib/wsl/lib/nvidia-smi',
-                            '--query-gpu=driver_version,name','--format=csv,noheader'],capture_output=True,
-                           timeout=min(30,budget.remaining()) if budget else 30,check=True)
-        versions['gpu_driver']=_decode_output(gpu.stdout).strip()
+            versions['gpu_driver']=_decode_output(gpu.stdout).strip()
     except (OSError,ValueError,subprocess.SubprocessError):
         return adapter.predict(request)
     contract={'structure':sha256_file(Path(request.structure_path)),'chain':request.chain_id,
@@ -93,7 +96,8 @@ def predict_cached(adapter,request):
               'device':request.device,'weights':weights,
               'source_sha256':code.hexdigest(),'model_configuration':configs}
     contract['runtime']=versions
-    contract['worker_protocol']='json-spurs-v2-wt-encoding'
+    contract['worker_protocol']=('json-spurs-v3-persistent-no-oom-retry' if
+        versions.get('_persistent_worker') else 'json-spurs-v2-wt-encoding')
     folder=Path(adapter.cache_dir)/'verified_spurs';folder.mkdir(parents=True,exist_ok=True)
     path=folder/(fingerprint(contract)+'.json')
     cache_problem = None

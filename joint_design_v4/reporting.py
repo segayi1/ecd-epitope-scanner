@@ -156,6 +156,10 @@ def write_v4_outputs(
     normalized_structure_path: Path | None = None,
 ) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(output_dir / "execution_protocol.json", result.execution_protocol)
+    write_json(output_dir / "ordinary_candidate_ledger.json",
+               result.provenance.get("global_candidate_pool", {}).get(
+                   "adaptive_candidate_ledger", {}))
     write_json(output_dir / "tool_inventory.json", _rows(result.tool_inventory))
     write_json(output_dir / "structure_contexts.json", contexts)
     write_json(output_dir / "probe_sectors_v4.json", _rows(result.sectors))

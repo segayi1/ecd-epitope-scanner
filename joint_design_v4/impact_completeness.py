@@ -9,16 +9,34 @@ AXES = ("charge_delta", "volume_delta_a3", "hydropathy_delta",
         "donor_delta", "acceptor_delta", "aromatic_delta")
 
 
+def _repeat_protocol(analysis):
+    protocol = analysis.get("execution_protocol") or {}
+    if isinstance(protocol, str):
+        protocol = {"name": protocol}
+    name = protocol.get("name", protocol.get("policy", protocol.get("id", "")))
+    if name in {"ordinary_adaptive_v1", "ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}:
+        policy = "ordinary_site_first_v2" if name == "ordinary_site_first_v2" else "ordinary_adaptive_v1"
+        slots = protocol.get("foldx_repeat_slots")
+        count = protocol.get("foldx_repeat_count", len(slots) if isinstance(slots, list) else None)
+        if isinstance(slots, list) and slots:
+            return policy, list(slots)
+        if count in (3, 10):
+            return policy, list(range(count))
+        return policy, [list(range(3)), list(range(10))]
+    return "five_slot_recommendation_cards_v1", list(range(5))
+
+
 def write_card_acceptance(output_dir, analysis):
     from ..util import sha256_file, write_json
     recommendations = analysis.get("design_summary", {}).get("sector_recommendations", [])
     names = ("analysis.json", "panel_candidates.json", "sector_recommendations_v4.json")
-    receipt = card_evidence_completeness(recommendations, {name: "0" * 64 for name in names})
+    policy, expected_slots = _repeat_protocol(analysis)
+    receipt = card_evidence_completeness(recommendations, {name: "0" * 64 for name in names}, expected_slots)
     analysis.setdefault("files", {})["card_evidence_completeness.json"] = "card_evidence_completeness.json"
     analysis.setdefault("design_summary", {})["display_evidence_acceptance"] = {
         "status": receipt["status"], "card_count": receipt["card_count"],
         "incomplete_card_count": sum(bool(row["missing_fields"]) for row in receipt["cards"]),
-        "policy": "five_slot_recommendation_cards_v1",
+        "policy": policy,
         "diagnostics_only": receipt["card_count"] == 0,
     }
     write_json(output_dir / "analysis.json", analysis)
@@ -108,7 +126,7 @@ def _complete_display_ranges(ranges, notations):
     return True
 
 
-def card_evidence_completeness(recommendations, inputs_sha256):
+def card_evidence_completeness(recommendations, inputs_sha256, expected_repeat_slots=None):
     """Audit primary and alternative cards without altering their eligibility."""
     required_inputs = {"analysis.json", "panel_candidates.json", "sector_recommendations_v4.json"}
     if not required_inputs <= set(inputs_sha256) or any(
@@ -116,6 +134,15 @@ def card_evidence_completeness(recommendations, inputs_sha256):
             or any(character not in "0123456789abcdefABCDEF" for character in inputs_sha256[name])
             for name in required_inputs):
         raise ValueError("Completeness receipt requires SHA-256 hashes for all three source evidence files")
+    if expected_repeat_slots is None:
+        expected_repeat_slot_sets = [list(range(5))]
+    elif (
+            isinstance(expected_repeat_slots, (list, tuple))
+            and expected_repeat_slots
+            and all(isinstance(value, (list, tuple)) for value in expected_repeat_slots)):
+        expected_repeat_slot_sets = [list(value) for value in expected_repeat_slots]
+    else:
+        expected_repeat_slot_sets = [list(expected_repeat_slots)]
     cards = []
     for recommendation in recommendations:
         displayed = [(recommendation, "PRIMARY", "primary")]
@@ -196,10 +223,12 @@ def card_evidence_completeness(recommendations, inputs_sha256):
                         missing.append(f"impact_evidence.local_interaction_diagnostics.pairs[{index}].{field}")
             repeat = evidence.get("stability_repeat_audit") or {}
             slots = repeat.get("foldx_repeat_slots")
-            if slots != [0, 1, 2, 3, 4]:
+            if slots not in expected_repeat_slot_sets:
                 missing.append("impact_evidence.stability_repeat_audit.foldx_repeat_slots")
             values = repeat.get("foldx_repeat_values_kcal_mol") or []
-            if len(values) != 5 or not all(_finite(value) for value in values):
+            expected_count = len(slots) if slots in expected_repeat_slot_sets else None
+            if (expected_count is None or len(values) != expected_count
+                    or not all(_finite(value) for value in values)):
                 missing.append("impact_evidence.stability_repeat_audit.foldx_repeat_values_kcal_mol")
             stability = row.get("stability_evidence") or {}
             for field in ("spurs_multi_ddg_kcal_mol", "foldx_ddg_kcal_mol"):

@@ -40,6 +40,8 @@ from ecd_epitope_scanner.util import sha256_file
 @pytest.fixture(autouse=True)
 def supplied_repeat_fixture(monkeypatch):
     from ecd_epitope_scanner.joint_design_v4 import engine
+    # These frozen shortlist fixtures exercise the historical five-slot protocol.
+    monkeypatch.setitem(engine.config.JOINT_V4_ML_PARAMETERS, "execution_protocol", {"name": "legacy"})
     original, saved = engine._prediction, {}
     def predict(adapter, structure, chain, sequence, output, structure_type, parameters, supplied, key=None, mutations=None):
         source = supplied.get("foldx") if supplied else None

@@ -634,6 +634,7 @@ Selection policy: {plan.get('selection_policy', 'Pareto front over (disruption, 
         "candidate_combinations.csv.gz",
         "combination_stability.csv",
         "panel_candidates.json",
+        "ordinary_candidate_ledger.json",
         "selected_panel_v4.json",
         "sector_recommendations_v4.json",
         "sector_recommendations_v4.csv",
@@ -724,7 +725,7 @@ def _write_bundle_archive(output_dir: Path,names) -> None:
     destination=output_dir/'ecd_epitope_design.zip'
     pending=destination.with_name(destination.name+f'.{os.getpid()}.pending')
     try:
-        with zipfile.ZipFile(pending,'w',compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(pending,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for name in dict.fromkeys(names):
                 path=output_dir/name
                 if path.exists():
@@ -735,12 +736,13 @@ def _write_bundle_archive(output_dir: Path,names) -> None:
         pending.unlink(missing_ok=True)
 
 
-def finalize_scientific_bundle(output_dir: Path) -> None:
+def finalize_scientific_bundle(output_dir: Path, analysis: dict | None = None) -> dict | None:
     """Bind checksums and the ZIP to the final analysis written by the pipeline."""
     manifest_path = output_dir / "run_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     analysis_path = output_dir / "analysis.json"
-    analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    if analysis is None:
+        analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
     v4_manifest_path = output_dir / "v4_manifest.json"
     if v4_manifest_path.is_file():
         v4_manifest = json.loads(v4_manifest_path.read_text(encoding="utf-8"))
@@ -768,6 +770,12 @@ def finalize_scientific_bundle(output_dir: Path) -> None:
         if analysis.get("joint_v4_ml") or has_structure else [])
     for name in site_names:
         manifest.setdefault("files", {}).setdefault(name, "")
+    card_receipt = None
+    card_receipt_path = output_dir / "card_evidence_completeness.json"
+    if card_receipt_path.is_file():
+        from .joint_design_v4.impact_completeness import write_card_acceptance
+        card_receipt = write_card_acceptance(output_dir, analysis)
+        manifest.setdefault("files", {})[card_receipt_path.name] = ""
     manifest["files"].pop("run_manifest.json", None)
     manifest["files"].pop("ecd_epitope_design.zip", None)
     for name in manifest["files"]:
@@ -782,3 +790,4 @@ def finalize_scientific_bundle(output_dir: Path) -> None:
         manifest["files"][name] = sha256_file(artifact)
     write_json(manifest_path, manifest)
     _write_bundle_archive(output_dir,[*manifest['files'],'run_manifest.json'])
+    return card_receipt

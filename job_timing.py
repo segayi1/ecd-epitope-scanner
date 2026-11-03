@@ -11,7 +11,8 @@ from statistics import median
 def timing_key(request):
     return tuple(request.get(key, default) for key, default in (
         ("input_type", "uniprot"), ("analysis_target", "antigen"), ("design_engine", "joint_v4_ml"),
-        ("ml_mode", "strict"), ("surface_strategy", "legacy"), ("optimization_profile", "legacy"))) + (
+        ("ml_mode", "strict"), ("surface_strategy", "legacy"), ("optimization_profile", "legacy"),
+        ("execution_protocol", "legacy"))) + (
         bool(request.get("af3_manifest_path")), bool((request.get("metadata") or {}).get("disable_external_engines")))
 
 

@@ -5,8 +5,22 @@ function recommendationRepeatAudit(item, design) {
     || item?.impact_evidence?.stability_repeat_audit || design?.foldx_diagnostics?.stability_repeat_diagnostic
     || design?.foldx_diagnostics?.provenance?.repeat_audit;
 }
+function recommendationRepeatCount(item) {
+  const audit = recommendationRepeatAudit(item);
+  const protocol = item?.execution_protocol || audit?.execution_protocol || state.result?.execution_protocol
+    || state.result?.joint_v4_ml?.execution_protocol || state.result?.request?.execution_protocol;
+  const name = typeof protocol === "string" ? protocol : protocol?.name;
+  if (["ordinary_three_principle_adaptive_v1", "ordinary_adaptive_v1", "ordinary_site_first_v2"].includes(name)) {
+    const declared = Number(typeof protocol === "object" ? protocol.foldx_repeat_count : NaN);
+    const actual = Number(audit?.foldx_repeat_count ?? audit?.foldx_repeat_slots?.length);
+    return [3, 10].includes(declared) ? declared : [3, 10].includes(actual) ? actual : 3;
+  }
+  return 5;
+}
 function recommendationRiskCode(item, design) {
   const audit = recommendationRepeatAudit(item, design);
+  if (recommendationTenSlotConfirmation(item, design)) return "TEN_SLOT_MEDIAN_CONFIRMED";
+  if (recommendationHasTenSlotMarker(item, design)) return "SAMPLING_DIAGNOSTIC_UNKNOWN";
   const explicit = item?.recommendation_risk_label || audit?.recommendation_risk_label
     || design?.foldx_diagnostics?.recommendation_risk_label;
   if (explicit) return explicit;
@@ -17,26 +31,78 @@ function recommendationRiskCode(item, design) {
       : audit.sampling_decision_sensitive === false ? "NO_WITHIN_RUN_GATE_CROSSING" : "SAMPLING_DIAGNOSTIC_UNKNOWN";
   }
   if (audit.sampling_decision_diagnostic_status === "INCOMPLETE"
-    || audit.foldx_evidence_complete === false || (Number.isInteger(audit.foldx_repeat_count) && audit.foldx_repeat_count < 5)
-    || (Array.isArray(audit.foldx_repeat_slots) && audit.foldx_repeat_slots.length < 5)) return "REPEAT_EVIDENCE_INCOMPLETE";
+    || audit.foldx_evidence_complete === false || (Number.isInteger(audit.foldx_repeat_count) && audit.foldx_repeat_count < recommendationRepeatCount(item))
+    || (Array.isArray(audit.foldx_repeat_slots) && audit.foldx_repeat_slots.length < recommendationRepeatCount(item))) return "REPEAT_EVIDENCE_INCOMPLETE";
   return "SAMPLING_DIAGNOSTIC_UNKNOWN";
+}
+function recommendationTenSlotConfirmation(item, design) {
+  const audit = recommendationRepeatAudit(item, design);
+  if (audit?.repeat_confirmation_policy !== "ten_slot_median_v1"
+    || audit?.repeat_confirmation_status !== "CONFIRMED_PASS"
+    || audit?.recommendation_risk_label !== "TEN_SLOT_MEDIAN_CONFIRMED"
+    || audit?.sampling_decision_diagnostic_status !== "COMPLETE"
+    || audit?.sampling_decision_sensitive !== true
+    || audit?.foldx_repeat_gate_kcal_mol !== 2
+    || audit?.cross_execution_conflict === true) return false;
+  const slots = audit.foldx_repeat_slots;
+  const values = audit.foldx_repeat_slot_values_kcal_mol;
+  if (!Array.isArray(slots) || slots.length !== 10 || slots.some((slot, index) => slot !== index)
+    || !Array.isArray(values) || values.length !== 10 || values.some((value) => typeof value !== "number" || !Number.isFinite(value))) return false;
+  const sorted = [...values].sort((a, b) => a - b);
+  return values.slice(0, 3).filter((value) => value > 2).length === 1
+    && (sorted[4] + sorted[5]) / 2 <= 2;
+}
+function recommendationHasTenSlotMarker(item, design) {
+  const audit = recommendationRepeatAudit(item, design);
+  return (audit?.repeat_confirmation_status != null && audit.repeat_confirmation_status !== "NOT_CONFIRMED")
+    || audit?.recommendation_risk_label === "TEN_SLOT_MEDIAN_CONFIRMED";
 }
 function recommendationRiskLabelText(item, design) {
   const label = recommendationRiskCode(item, design);
+  const repeatCount = recommendationRepeatCount(item);
   return ({
+    TEN_SLOT_MEDIAN_CONFIRMED: recommendationLabel("十槽复算确认通过；存在采样波动", "Ten-slot confirmation passed; sampling variation observed"),
     SAMPLING_SENSITIVE_REVIEW: recommendationLabel("采样需复核", "Sampling review needed"),
     REPEAT_EVIDENCE_INCOMPLETE: recommendationLabel("重复证据不完整", "Repeat evidence incomplete"),
     SAMPLING_DIAGNOSTIC_UNKNOWN: recommendationLabel("采样诊断未知", "Sampling diagnostic unknown"),
-    NO_WITHIN_RUN_GATE_CROSSING: recommendationLabel("本批未见门限跨越", "No within-run gate crossing"),
+    NO_WITHIN_RUN_GATE_CROSSING: repeatCount === 3
+      ? recommendationLabel("三次同侧通过", "Three repeats pass on the same side")
+      : repeatCount === 10 ? recommendationLabel("十槽中位数通过；采样不确定性", "Ten-slot median pass / sampling uncertainty")
+        : recommendationLabel("本批未见门限跨越", "No within-run gate crossing"),
   })[label] || "";
 }
 function recommendationNeedsReview(item, design) {
+  if (recommendationTenSlotConfirmation(item, design)) return false;
+  if (recommendationHasTenSlotMarker(item, design)) return true;
   return ["SAMPLING_SENSITIVE_REVIEW", "REPEAT_EVIDENCE_INCOMPLETE", "SAMPLING_DIAGNOSTIC_UNKNOWN"]
     .includes(recommendationRiskCode(item, design));
+}
+function recommendationDesign(item) {
+  return (state.result?.designs || []).find((design) => design.id === item?.design_id);
+}
+function recommendationQualified(item) {
+  const design = recommendationDesign(item);
+  const protocol = item?.execution_protocol || state.result?.execution_protocol
+    || state.result?.joint_v4_ml?.execution_protocol || state.result?.request?.execution_protocol;
+  const protocolName = typeof protocol === "string" ? protocol : protocol?.name;
+  const siteFirst = protocolName === "ordinary_site_first_v2";
+  const audit = recommendationRepeatAudit(item, design);
+  const confirmedTenSlot = recommendationTenSlotConfirmation(item, design);
+  return (!siteFirst || (item?.formal_eligible === true
+      && audit?.sampling_decision_diagnostic_status === "COMPLETE"
+      && (audit?.sampling_decision_sensitive === false || confirmedTenSlot)
+      && audit?.cross_execution_conflict !== true))
+    && item?.formal_eligible !== false
+    && item?.display_eligible !== false
+    && item?.display_status !== "DISPLAY_REVIEW"
+    && !(Array.isArray(item?.display_exclusion_reasons) && item.display_exclusion_reasons.length)
+    && item?.status === "PASSED"
+    && !recommendationNeedsReview(item, design);
 }
 function recommendationRepeatSummary(item, design) {
   const audit = recommendationRepeatAudit(item, design);
   if (!audit) return "";
+  const expectedCount = recommendationRepeatCount(item);
   const values = Array.isArray(audit.foldx_repeat_values_kcal_mol)
     ? audit.foldx_repeat_values_kcal_mol.filter((value) => typeof value === "number" && Number.isFinite(value)) : [];
   const count = Number.isInteger(audit.foldx_repeat_count) ? audit.foldx_repeat_count : values.length;
@@ -47,7 +113,7 @@ function recommendationRepeatSummary(item, design) {
   const below = Number.isInteger(audit.foldx_repeat_at_or_below_gate_count) ? audit.foldx_repeat_at_or_below_gate_count : null;
   const range = min == null || max == null ? recommendationLabel("范围未计算", "range unavailable") : `${fmt(min, 3)}–${fmt(max, 3)}`;
   const gateText = gate == null ? recommendationLabel("门限未记录", "gate not recorded") : `${recommendationLabel("门限", "gate")} ≤ ${fmt(gate, 3)}`;
-  const counts = above == null || below == null ? "" : ` · ${recommendationLabel("门上", "above gate")} ${above}/5 · ${recommendationLabel("门内", "at/below gate")} ${below}/5`;
+  const counts = above == null || below == null ? "" : ` · ${recommendationLabel("门上", "above gate")} ${above}/${expectedCount} · ${recommendationLabel("门内", "at/below gate")} ${below}/${expectedCount}`;
   const slots = Array.isArray(audit.foldx_repeat_slots) ? audit.foldx_repeat_slots : [];
   const alignedSlotValues = Array.isArray(audit.foldx_repeat_slot_values_kcal_mol)
     || slots.length === values.length;
@@ -57,8 +123,9 @@ function recommendationRepeatSummary(item, design) {
   const slotValues = perSlot.length ? ` · ${recommendationLabel("槽值", "slots")} ${perSlot.map((value, index) =>
     `${alignedSlotValues ? (slots[index] ?? index) : `${recommendationLabel("记录", "record")} ${index + 1}`}: ${typeof value === "number" && Number.isFinite(value) ? fmt(value, 3) : recommendationLabel("缺失", "missing")}`
   ).join(" / ")} kcal/mol` : "";
-  const state = count < 5 ? ` · ${recommendationLabel("待补算", "computation pending")}` : "";
-  return `${recommendationLabel("FoldX重复", "FoldX repeats")} ${count}/5 · ${gateText} · ${recommendationLabel("范围", "range")} ${range}${counts}${slotValues}${state}`;
+  const state = count < expectedCount ? ` · ${recommendationLabel("待补算", "computation pending")}` : "";
+  const uncertainty = expectedCount === 10 ? ` · ${recommendationLabel("十槽采样不确定性", "10-slot sampling uncertainty")}` : "";
+  return `${recommendationLabel("FoldX重复", "FoldX repeats")} ${count}/${expectedCount} · ${gateText} · ${recommendationLabel("范围", "range")} ${range}${counts}${slotValues}${state}${uncertainty}`;
 }
 function recommendationRepeatNote(item, design) {
   return recommendationRepeatSummary(item, design);
@@ -68,6 +135,9 @@ function recommendationDisplayStatus(item, design) {
   return recommendationNeedsReview(item, design) ? risk : recommendationStatus(item?.status);
 }
 function recommendationSelectionRecord(item, design) {
+  if (!recommendationQualified(item)
+    || recommendationNeedsReview(item, design)
+    || item?.status !== "PASSED" || item?.formal_eligible === false) return null;
   const mutations = design?.mutations?.length ? design.mutations : (item.mutation_notations || []).map((value) => {
     const match = String(value).match(/^([A-Z])([0-9]+)([A-Z])$/);
     return match ? { wt: match[1], position: Number(match[2]), mutant: match[3] } : null;
@@ -670,11 +740,6 @@ function renderRecommendationCard(item, isPrimary = false, formalLocalCandidate 
     ${item.candidate_id ? recommendationDetails(item, design) : ""}</article>`;
 }
 
-function recommendationQualified(item) {
-  return item.formal_eligible !== false && (item.status === "PASSED"
-    || (item.formal_eligible === true && item.status === "EVIDENCE_LIMITED"));
-}
-
 function renderSectorRecommendations(recommendations) {
   return `<section class="design-series region-recommendations"><h3>${recommendationLabel("按分区推荐组合", "Recommendations by region")}</h3>
     <p class="note">${recommendationLabel("各区独立保留不同设计原则下通过门槛的推荐，不受全局精简面板数量限制。同一组合满足多个原则时合并标签；缺少合格方案时列明缺口。表面邻域覆盖按表面测地距离估计。", "Each region retains qualified recommendations for its design principles without the global compact-panel limit. Matching combinations share principle labels; missing qualified options are listed as gaps. Surface neighborhood coverage uses surface geodesic distance.")}</p>
@@ -682,7 +747,13 @@ function renderSectorRecommendations(recommendations) {
       const sectorIndex = (state.result.joint_v4_ml.sectors || []).findIndex((sector) => sector.sector_id === item.sector_id);
       const region = (state.result.regions || [])[sectorIndex] || {};
       const summary = item.sector_summary || {};
-      const localCandidates = item.all_formal_local_candidates;
+      const localCandidates = Array.isArray(item.all_formal_local_candidates) ? item.all_formal_local_candidates : null;
+      const qualifiedLocalCandidates = localCandidates?.filter(recommendationQualified) || [];
+      const displayedReviewIds = new Set([item, ...(item.alternatives || [])]
+        .filter((candidate) => candidate.candidate_id)
+        .map((candidate) => candidate.candidate_id));
+      const reviewLocalCandidates = (localCandidates || []).filter((candidate) =>
+        !recommendationQualified(candidate) && !displayedReviewIds.has(candidate.candidate_id));
       const alternatives = (item.alternatives || []).filter(recommendationQualified);
       const reviewAlternatives = (item.alternatives || []).filter((candidate) => !recommendationQualified(candidate));
       const primaryReview = Boolean(item.candidate_id) && !recommendationQualified(item);
@@ -693,8 +764,8 @@ function renderSectorRecommendations(recommendations) {
         ${item.formal_candidate_count != null || item.confirmed_alternative_count != null ? `<p class="note">${recommendationLabel("机制主代表状态", "Mechanism primary status")}: ${h(recommendationDisplayStatus(item))}${recommendationRepeatNote(item) ? ` · ${h(recommendationRepeatNote(item))}` : ""} · ${recommendationLabel("本区正式合格候选", "Formally qualified local candidates")}: ${item.formal_candidate_count ?? recommendationLabel("未记录", "not recorded")} · ${recommendationLabel("已确认替代", "Confirmed alternatives")}: ${item.confirmed_alternative_count ?? recommendationLabel("未记录", "not recorded")}</p>` : ""}
         ${primaryReview ? `<p class="note">${recommendationLabel("本区主推荐尚无通过门槛的方案；其他原则的合格推荐见下方。", "No qualified primary is available for this region; qualified options for other principles appear below.")}</p>` : renderRecommendationCard(item, true)}<h4>${recommendationLabel("其他设计原则下的合格推荐", "Qualified recommendations for other principles")}</h4>
         ${alternatives.map((alternative) => renderRecommendationCard({ ...alternative, sector_id: item.sector_id })).join("") || `<p class="muted">${recommendationLabel("没有不同的合格备选；同一合格组合的原则合并显示。", "No distinct qualified alternative; matching principles share one qualified combination.")}</p>`}
-        ${primaryReview || reviewAlternatives.length ? `<details class="regional-review-candidates"><summary>${recommendationLabel("未通过门槛／待补证据的审查详情", "Review details: failed gates or missing evidence")}</summary>${primaryReview ? renderRecommendationCard(item, true) : ""}${reviewAlternatives.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id })).join("")}</details>` : ""}
-        ${Array.isArray(localCandidates) ? `<details class="formal-local-candidates"><summary>${recommendationLabel("全部正式合格本区候选（含主代表）", "All formally qualified local candidates (including the primary)")} · ${localCandidates.length}</summary>${localCandidates.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id }, false, true)).join("") || `<p class="muted">${recommendationLabel("当前没有正式合格的本区组合。", "No formally qualified local combinations are recorded.")}</p>`}</details>` : ""}
+        ${primaryReview || reviewAlternatives.length || reviewLocalCandidates.length ? `<details class="regional-review-candidates"><summary>${recommendationLabel("未通过正式展示条件／待复核的审查详情", "Review details: not qualified for formal display or review required")}</summary>${primaryReview ? renderRecommendationCard(item, true) : ""}${reviewAlternatives.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id })).join("")}${reviewLocalCandidates.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id }, false, true)).join("")}</details>` : ""}
+        ${Array.isArray(localCandidates) ? `<details class="formal-local-candidates"><summary>${recommendationLabel("全部正式展示合格本区候选（含主代表）", "All qualified local candidates for formal display (including the primary)")} · ${qualifiedLocalCandidates.length}</summary>${qualifiedLocalCandidates.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id }, false, true)).join("") || `<p class="muted">${recommendationLabel("当前没有可正式展示的本区组合。", "No local combinations qualify for formal display.")}</p>`}</details>` : ""}
         ${(item.unavailable_principles || []).map((value) => `<p class="note">${h(recommendationCode(value.principle))}: ${h(cleanRecommendationCopy(/[\u4e00-\u9fff]/.test(value.reason || "") ? value.reason : recommendationCode(value.reason)))}</p>${value.gate_details?.length ? `<details class="principle-review-details"><summary>${recommendationLabel("未通过门槛／待补证据", "Failed gates / missing evidence")}</summary><code>${h(value.candidate_id)}</code><ul>${value.gate_details.map((gate) => `<li>${h(gateExplanation(gate))}</li>`).join("")}</ul></details>` : ""}`).join("")}
         ${audit ? `<details><summary>${recommendationLabel("搜索与验证情况", "Search and validation resources")}</summary>${recommendationResourceAudit(audit)}</details>` : `<p class="note">${recommendationLabel("此历史任务未记录新的分区资源审计。", "This historical job has no new region resource audit.")}</p>`}
       </section>`;

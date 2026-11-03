@@ -33,10 +33,10 @@ def atoms(path):
     return output
 
 
-def scan_pairs(root: Path):
+def scan_pairs(root: Path, *, listing_paths=None):
     """Bind actual PdbList rows to batch mutation records and structural WT."""
     pairs, failures = [], []
-    for listing in sorted(root.glob("engine_runs/*/PdbList_*.fxout")):
+    for listing in sorted(root.glob("engine_runs/*/PdbList_*.fxout") if listing_paths is None else listing_paths):
         batch = listing.parent
         from ..stability import _parse_dif_rows
         ddg_by_identity = {}

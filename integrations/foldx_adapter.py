@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import re
+from dataclasses import replace
 
 from ..joint_design_v4.models import PredictionRequest, PredictionResult
 from ._adapter import JsonPredictorAdapter
@@ -9,6 +10,38 @@ from ._adapter import JsonPredictorAdapter
 
 class FoldXAdapter(JsonPredictorAdapter):
     name = "foldx"
+
+    def checked_result(self, request: PredictionRequest, result: PredictionResult) -> PredictionResult:
+        if request.parameters.get("sampling_cohort") != "ordinary_site_first_v2" or not result.ok:
+            return super().checked_result(request, result)
+        schema_errors = super().validate_result(request, result)
+        if schema_errors:
+            return replace(result, status="failed", records=[], errors=result.errors + schema_errors)
+        expected = {tuple(sorted(group)) for group in request.mutations}
+        records, errors, seen = [], list(result.errors), set()
+        for row in result.records:
+            values = row.get("mutations", row.get("mutation_list"))
+            if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+                errors.append({"code": "OUTPUT_SCHEMA_INVALID", "message": "Invalid batch mutation identity"})
+                continue
+            signature = tuple(sorted(values))
+            if signature not in expected or signature in seen:
+                errors.append({"code": "OUTPUT_SCHEMA_INVALID", "message": "Unexpected or duplicate batch identity"})
+                continue
+            seen.add(signature)
+            row_errors = row.get("errors", []) if row.get("status") == "failed" else self.validate_result(
+                replace(request, mutations=[values]), replace(result, status="success", records=[row]))
+            if row_errors or row.get("status") == "failed":
+                row_errors = row_errors or [{"code": "OUTPUT_MISSING", "message": "Candidate failed"}]
+                records.append({**row, "status": "failed", "errors": row_errors})
+                errors.extend(row_errors)
+            else:
+                records.append(row)
+        for signature in sorted(expected - seen):
+            error = {"code": "OUTPUT_MISSING", "message": "Candidate missing from batch"}
+            records.append({"mutations": list(signature), "status": "failed", "errors": [error]})
+            errors.append(error)
+        return replace(result, status="partial" if errors else "success", records=records, errors=errors)
 
     def validate_result(self, request: PredictionRequest, result: PredictionResult) -> list[dict]:
         errors = super().validate_result(request, result)

@@ -134,3 +134,48 @@ def test_card_publication_receipt_hashes_final_analysis_and_preserves_failure(tm
     assert receipt['status'] == 'INCOMPLETE'
     assert analysis['design_summary']['display_evidence_acceptance']['incomplete_card_count'] == 1
     assert (tmp_path / 'card_evidence_completeness.json').is_file()
+
+
+def test_final_export_rechecks_card_content_after_analysis_changes(tmp_path, monkeypatch):
+    import json
+    import zipfile
+    from ecd_epitope_scanner import exporting
+    from ecd_epitope_scanner.joint_design_v4.impact_completeness import write_card_acceptance
+    from ecd_epitope_scanner.util import sha256_file
+
+    for name in ('panel_candidates.json', 'sector_recommendations_v4.json'):
+        (tmp_path / name).write_text('[]', encoding='utf-8')
+    analysis = {'design_summary': {'sector_recommendations': [_complete_card()]}}
+    assert write_card_acceptance(tmp_path, analysis)['status'] == 'PASS'
+    analysis['design_summary']['sector_recommendations'][0]['impact_evidence']['axes'].pop('aromatic_delta')
+    (tmp_path / 'analysis.json').write_text(json.dumps(analysis), encoding='utf-8')
+    (tmp_path / 'v4_manifest.json').write_text(json.dumps(
+        {'worker_runs': {'foldx': {'status': 'success'}}}), encoding='utf-8')
+    (tmp_path / 'run_manifest.json').write_text(json.dumps({'files': {
+        'analysis.json': '', 'card_evidence_completeness.json': '',
+        'panel_candidates.json': '', 'sector_recommendations_v4.json': ''}}), encoding='utf-8')
+
+    def copy_evidence(source, output, manifest):
+        artifact = output / 'source_evidence' / 'receipt.json'
+        artifact.parent.mkdir(parents=True)
+        artifact.write_text('{}', encoding='utf-8')
+        return {'status': 'PASS', 'artifact_paths': ['source_evidence/receipt.json']}
+
+    monkeypatch.setattr('ecd_epitope_scanner.foldx_source_evidence.copy_foldx_source_evidence', copy_evidence)
+    monkeypatch.setattr(exporting, 'build_offline_html', lambda *_: '<html></html>')
+    monkeypatch.setattr(exporting, 'build_offline_site', lambda *_: [])
+    receipt = exporting.finalize_scientific_bundle(tmp_path)
+
+    assert receipt['status'] == 'INCOMPLETE'
+    assert 'impact_evidence.axes.aromatic_delta' in receipt['cards'][0]['missing_fields']
+    assert receipt['inputs_sha256']['analysis.json'] == sha256_file(tmp_path / 'analysis.json')
+    manifest = json.loads((tmp_path / 'run_manifest.json').read_text(encoding='utf-8'))
+    assert manifest['files']['analysis.json'] == sha256_file(tmp_path / 'analysis.json')
+    assert manifest['files']['card_evidence_completeness.json'] == sha256_file(
+        tmp_path / 'card_evidence_completeness.json')
+    with zipfile.ZipFile(tmp_path / 'ecd_epitope_design.zip') as archive:
+        assert archive.read('card_evidence_completeness.json') == (tmp_path / 'card_evidence_completeness.json').read_bytes()
+        archived_manifest = json.loads(archive.read('run_manifest.json'))
+        assert archived_manifest['files']['analysis.json'] == sha256_file(tmp_path / 'analysis.json')
+        assert archived_manifest['files']['card_evidence_completeness.json'] == sha256_file(
+            tmp_path / 'card_evidence_completeness.json')

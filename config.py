@@ -33,6 +33,14 @@ JOINT_V4_ML_PARAMETERS = {
     "max_sectors": 7,
     "max_primary_constructs": 7,
     "regional_recommendation_policy": "regional_mechanism_pareto_v1",
+    "execution_protocol": {
+        "name": "ordinary_three_principle_adaptive_v1",
+        "spurs_batch_size": 64,
+        "spurs_unique_request_limit": 1000,
+        "foldx_slot_limit": 300,
+        "foldx_initial_slots": 3,
+        "foldx_append_slots": 7,
+    },
     "use_hypothesis_hierarchy": True,
     "hypothesis_hierarchy": {
         "weighted_jaccard": 0.75, "maximum_center_geodesic_a": 6.0,

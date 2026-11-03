@@ -7,10 +7,12 @@ import math
 import os
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from .. import config
+from .site_first_display import confirmed_repeat_pass
 from ..stability import AUTO_EXCLUDED_MUTANTS
 from ..integrations._adapter import request_for
 from ..integrations.discotope_adapter import DiscoTopeAdapter
@@ -27,7 +29,7 @@ from ..models import (
     to_dict,
 )
 from ..sequences import apply_mutations, coding_fragment
-from ..util import sha256_file, write_json
+from ..util import safe_name, sha256_file, write_json
 from .candidate_search import generate_candidates
 from .diagnostics import recommendation_diagnostics
 from .contexts import (
@@ -233,7 +235,6 @@ def _foldx_shortlist(
     from .spatial_support import spatial_shortlist, site_signature
     maximum = max(1, int(maximum))
     if sectors is not None:
-        from dataclasses import replace
         from .spatial_support import candidate_region_membership, regional_support, spatial_priority
         ranked = [c for c in candidates if c.order in {2, 3}
                   and c.search_role != "EXPLORATORY" and c.qualification != "REVIEW_REQUIRED"]
@@ -857,6 +858,9 @@ def _legacy_designs(
                     if candidate.recommendation_class == "EPITOPE_PRIORITIZED"
                     else "Stability-gated fallback candidate; no DiscoTope-supported site is required."
                 ) + (
+                    " FoldX passed the complete ten-slot median confirmation; individual samples cross the gate, so sampling variability remains."
+                    if confirmed_repeat_pass(candidate.impact_evidence.get("stability_repeat_audit", {}))
+                    else
                     " FoldX repeat values cross the configured gate; the median passed, but the result is sampling-sensitive and needs review."
                     if (candidate.impact_evidence.get("stability_repeat_audit", {}).get("sampling_decision_sensitive") is True)
                     else " FoldX repeat values are incomplete or invalid; sampling sensitivity is unknown."
@@ -1057,6 +1061,34 @@ def run_joint_v4_ml(
     supplied_predictions = dict(prediction_results or {})
     from ..surface_perturbation import STRATEGY_ID
     physical_preview = params.get("surface_strategy") == STRATEGY_ID
+    protocol_value = params.get("execution_protocol")
+    protocol_name = protocol_value.get("name") if isinstance(protocol_value, dict) else protocol_value
+    site_first_protocol = protocol_name == "ordinary_site_first_v2"
+    adaptive_protocol = (
+        not physical_preview
+        and params.get("mode", "strict") == "strict"
+        and protocol_name in {"ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}
+    )
+    execution_protocol = (
+        {
+            **config.JOINT_V4_ML_PARAMETERS["execution_protocol"],
+            "name": protocol_name,
+            **(
+                params["execution_protocol"]
+                if isinstance(params.get("execution_protocol"), dict)
+                else {}
+            ),
+        }
+        if adaptive_protocol
+        else {
+            "name": "legacy",
+            "foldx_repeat_count": 5,
+            "foldx_repeat_slots": [0, 1, 2, 3, 4],
+        }
+    )
+    if site_first_protocol and adaptive_protocol:
+        execution_protocol.setdefault("display_prefilter", "known_review_v1")
+        execution_protocol.setdefault("repeat_confirmation_policy", "ten_slot_median_v1")
     if not physical_preview:
         params["spurs_multi"] = {**params["spurs_multi"], "stability_threshold_policy": "ordinary_v4_directional_v1"}
         params["candidate_search"] = {**params["candidate_search"],
@@ -1255,6 +1287,27 @@ def run_joint_v4_ml(
         sequence=protein.sequence,
         coverage_profile=coverage_preview,
     )
+    epitope_by_position = {item.residue.uniprot_pos: item for item in epitope}
+    epitope_applicable = (source_provenance or {}).get(
+        "analysis_target", "antigen") != "binder"
+    seed_percentile = float(params["discotope"].get("seed_percentile", 0.80))
+    for item in single:
+        annotation = epitope_by_position.get(item.residue.uniprot_pos)
+        if not epitope_applicable:
+            item.epitope_evidence_status = "NOT_APPLICABLE"
+        elif annotation is not None and (annotation.status == "SCORED"
+                                         or (site_first_protocol and annotation.status == "PREDICTED")):
+            item.epitope_prior = annotation.surface_percentile
+            item.epitope_supported = bool(
+                annotation.local_peak
+                or (annotation.surface_percentile is not None
+                    and annotation.surface_percentile >= seed_percentile)
+            )
+            item.epitope_evidence_status = "SCORED"
+        else:
+            item.epitope_prior = None
+            item.epitope_supported = False
+            item.epitope_evidence_status = "MISSING"
     if regional_policy:
         records_by_position = {record.uniprot_pos: record for record in records}
         for item in single:
@@ -1370,13 +1423,37 @@ def run_joint_v4_ml(
         search_hypotheses=candidate_hypotheses(params.get('surface_perturbation',{}).get(
             'candidate_route','overlapping_windows'),options,graph,params['candidate_search'],hypotheses)
     phase("V4_COMBINATION_SEARCH")
-    candidates = generate_candidates(
-        sectors, [option for option in options if not option.review_required], graph,
-        {**params["candidate_search"], "sector_resource_guarantees": not physical_preview},
-        hypotheses=search_hypotheses,
-        diagnostics=candidate_pool_diagnostics,
-        surface_areas=areas if not physical_preview else None,
-    )
+    adaptive_store = None
+    adaptive_validation = None
+    if adaptive_protocol:
+        if site_first_protocol:
+            from .site_first import build_site_first_queues as build_queues
+            from .site_first_validation import SiteFirstValidation as Validation
+        else:
+            from .ordinary_adaptive import build_candidate_queues as build_queues
+            from .ordinary_adaptive_validation import AdaptiveValidation as Validation
+        adaptive_store = build_queues(
+            single,
+            sectors,
+            graph,
+            areas,
+            protein.sequence,
+            **({} if site_first_protocol else {"db_path": output_dir / "ordinary_candidate_index.sqlite3"}),
+            maximum_span=float(params["candidate_search"].get(
+                "maximum_geodesic_span_a", 24.0)),
+            records=records,
+            epitope_applicable=epitope_applicable,
+        )
+        adaptive_validation = Validation()
+        candidates = []
+    else:
+        candidates = generate_candidates(
+            sectors, [option for option in options if not option.review_required], graph,
+            {**params["candidate_search"], "sector_resource_guarantees": not physical_preview},
+            hypotheses=search_hypotheses,
+            diagnostics=candidate_pool_diagnostics,
+            surface_areas=areas if not physical_preview else None,
+        )
     review_diagnostics = {}
     if any(option.review_required for option in options):
         candidates.extend(generate_candidates(
@@ -1385,7 +1462,7 @@ def run_joint_v4_ml(
             hypotheses=hypotheses or None, diagnostics=review_diagnostics,
             surface_areas=areas if not physical_preview else None,
         ))
-    if regional_policy:
+    if regional_policy and not adaptive_protocol:
         from .regional_perturbation import (generate_regional_candidates, merge_regional_candidates,
                                             annotate_local_interactions, audit_single_thresholds)
         from .candidate_search import _coverage_from_distances, _distances
@@ -1508,25 +1585,212 @@ def run_joint_v4_ml(
         ]
 
     phase("V4_SPURS_COMBINATION")
-    multi = (
-        _prediction(
-            adapters["spurs_multi"],
-            prediction_structure,
-            chain,
-            prediction_sequence,
-            output_dir,
-            structure_type,
-            params.get("spurs_multi", {}),
-            prediction_results,
-            "spurs_multi",
-            [candidate_notation(candidate) for candidate in candidates if not physical_preview or candidate.order > 1],
+    if adaptive_validation is not None:
+        def canonical_response(response):
+            def mutations(row):
+                values = row.get("mutations") or row.get("mutation_list") or []
+                return values.split(",") if isinstance(values, str) else values
+            return replace(response, records=[{
+                **row,
+                "mutations": [_map_mutation_notation(value, position_map)
+                              for value in mutations(row)],
+            } for row in response.records])
+
+        def predict_adaptive_spurs(batch):
+            if site_first_protocol:
+                phase("V4_SPURS_COMBINATION")
+            return canonical_response(_prediction(
+                adapters["spurs_multi"],
+                prediction_structure,
+                chain,
+                prediction_sequence,
+                output_dir,
+                structure_type,
+                params.get("spurs_multi", {}),
+                None,
+                "spurs_multi",
+                [candidate_notation(candidate) for candidate in batch],
+            ))
+
+        def predict_adaptive_foldx(candidate, *, slot_start, runs):
+            return canonical_response(_prediction(
+                adapters["foldx"],
+                prediction_structure,
+                chain,
+                prediction_sequence,
+                output_dir / "foldx_adaptive" / safe_name(candidate.candidate_id) / f"slot_{slot_start:02d}",
+                structure_type,
+                {
+                    **params["foldx_confirmation"],
+                    "number_of_runs": runs,
+                    "emit_paired_models": True,
+                    "sampling_slot_start": slot_start,
+                    "sampling_protocol": "time_rotabase_v3",
+                    "sampling_role": "production",
+                    "sampling_cohort": "ordinary_adaptive_v1",
+                },
+                None,
+                "foldx",
+                [candidate_notation(candidate)],
+            ))
+
+        worker_metrics = {"batches": 0, "repair_executions": 0, "repair_seconds": 0., "buildmodel_seconds": 0.}
+
+        def predict_site_first_foldx(batch, *, slot_start, runs):
+            worker_metrics["batches"] += 1
+            phase("V4_FOLDX_FIRST_PASS" if slot_start == 0 else "V4_FOLDX_REFINEMENT")
+            response = canonical_response(_prediction(
+                adapters["foldx"], prediction_structure, chain, prediction_sequence,
+                output_dir / "fx_batches" / f"b{worker_metrics['batches']:04d}_s{slot_start:02d}",
+                structure_type, {**params["foldx_confirmation"], "number_of_runs": runs,
+                    "max_workers": min(8, max(1, int(params["foldx_confirmation"].get("max_workers", 8)))),
+                    "emit_paired_models": True, "sampling_slot_start": slot_start,
+                    "sampling_protocol": "time_rotabase_v3", "sampling_role": "production",
+                    "sampling_cohort": "ordinary_site_first_v2",
+                    "engine_work_root": str((output_dir / "fx").resolve()), "short_binary_alias": True,
+                    "repair_work_root": str((output_dir / "fx_shared" / "work").resolve())},
+                None, "foldx", [candidate_notation(candidate) for candidate in batch]))
+            for key in ("repair_seconds", "buildmodel_seconds"):
+                worker_metrics[key] += float(response.provenance.get(key, 0.))
+            worker_metrics["repair_executions"] += int(bool(response.provenance.get("repair_executed")))
+            return response
+
+        def recheck_adaptive_candidate(candidate, result):
+            if result["status"] != "PASS":
+                return
+            repeat_audit = dict(result.get("repeat_audit") or {})
+            values = list(result.get("scores") or [])
+            complete = len(values) in {3, 10} and all(math.isfinite(float(value)) for value in values)
+            sensitive = (len(values) == 10 and any(value > 2 for value in values)
+                         and any(value <= 2 for value in values)) if complete else None
+            repeat_audit.update({
+                "sampling_decision_sensitive": sensitive,
+                "recommendation_risk_label": (
+                    "SAMPLING_SENSITIVE_REVIEW" if sensitive is True else
+                    "NO_WITHIN_RUN_GATE_CROSSING" if complete else
+                    "REPEAT_EVIDENCE_INCOMPLETE"),
+            })
+            result["repeat_audit"] = repeat_audit
+            signature = tuple(sorted(option.notation for option in candidate.mutations))
+            candidate.stability = CombinationStabilityEvidence(
+                mutations=signature, order=candidate.order, consensus_status="CONSENSUS_PASS",
+                spurs_multi_ddg_kcal_mol=adaptive_validation.spurs_results[signature]["score"],
+                foldx_ddg_kcal_mol=result["median"])
+            candidate.impact_evidence["stability_repeat_audit"] = repeat_audit
+            reasons = _formal_candidate_reasons(candidate, allow_spurs_only=False,
+                minimum_coverage_gain=float(params["panel_optimizer"].get("minimum_coverage_gain", .05)),
+                lower_order_coverage=0., regional_gain_required=True,
+                regional_coverage_gain=candidate.risk_components.get("regional_higher_order_gain"),
+                sasa_context_sensitive_positions={item.residue.uniprot_pos for item in surface
+                    if item.native_context_classification_changed is True},
+                sector_quality_flags=next((set(s.quality_flags) for s in sectors
+                    if s.sector_id == candidate.sector_id), set()), require_complete_foldx=True)
+            if reasons:
+                result.update(status="SCIENTIFIC_FAILURE", formal_exclusion_reasons=reasons)
+            if site_first_protocol:
+                from .site_first_display import apply_site_first_repeat_review
+                verdict = apply_site_first_repeat_review(candidate, result,
+                    confirmation_policy=execution_protocol.get("repeat_confirmation_policy"))
+                if verdict:
+                    return verdict
+
+        try:
+            adaptive_run = adaptive_validation.run_indexed(
+                adaptive_store,
+                predict_adaptive_spurs,
+                predict_site_first_foldx if site_first_protocol else predict_adaptive_foldx,
+                spurs_request_limit=int(execution_protocol["spurs_unique_request_limit"]),
+                foldx_slot_limit=int(execution_protocol["foldx_slot_limit"]),
+                foldx_recheck=recheck_adaptive_candidate,
+                **({"max_workers": params["foldx_confirmation"].get("max_workers", 8),
+                    "display_prefilter": execution_protocol.get("display_prefilter")} if site_first_protocol else {}),
+            )
+        finally:
+            adaptive_store.close()
+        if site_first_protocol:
+            adaptive_run["ledger"]["worker_metrics"] = worker_metrics
+        candidates = list(adaptive_validation.materialized_candidates.values())
+        if site_first_protocol:
+            attach_hypothesis_responses(
+                candidates, hypotheses, graph,
+                radius_a=response_radius, decay_length_a=response_decay,
+            )
+        candidate_pool_diagnostics["adaptive_execution"] = {
+            "spurs": adaptive_run["spurs"]["ledger"],
+            "foldx": adaptive_run["foldx"]["ledger"],
+            "lanes": adaptive_run["ledger"]["queues"],
+        }
+        candidate_pool_diagnostics["adaptive_candidate_ledger"] = adaptive_run["ledger"]
+        spurs_result = adaptive_run["spurs"]
+        spurs_records = []
+        for signature, result in sorted(spurs_result["results"].items()):
+            if result.get("score") is None:
+                continue
+            spurs_records.append({
+                "mutations": [_map_mutation_notation(value, normalized_positions) for value in signature],
+                "ddg": result["score"],
+                "adaptive_status": result["status"],
+            })
+        multi = PredictionResult(
+            status=(
+                "partial"
+                if spurs_result["ledger"].get("technical_failure")
+                else "success"
+            ),
+            records=spurs_records,
+            errors=(
+                [{"code": "ADAPTIVE_SPURS_INCOMPLETE",
+                  "message": spurs_result["ledger"].get("stop_reason")}]
+                if spurs_result["ledger"].get("technical_failure") else []
+            ),
+            provenance={"adaptive_ledger": spurs_result["ledger"]},
         )
-        if candidates
-        else PredictionResult(status="failed", errors=[{
-            "code": "NO_CANDIDATES_TO_SCORE",
-            "message": "SPURS multi was not run because candidate generation returned no combinations.",
-        }])
-    )
+        foldx_records = []
+        for signature, result in sorted(
+                adaptive_run["foldx"].get("results", {}).items()):
+            if not result.get("scores"):
+                continue
+            foldx_records.append({
+                "mutations": [_map_mutation_notation(value, normalized_positions) for value in signature],
+                "ddg": result.get("median"),
+                "ddg_runs_kcal_mol": result["scores"],
+                "paired_models": result.get("paired_models", []),
+                "adaptive_status": result["status"],
+            })
+        foldx = PredictionResult(
+            status=(
+                "partial"
+                if adaptive_run["foldx"]["ledger"].get("technical_failure")
+                else "success"
+            ),
+            records=foldx_records,
+            errors=(
+                [{"code": "ADAPTIVE_FOLDX_INCOMPLETE",
+                  "message": adaptive_run["foldx"]["ledger"].get("stop_reason")}]
+                if adaptive_run["foldx"]["ledger"].get("technical_failure") else []
+            ),
+            provenance={"adaptive_ledger": adaptive_run["foldx"]["ledger"]},
+        )
+    else:
+        multi = (
+            _prediction(
+                adapters["spurs_multi"],
+                prediction_structure,
+                chain,
+                prediction_sequence,
+                output_dir,
+                structure_type,
+                params.get("spurs_multi", {}),
+                prediction_results,
+                "spurs_multi",
+                [candidate_notation(candidate) for candidate in candidates if not physical_preview or candidate.order > 1],
+            )
+            if candidates
+            else PredictionResult(status="failed", errors=[{
+                "code": "NO_CANDIDATES_TO_SCORE",
+                "message": "SPURS multi was not run because candidate generation returned no combinations.",
+            }])
+        )
     if physical_preview and _complete_success(spurs):
         # Singles reuse the already computed stability landscape, with no multi forward pass.
         singles = _spurs_rows(spurs.records)
@@ -1543,7 +1807,8 @@ def run_joint_v4_ml(
     )
     # Confirm combinations that can still enter the formal panel. An unrelated
     # rejected/exploratory pool must not consume the limited FoldX budget.
-    if (mode == "strict" and not physical_preview and not regional_policy and _complete_success(multi)
+    if (mode == "strict" and not physical_preview and adaptive_validation is None
+            and not regional_policy and _complete_success(multi)
             and prediction_results is None and params.get("candidate_ids") is None
             and params.get("candidate_stage_limit") is None):
         from .candidate_search import supplemental_exclusive_doubles
@@ -1595,7 +1860,7 @@ def run_joint_v4_ml(
             for order in (2, 3):
                 rank_impacts([item for item in confirmable if item.order == order
                     and {option.residue.uniprot_pos for option in item.mutations} <= set(sector.residue_positions)])
-    if not physical_preview:
+    if not physical_preview and adaptive_validation is None:
         from .candidate_search import select_v4_foldx_first_pass
         search = params["candidate_search"]
         pre_foldx_recommendations = build_sector_recommendations(
@@ -1614,6 +1879,8 @@ def run_joint_v4_ml(
             "number_of_runs": 3, "emit_paired_models": True,
             "sampling_protocol": "time_rotabase_v3", "sampling_role": "production",
             "sampling_cohort": "ordinary_v4_sequential_v1", "sampling_slot_start": 0}
+    elif adaptive_validation is not None:
+        foldx_candidates = []
     else:
         foldx_candidates = _foldx_shortlist(
             confirmable,
@@ -1643,26 +1910,27 @@ def run_joint_v4_ml(
             int(params['foldx_confirmation'].get('max_candidates',60)), areas)
     if not physical_preview and len(foldx_candidates) > 80:
         raise ValueError("Ordinary FoldX exceeds 80 unique combinations before execution")
-    phase("V4_FOLDX_FIRST_PASS")
-    foldx = (
-        _prediction(
-            adapters["foldx"],
-            prediction_structure,
-            chain,
-            prediction_sequence,
-            output_dir,
-            structure_type,
-            params.get("foldx_confirmation", {}),
-            prediction_results,
-            "foldx",
-            [candidate_notation(candidate) for candidate in foldx_candidates],
+    if adaptive_validation is None:
+        phase("V4_FOLDX_FIRST_PASS")
+        foldx = (
+            _prediction(
+                adapters["foldx"],
+                prediction_structure,
+                chain,
+                prediction_sequence,
+                output_dir,
+                structure_type,
+                params.get("foldx_confirmation", {}),
+                prediction_results,
+                "foldx",
+                [candidate_notation(candidate) for candidate in foldx_candidates],
+            )
+            if foldx_candidates
+            else PredictionResult(status="failed", errors=[{
+                "code": "NO_CONFIRMABLE_CANDIDATES",
+                "message": "FoldX was not run because no primary candidate passed the SPURS multi confirmation gate.",
+            }])
         )
-        if foldx_candidates
-        else PredictionResult(status="failed", errors=[{
-            "code": "NO_CONFIRMABLE_CANDIDATES",
-            "message": "FoldX was not run because no primary candidate passed the SPURS multi confirmation gate.",
-        }])
-    )
     _annotate_stability(
         candidates,
         spurs.records if _complete_success(spurs) else [],
@@ -1672,6 +1940,50 @@ def run_joint_v4_ml(
         params["foldx_confirmation"],
         position_map,
     )
+    if adaptive_validation is not None:
+        for signature, result in adaptive_run["foldx"].get("results", {}).items():
+            if result.get("status") != "PASS":
+                continue
+            repeat_audit = dict(result.get("repeat_audit") or {})
+            repeat_audit.update({
+                "sampling_decision_sensitive": (
+                    len(result.get("scores", [])) == 10
+                    and any(value > 2 for value in result.get("scores", []))
+                    and any(value <= 2 for value in result.get("scores", []))
+                ),
+                "recommendation_risk_label": (
+                    "SAMPLING_SENSITIVE_REVIEW"
+                    if len(result.get("scores", [])) == 10
+                    and any(value > 2 for value in result.get("scores", []))
+                    and any(value <= 2 for value in result.get("scores", []))
+                    else "NO_WITHIN_RUN_GATE_CROSSING"
+                ),
+            })
+            rechecks = result.get("candidate_rechecks") if site_first_protocol else None
+            candidate_ids = ([candidate_id for candidate_id, row in rechecks.items() if row.get("status") == "PASS"]
+                             if rechecks is not None else [result.get("candidate_id")])
+            for candidate_id in candidate_ids:
+                candidate = adaptive_validation.materialized_candidates.get(candidate_id)
+                if candidate is None:
+                    continue
+                candidate.stability = CombinationStabilityEvidence(
+                    mutations=signature,
+                    spurs_multi_ddg_kcal_mol=adaptive_run["spurs"]["results"].get(
+                        signature, {}).get("score"),
+                    foldx_ddg_kcal_mol=result.get("median"),
+                    order=candidate.order,
+                    consensus_status="CONSENSUS_PASS",
+                    provenance={
+                        "adaptive_status": result.get("status"),
+                        "slots": list(result.get("slots", [])),
+                        "repeat_audit": (rechecks[candidate_id].get("repeat_audit") or repeat_audit)
+                            if rechecks is not None else repeat_audit,
+                    },
+                )
+                candidate.impact_evidence["stability_repeat_audit"] = dict(
+                    candidate.stability.provenance["repeat_audit"])
+    if adaptive_store is not None:
+        write_json(output_dir / "ordinary_candidate_ledger.json", adaptive_run["ledger"])
     phase("V4_SELECTION")
     annotate_candidate_risks(candidates, records, hypotheses)
     allow_spurs_only = False
@@ -1759,7 +2071,19 @@ def run_joint_v4_ml(
             if physical_preview and candidate.order==3 and candidate.formal_eligible:
                 candidate.warnings.append('REAL_HIGHER_ORDER_GAIN_PENDING')
     qualify()
-    if not physical_preview and _complete_success(foldx):
+    if site_first_protocol:
+        from .site_first_display import apply_display_qualification
+        for candidate in candidates:
+            apply_display_qualification(candidate)
+        for result in adaptive_run["foldx"].get("results", {}).values():
+            for candidate_id, row in (result.get("candidate_rechecks") or {}).items():
+                candidate = adaptive_validation.materialized_candidates.get(candidate_id)
+                if candidate is None:
+                    continue
+                reasons = apply_display_qualification(candidate)
+                row["display_status"] = "DISPLAY_REVIEW" if reasons else "DISPLAY_ELIGIBLE"
+                row["display_review_reasons"] = reasons
+    if not physical_preview and adaptive_validation is None and _complete_success(foldx):
         from .sequential_foldx import refine_foldx
         def display_candidate_ids(current_candidates):
             current_formal = [item for item in current_candidates if item.formal_eligible]
@@ -1800,7 +2124,8 @@ def run_joint_v4_ml(
         qualify(require_complete=True)
         phase("V4_FINAL_SELECTION")
     selectable = (
-        candidates if mode == "preview" else [item for item in candidates if item.formal_eligible]
+        [item for item in candidates if item.display_eligible] if mode == "preview"
+        else [item for item in candidates if item.formal_eligible and item.display_eligible]
     )
     if physical_preview:
         from ..surface_perturbation.combo_contract import waiting_confirmation
@@ -1894,7 +2219,6 @@ def run_joint_v4_ml(
         )
     if raw_hypotheses:
         from .identifiability import panel_metrics
-        from dataclasses import replace
         attach_hypothesis_responses(selected, raw_hypotheses, graph, radius_a=response_radius, decay_length_a=response_decay)
         raw_metrics = panel_metrics(selected, raw_hypotheses)
         raw_by_id = {h.hypothesis_id: h for h in raw_hypotheses}
@@ -1909,20 +2233,58 @@ def run_joint_v4_ml(
         for name, worker in (("spurs_single", spurs), ("spurs_multi", multi), ("discotope", discotope), ("foldx", foldx), ("procaliper", procaliper))}}
     recommendation_source["resource_audits"] = {
         row["sector_id"]: row for row in candidate_pool_diagnostics.get("foldx_region_resources", [])}
+    if adaptive_validation is not None:
+        recommendation_source["ordinary_adaptive_ledger"] = adaptive_run["ledger"]
     display_candidates = candidates
     if not physical_preview and mode == "strict":
-        from .sequential_foldx import complete_display_pool
-        display_candidates = complete_display_pool(candidates)
+        if adaptive_validation is None:
+            from .sequential_foldx import complete_display_pool
+            display_candidates = complete_display_pool(candidates)
+        else:
+            display_candidates = [
+                candidate for candidate in candidates
+                if candidate.formal_eligible and candidate.stability is not None
+                and candidate.stability.consensus_status == "CONSENSUS_PASS"
+                and (not site_first_protocol or candidate.display_eligible)
+            ]
         display_ids = {candidate.candidate_id for candidate in display_candidates}
         candidate_pool_diagnostics["display_evidence_selection"] = {
-            "policy": "five_slot_recommendation_cards_v1",
+            "policy": (
+                "ordinary_adaptive_3_or_10_slot_cards_v1"
+                if adaptive_validation is not None
+                else "five_slot_recommendation_cards_v1"
+            ),
             "eligible_candidate_ids": [candidate.candidate_id for candidate in display_candidates],
             "retained_in_raw_pool_only": [candidate.candidate_id for candidate in candidates if candidate.candidate_id not in display_ids],
+            "display_review_exclusions": [
+                {"candidate_id": candidate.candidate_id,
+                 "reasons": list(candidate.display_exclusion_reasons)}
+                for candidate in candidates if site_first_protocol and not candidate.display_eligible
+            ],
             "raw_pool_preserved": True, "ordinary_pair_slot_cap": 300,
         }
     panel.sector_recommendations = build_sector_recommendations(display_candidates, sectors,
         {item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface}, params, selected,
         graph=graph, records=records, source_provenance=recommendation_source, epitope_evidence=epitope)
+    if site_first_protocol:
+        for row in panel.sector_recommendations:
+            sector = next((item for item in sectors if item.sector_id == row.get("sector_id")), None)
+            positions = set(sector.residue_positions) if sector else set()
+            excluded = [candidate for candidate in candidates if not candidate.display_eligible
+                        and positions.intersection(option.residue.uniprot_pos for option in candidate.mutations)]
+            reasons = sorted({reason for candidate in excluded
+                              for reason in candidate.display_exclusion_reasons})
+            associated = [candidate for candidate in candidates
+                          if positions.intersection(option.residue.uniprot_pos for option in candidate.mutations)]
+            row["formal_candidate_count"] = sum(candidate.formal_eligible for candidate in associated)
+            row["display_eligible_formal_candidate_count"] = sum(
+                candidate.formal_eligible and candidate.display_eligible
+                for candidate in associated)
+            row["display_excluded_candidate_ids"] = sorted(candidate.candidate_id for candidate in excluded)
+            row["display_exclusion_reasons"] = reasons
+            if row.get("status") == "NO_COMBINATION" and excluded:
+                row["display_gap_status"] = "NO_DISPLAY_ELIGIBLE_CANDIDATE"
+                row["display_gap_reason"] = "所有已评分候选均需展示复核，未纳入正式推荐。"
     from .spatial_support import candidate_region_membership, site_signature
     foldx_ids = {c.candidate_id for c in foldx_candidates}
     for row in panel.sector_recommendations:
@@ -2116,6 +2478,7 @@ def run_joint_v4_ml(
             "qualification_audit": qualification_audit(records, float(params["surface"]["rsasa_threshold"])),
             "hierarchy_raw_footprint_ids": [f.footprint_id for f in getattr(surface_v2_result, "raw_footprints", [])],
             "global_candidate_pool": candidate_pool_diagnostics,
+            "execution_protocol": execution_protocol,
             "review_candidate_pool": review_diagnostics,
             "recommendation_diagnostics": recommendation_diagnostics(
                 candidates, selected,
@@ -2139,6 +2502,7 @@ def run_joint_v4_ml(
             "assay_format": assay_format,
             "assay_accessibility_status": "UNASSESSED" if assay_format == "cell_surface" else "NOT_APPLICABLE",
         },
+        execution_protocol=execution_protocol,
     )
     contexts = context_manifest(protein, records, chain)
     write_json(output_dir / "raw_surface_footprints_v411.json", to_dict(getattr(surface_v2_result, "raw_footprints", [])))
@@ -2177,3 +2541,29 @@ def run_joint_v4_ml(
     )
     write_json(output_dir / "native_surface_rows.json", native_rows)
     return result
+
+
+# Experimental opt-in; scope owns the child and closes it on every exit path.
+_run_joint_v4_ml_without_persistent_scope = run_joint_v4_ml
+
+from functools import wraps as _wraps
+from inspect import signature as _signature
+
+@_wraps(_run_joint_v4_ml_without_persistent_scope)
+def run_joint_v4_ml(*args, **kwargs):
+    from ..integrations.process_runner import persistent_spurs_scope
+    bound = _signature(_run_joint_v4_ml_without_persistent_scope).bind_partial(*args, **kwargs)
+    settings = bound.arguments.get("parameters") or {}
+    if not (settings.get("runtime_optimization") or {}).get("spurs_persistent", False):
+        return _run_joint_v4_ml_without_persistent_scope(*args, **kwargs)
+    protocol = settings.get('execution_protocol')
+    name = protocol.get('name') if isinstance(protocol, dict) else protocol
+    if name != 'ordinary_site_first_v2':
+        raise ValueError('runtime optimization requires ordinary_site_first_v2')
+    from contextlib import ExitStack
+    from ..stability import foldx_execution_scope
+    with ExitStack() as stack:
+        stack.enter_context(persistent_spurs_scope())
+        if (settings.get('runtime_optimization') or {}).get('foldx_pool', False):
+            stack.enter_context(foldx_execution_scope())
+        return _run_joint_v4_ml_without_persistent_scope(*args, **kwargs)

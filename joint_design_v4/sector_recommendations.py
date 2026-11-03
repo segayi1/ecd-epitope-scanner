@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from ..stability import AUTO_EXCLUDED_MUTANTS
+from .site_first_display import confirmed_repeat_pass
 
 
 def _direct_positions(candidate):
@@ -111,6 +112,7 @@ def _gate_details(candidate, parameters):
 
 def _legacy_sector_recommendations(candidates, sectors, surface_areas, parameters, selected=()):
     """Give every region a qualified combination or a clearly labelled review suggestion."""
+    candidates = [candidate for candidate in candidates if getattr(candidate, "display_eligible", True)]
     selected_ids = {item if isinstance(item, str) else item.candidate_id for item in selected}
     areas = {int(position): max(0.0, float(area)) for position, area in surface_areas.items()}
     denominator = set(areas)
@@ -301,10 +303,86 @@ def _checks(candidate, parameters):
     return checks
 
 
+def _ordinary_adaptive_sector_recommendation(sector, rows, ledger, surface_areas, selected):
+    """Project only completed adaptive queue winners onto full evidence rows."""
+    from .ordinary_adaptive import PRINCIPLES
+
+    queue = {(str(item.get("sector_id")), item.get("principle")): item
+             for item in (ledger or {}).get("queues", [])}
+    by_id = {candidate.candidate_id: (candidate, row) for candidate, row in rows}
+    winners = {}
+    missing = []
+    for principle in PRINCIPLES:
+        item = queue.get((str(sector.sector_id), principle))
+        state = item.get("state", "unknown") if item else "missing_queue"
+        completed = [entry for entry in (item or {}).get("completed", [])
+                     if entry.get("outcome") == "complete"
+                     or (isinstance(entry.get("outcome"), dict)
+                         and entry["outcome"].get("outcome") == "complete")]
+        winner_id = completed[0].get("candidate_id") if state == "complete" and completed else None
+        winner = by_id.get(winner_id) if winner_id is not None else None
+        if state == "complete" and not completed:
+            state = "winner_not_recorded"
+        if winner is not None and winner[1].get("ownership") == "EXCLUSIVE":
+            winners[principle] = winner
+        else:
+            if winner_id is not None:
+                state = "winner_row_unavailable"
+            missing.append({"principle": principle, "state": state,
+                            "candidate_id": winner_id,
+                            "completed_candidate_count": len(completed),
+                            "pending_count": (item or {}).get("pending_count", 0)})
+
+    # Fixed protocol ordering defines the first display row; labels are merged
+    # when the same physical candidate won more than one independent queue.
+    primary_pair = next(iter(winners.values()), None)
+    if primary_pair:
+        primary = primary_pair[1]
+        primary["recommendation_role"] = "PRIMARY"
+        primary["principles"] = []
+        primary["recommendation_reasons"] = []
+    else:
+        primary = _legacy_sector_recommendations([], [sector], surface_areas, {}, selected)[0]
+        primary.update({"recommendation_role": "PRIMARY", "principles": [],
+                        "recommendation_reasons": []})
+    alternatives = []
+    by_candidate = {primary.get("candidate_id"): primary} if primary.get("candidate_id") else {}
+    reasons = {
+        "epitope_support": "该组合是本区表位支持原则队列完成验证的首个通过项。",
+        "mechanism_pareto": "该组合是本区机制帕累托原则队列完成验证的首个通过项。",
+        "sector_coverage": "该组合是本区覆盖原则队列完成验证的首个通过项。",
+    }
+    for principle, (candidate, row) in winners.items():
+        target = by_candidate.get(candidate.candidate_id)
+        if target is None:
+            target = row
+            target["recommendation_role"] = "ALTERNATIVE"
+            target["principles"] = []
+            target["recommendation_reasons"] = []
+            alternatives.append(target)
+            by_candidate[candidate.candidate_id] = target
+        target["principles"].append(principle)
+        target["recommendation_reasons"].append(reasons[principle])
+    primary["recommendation_policy"] = ledger.get("policy", "ordinary_three_principle_adaptive_v1")
+    primary["alternatives"] = alternatives
+    primary["formal_candidate_count"] = sum(c.formal_eligible for c, _ in rows if _["ownership"] == "EXCLUSIVE")
+    primary["confirmed_alternative_count"] = sum(row.get("status") == "PASSED" for row in alternatives)
+    primary["all_formal_local_candidates"] = [deepcopy(row) for c, row in rows
+                                               if row["ownership"] == "EXCLUSIVE" and c.formal_eligible]
+    primary["unavailable_principles"] = missing
+    primary["sector_summary"] = {"residue_count": len(set(sector.residue_positions)),
+        "surface_area_a2": sum(surface_areas.get(position, 0) for position in sector.residue_positions),
+        "mutable_site_count": len({option.residue.uniprot_pos for c, _ in rows
+                                    for option in c.mutations if option.residue.uniprot_pos in sector.residue_positions}),
+        "safe_exclusive_candidate_count": sum(row["ownership"] == "EXCLUSIVE" for _, row in rows)}
+    return primary
+
+
 def build_sector_recommendations(candidates, sectors, surface_areas, parameters, selected=(), *,
                                  graph=None, records=None, source_provenance=None, epitope_evidence=(),
                                  confirmation_planning=False):
     """Exclusive sector primary plus independently qualified alternatives."""
+    candidates = [candidate for candidate in candidates if getattr(candidate, "display_eligible", True)]
     if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
         return _legacy_sector_recommendations(candidates, sectors, surface_areas, parameters, selected)
     from dataclasses import replace
@@ -447,14 +525,11 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 "epistasis_estimate": evidence.epistasis_estimate, "consensus_status": evidence.consensus_status,
                 "provenance": evidence.provenance} if evidence else {})
             repeat_diagnostic = candidate.impact_evidence.get("stability_repeat_audit", {})
-            row["stability_repeat_diagnostic"] = {key: repeat_diagnostic.get(key) for key in (
-                "foldx_repeat_gate_kcal_mol", "foldx_repeat_min_kcal_mol", "foldx_repeat_max_kcal_mol",
-                "foldx_repeat_above_gate_count", "foldx_repeat_at_or_below_gate_count",
-                "foldx_repeat_invalid_value_count", "sampling_decision_diagnostic_status",
-                "sampling_decision_sensitive", "cross_execution_conflict",
-                "cross_execution_evidence_status", "recommendation_risk_label")}
+            row["stability_repeat_diagnostic"] = deepcopy(repeat_diagnostic)
             row["recommendation_risk_label"] = repeat_diagnostic.get("recommendation_risk_label", "REPEAT_EVIDENCE_INCOMPLETE")
             row["recommendation_risk_explanation"] = (
+                "FoldX已完成十槽复算且中位数通过；仍存在跨门采样波动，详见逐槽值。"
+                if confirmed_repeat_pass(repeat_diagnostic) else
                 "FoldX重复值跨越配置门限；中位数资格按现行合同保留，但结果对采样敏感，建议复核。"
                 if repeat_diagnostic.get("sampling_decision_sensitive") is True else
                 "FoldX重复证据缺失或含无效值，采样敏感性未知。"
@@ -524,6 +599,11 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 -row["coverage_gain_area_a2"], candidate.structural_risk, candidate.candidate_id]
             row["principles"] = []
             rows.append((candidate, row))
+        adaptive_ledger = (source_provenance or {}).get("ordinary_adaptive_ledger")
+        if adaptive_ledger is not None:
+            output.append(_ordinary_adaptive_sector_recommendation(
+                sector, rows, adaptive_ledger, surface_areas or {}, selected))
+            continue
         exclusive = [(candidate, row) for candidate, row in rows if row["ownership"] == "EXCLUSIVE"]
         exclusive.sort(key=lambda item: item[0].candidate_id)
         def coverage_key(item):

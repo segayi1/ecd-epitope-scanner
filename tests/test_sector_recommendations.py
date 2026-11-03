@@ -7,6 +7,7 @@ from ecd_epitope_scanner.joint_design_v4.models import (
     CombinationStabilityEvidence, ResidueKey, V4Candidate, V4MutationOption, V4Sector,
 )
 from ecd_epitope_scanner.joint_design_v4.sector_recommendations import build_sector_recommendations
+from ecd_epitope_scanner.joint_design_v4.optimizer import select_panel
 
 
 def option(position, native="D", mutant="A"):
@@ -56,6 +57,20 @@ def test_nearest_threshold_uses_configured_threshold_and_eligibility_stays_false
     assert row["gate_details"][0]["observed"] == 0.65
     assert row["gate_details"][0]["threshold"] == 0.6
     assert not near.formal_eligible
+
+
+def test_display_review_candidate_is_excluded_from_panel_and_sector_cards():
+    reviewed = candidate("reviewed", [1, 2])
+    reviewed.display_eligible = False
+    reviewed.display_exclusion_reasons = ["SAMPLING_SENSITIVE_REVIEW"]
+    backup = candidate("backup", [2, 3])
+    panel, selected = select_panel([reviewed, backup], max_primary=1)
+    assert [item.candidate_id for item in selected] == ["backup"]
+
+    rows = build_sector_recommendations(
+        [reviewed], [sector("VS001", [1, 2])], {1: 10, 2: 10}, {})
+    assert rows[0]["status"] == "NO_COMBINATION"
+    assert rows[0]["candidate_id"] is None
 
 
 def test_missing_foldx_is_one_gap_even_with_two_reasons_and_unknown_gain_stays_unknown():
@@ -136,8 +151,10 @@ def test_permutations_do_not_change_assignment_or_ranking():
 
 def test_latest_ctla4_replay_uses_real_membership_and_keeps_gate_rejections():
     run = Path(__file__).resolve().parents[1] / "workspace_data" / "5068b62450ec"
-    if not run.exists():
-        pytest.skip("Saved CTLA4 run is not available in this checkout")
+    required = ("probe_sectors_v4.json", "panel_candidates.json", "surface_graph_v41.json", "run_manifest.json")
+    missing = [name for name in required if not (run / name).is_file()]
+    if missing:
+        pytest.skip("Saved CTLA4 replay inputs unavailable: " + ", ".join(missing))
     sectors = [V4Sector(**row) for row in json.loads((run / "probe_sectors_v4.json").read_text(encoding="utf-8"))]
     candidates = []
     for row in json.loads((run / "panel_candidates.json").read_text(encoding="utf-8")):

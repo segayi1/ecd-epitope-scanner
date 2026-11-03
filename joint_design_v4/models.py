@@ -118,6 +118,9 @@ class SingleMutationEvidence:
     menu_selected: bool = False
     selection_reason: str | None = None
     impact_evidence: dict[str, Any] = field(default_factory=dict)
+    epitope_prior: float | None = None
+    epitope_supported: bool = False
+    epitope_evidence_status: str = "MISSING"
 
 
 @dataclass
@@ -154,6 +157,7 @@ class V4MutationOption:
     review_required: bool = False
 
     impact_evidence: dict[str, Any] = field(default_factory=dict)
+    epitope_evidence_status: str = "MISSING"
 
 
 @dataclass
@@ -183,6 +187,9 @@ class V4Candidate:
     search_role: str = "PRIMARY_POOL"
     targeted_hypotheses: list[str] = field(default_factory=list)
     qualification: str = "FORMAL_POOL"
+    # Recommendation/display qualification is independent of scientific gates.
+    display_eligible: bool = True
+    display_exclusion_reasons: list[str] = field(default_factory=list)
     triple_role: str | None = None
     parent_candidate_ids: list[str] = field(default_factory=list)
     control_for_candidate_ids: list[str] = field(default_factory=list)
@@ -344,3 +351,4 @@ class JointV4Result:
     raw_hypotheses: list[V4SurfaceHypothesis] = field(default_factory=list)
     footprint_families: list[FootprintFamily] = field(default_factory=list)
     complexity: SurfaceComplexitySummary | None = None
+    execution_protocol: dict[str, Any] = field(default_factory=dict)

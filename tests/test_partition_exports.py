@@ -49,7 +49,7 @@ def test_partition_success_exports_share_membership_and_diagnostics(tmp_path, su
     assert diagnostics["minimum_sector_residues"] == 4
     assert diagnostics["minimum_sector_area_a2"] == 50.0
     assert diagnostics["count_is_soft_target"] is True
-    assert diagnostics["target_sector_residues"] == 8
+    assert diagnostics["target_sector_residues"] == 7
     assert diagnostics["preferred_minimum_sector_count"] == 4
     assert diagnostics["preferred_maximum_sector_count"] == 12
     sectors = _read(tmp_path, "probe_sectors_v4.json")

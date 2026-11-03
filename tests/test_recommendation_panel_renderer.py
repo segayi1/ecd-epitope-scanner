@@ -16,7 +16,7 @@ const assert = require('node:assert/strict');
 const state={lang:'zh',result:{regions:[{id:1,residues:[1]},{id:2,residues:[2]}],residues:[],designs:[{id:'D',mutations:[{wt:'A',position:1,mutant:'W'},{wt:'S',position:2,mutant:'Y'}],mutant_ecd_sequence:'<img src=x onerror=alert(1)>'}],joint_v4_ml:{sectors:[{sector_id:'VS001'},{sector_id:'VS002'}]}}};
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ui=createRecommendationRenderer({state,h,fmt:(v,d=2)=>Number(v).toFixed(d),fmtPct:v=>Math.round(v*100)+'%',notation:m=>m.wt+m.position+m.mutant});
-const item={sector_id:'VS001',candidate_id:'<script>bad()</script>',design_id:'D',status:'NEAR_THRESHOLD',mutation_notations:['A1W','S2Y'],gate_details:[{reason:'UNKNOWN_INTERNAL_REASON',evidence_missing:true}],regional_geometry_support:{scenarios:{geodesic_9:{coverage_fraction:null},geodesic_12:{coverage_fraction:0,uncovered_positions:[1]},geodesic_15:{coverage_fraction:1,uncovered_positions:[]}}},gate_checks:[{gate:'combination_spurs',passed:null,required:false,observed:0.2,threshold:1},{gate:'candidate_connectivity',passed:true,description:'组合连通'}]};
+const item={sector_id:'VS001',candidate_id:'<script>bad()</script>',design_id:'D',status:'PASSED',formal_eligible:true,mutation_notations:['A1W','S2Y'],gate_details:[{reason:'UNKNOWN_INTERNAL_REASON',evidence_missing:true}],regional_geometry_support:{scenarios:{geodesic_9:{coverage_fraction:null},geodesic_12:{coverage_fraction:0,uncovered_positions:[1]},geodesic_15:{coverage_fraction:1,uncovered_positions:[]}}},gate_checks:[{gate:'combination_spurs',passed:null,required:false,observed:0.2,threshold:1},{gate:'candidate_connectivity',passed:true,description:'组合连通'}]};
 let html=ui.renderSectorRecommendations([item]);
 assert(html.includes('历史建议'));
 assert(html.includes('跨区组合'));
@@ -42,12 +42,48 @@ assert(selectionHtml.includes('同位点替换冲突'));
 assert(selectionHtml.includes('位点重合'));
 assert(selectionHtml.includes('data-clear-recommendations'));
 const repeatCandidate={...item,candidate_id:'REPEAT',status:'NEAR_THRESHOLD',mutation_notations:['A1W'],
+  execution_protocol:'ordinary_three_principle_adaptive_v1',
   stability_evidence:{provenance:{repeat_audit:{foldx_repeat_count:3,foldx_repeat_slots:[0,1,2],foldx_repeat_values_kcal_mol:[0.1,0.2,0.3],foldx_evidence_complete:false}}},
   gate_details:[{gate:'foldx_repeat_evidence_incomplete',reason:'FOLDX_REPEAT_EVIDENCE_INCOMPLETE',evidence_missing:false}]};
 const repeatHtml=ui.renderSectorRecommendations([repeatCandidate]);
-assert(repeatHtml.includes('FoldX重复 3/5'));
+assert(repeatHtml.includes('FoldX重复 3/3'));
 assert(repeatHtml.includes('槽值 0: 0.100 / 1: 0.200 / 2: 0.300 kcal/mol'));
 assert(repeatHtml.includes('待补算'));
+repeatCandidate.execution_protocol={name:'ordinary_three_principle_adaptive_v1',foldx_repeat_count:3};
+const adaptiveThreeHtml=ui.renderSectorRecommendations([repeatCandidate]);
+assert(adaptiveThreeHtml.includes('FoldX重复 3/3'));
+assert(adaptiveThreeHtml.includes('三次同侧通过') === false); // incomplete evidence remains visible
+const adaptiveTen={...repeatCandidate,candidate_id:'ADAPTIVE-TEN',execution_protocol:{name:'ordinary_adaptive_v1',foldx_repeat_count:10},
+  stability_repeat_diagnostic:{sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:false,foldx_repeat_count:10,
+    foldx_repeat_slots:Array.from({length:10},(_,i)=>i),foldx_repeat_values_kcal_mol:Array(10).fill(0.2),foldx_repeat_gate_kcal_mol:2,
+    foldx_repeat_min_kcal_mol:.2,foldx_repeat_max_kcal_mol:.2,foldx_repeat_above_gate_count:0,foldx_repeat_at_or_below_gate_count:10}};
+const adaptiveTenHtml=ui.renderSectorRecommendations([adaptiveTen]);
+assert(adaptiveTenHtml.includes('FoldX重复 10/10'));
+assert(adaptiveTenHtml.includes('十槽中位数通过；采样不确定性'));
+assert(adaptiveTenHtml.includes('十槽采样不确定性'));
+const mixedLegacy={...repeatCandidate,candidate_id:'MIXED-LEGACY',execution_protocol:undefined};
+const mixedHtml=ui.renderSectorRecommendations([mixedLegacy,repeatCandidate]);
+assert(mixedHtml.includes('FoldX重复 3/5'));
+assert(mixedHtml.includes('FoldX重复 3/3'));
+state.result.joint_v4_ml.execution_protocol='ordinary_three_principle_adaptive_v1';
+assert(ui.renderSectorRecommendations([mixedLegacy]).includes('FoldX重复 3/3'));
+state.result.joint_v4_ml.execution_protocol={name:'ordinary_adaptive_v1',foldx_repeat_count:10};
+assert(ui.renderSectorRecommendations([mixedLegacy]).includes('FoldX重复 3/10'));
+delete state.result.joint_v4_ml.execution_protocol;
+state.result.execution_protocol={name:'ordinary_three_principle_adaptive_v1'};
+const runAdaptiveTen={...item,candidate_id:'RUN-ADAPTIVE-TEN',status:'PASSED',mutation_notations:['A1W'],
+  stability_repeat_diagnostic:{sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:false,foldx_repeat_count:10,
+    foldx_repeat_slots:Array.from({length:10},(_,i)=>i),foldx_repeat_values_kcal_mol:Array(10).fill(.2),foldx_repeat_gate_kcal_mol:2,
+    foldx_repeat_min_kcal_mol:.2,foldx_repeat_max_kcal_mol:.2,foldx_repeat_above_gate_count:0,foldx_repeat_at_or_below_gate_count:10}};
+const runAdaptiveTenHtml=ui.renderSectorRecommendations([runAdaptiveTen]);
+assert(runAdaptiveTenHtml.includes('FoldX重复 10/10'));
+assert(runAdaptiveTenHtml.includes('十槽采样不确定性'));
+const auditLegacyThree={...runAdaptiveTen,candidate_id:'AUDIT-LEGACY-THREE',
+  stability_repeat_diagnostic:{execution_protocol:'legacy',foldx_repeat_count:3,foldx_repeat_slots:[0,1,2],
+    foldx_repeat_values_kcal_mol:[.1,.2,.3],foldx_evidence_complete:false}};
+const auditLegacyHtml=ui.renderSectorRecommendations([auditLegacyThree]);
+assert(auditLegacyHtml.includes('FoldX重复 3/5'));
+delete state.result.execution_protocol;
 assert(repeatHtml.includes('FoldX组合评分重复次数不足，待补算'));
 assert(repeatHtml.includes('待补算'));
 const oldCtla4Risk={...item,candidate_id:'CTLA4-LEGACY',status:'PASSED',design_id:'D',mutation_notations:['E59Y','K65F'],
@@ -140,10 +176,84 @@ const primary={...item,candidate_id:null,design_id:null,status:'NEAR_THRESHOLD',
 html=ui.renderSectorRecommendations([primary]);
 assert(html.includes('机制主代表状态: 待审查 · 未通过'));
 assert(html.includes('本区正式合格候选: 1'));
-assert(html.includes('全部正式合格本区候选（含主代表） · 1'));
+assert(html.includes('全部正式展示合格本区候选（含主代表） · 1'));
 assert(html.includes('FORMAL1'));
 assert(html.includes('本区仍有正式合格候选'));
 assert(!html.includes('当前未得到本区候选组合'));
+const reviewableFormal={...qualified,candidate_id:'SENSITIVE-LOCAL',stability_repeat_diagnostic:{
+  recommendation_risk_label:'SAMPLING_SENSITIVE_REVIEW',sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:true}};
+const evidenceLimited={...qualified,candidate_id:'LIMITED',status:'EVIDENCE_LIMITED'};
+const unknownRisk={...qualified,candidate_id:'UNKNOWN-RISK',stability_repeat_diagnostic:{recommendation_risk_label:'SAMPLING_DIAGNOSTIC_UNKNOWN'}};
+const displayReview={...qualified,candidate_id:'DISPLAY-REVIEW',display_eligible:false,
+  display_exclusion_reasons:['STRUCTURAL_CONFIDENCE_REVIEW_REQUIRED']};
+const reviewCard={...qualified,candidate_id:'SENSITIVE-PRIMARY',stability_repeat_diagnostic:{
+  recommendation_risk_label:'SAMPLING_SENSITIVE_REVIEW',sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:true},
+  all_formal_local_candidates:[qualified,reviewableFormal,evidenceLimited,unknownRisk,displayReview]};
+html=ui.renderSectorRecommendations([reviewCard]);
+const formalHtml=html.split('class="regional-review-candidates"')[0];
+assert(!formalHtml.includes('data-recommendation-role="primary"'));
+assert(!formalHtml.includes('data-recommendation-role="alternative"'));
+assert(html.includes('regional-review-candidates'));
+assert(html.includes('SENSITIVE-PRIMARY') && html.includes('SENSITIVE-LOCAL') && html.includes('LIMITED') && html.includes('UNKNOWN-RISK') && html.includes('DISPLAY-REVIEW'));
+assert(html.includes('全部正式展示合格本区候选（含主代表） · 1'));
+const formalLocalSection=html.match(/<details class="formal-local-candidates">([\s\S]*?)<\/details>/)?.[1] || '';
+assert(formalLocalSection.includes('FORMAL1'));
+assert(!formalLocalSection.includes('SENSITIVE-LOCAL') && !formalLocalSection.includes('LIMITED') && !formalLocalSection.includes('UNKNOWN-RISK') && !formalLocalSection.includes('DISPLAY-REVIEW'));
+assert(!html.includes('data-select-recommendation="SENSITIVE-PRIMARY"'));
+assert(!html.includes('data-select-recommendation="SENSITIVE-LOCAL"'));
+assert(!html.includes('data-select-recommendation="DISPLAY-REVIEW"'));
+assert.equal(ui.recommendationSelectionRecord(reviewableFormal,null),null);
+assert.equal(ui.recommendationSelectionRecord(evidenceLimited,null),null);
+assert.equal(ui.recommendationSelectionRecord(unknownRisk,null),null);
+assert.equal(ui.recommendationSelectionRecord(displayReview,null),null);
+assert.equal(ui.recommendationSelectionRecord({...qualified,display_status:'DISPLAY_REVIEW'},null),null);
+assert.equal(ui.recommendationSelectionRecord(qualified,null).id,'FORMAL1');
+state.result.execution_protocol={name:'ordinary_site_first_v2'};
+assert.equal(ui.recommendationSelectionRecord({...qualified,formal_eligible:undefined},null),null);
+assert.equal(ui.recommendationSelectionRecord({...qualified,stability_repeat_diagnostic:undefined},null),null);
+const siteFirstPass={...qualified,stability_repeat_diagnostic:{
+  sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:false,
+  cross_execution_conflict:null,cross_execution_evidence_status:'NOT_ASSESSED'}};
+assert.equal(ui.recommendationSelectionRecord(siteFirstPass,null).id,'FORMAL1');
+assert.equal(ui.recommendationSelectionRecord({...siteFirstPass,stability_repeat_diagnostic:{
+  ...siteFirstPass.stability_repeat_diagnostic,sampling_decision_sensitive:true}},null),null);
+assert.equal(ui.recommendationSelectionRecord({...siteFirstPass,stability_repeat_diagnostic:{
+  ...siteFirstPass.stability_repeat_diagnostic,cross_execution_conflict:true}},null),null);
+const policyEnabledThreeSlot={...qualified,candidate_id:'POLICY-THREE-SLOT',stability_repeat_diagnostic:{
+  repeat_confirmation_policy:'ten_slot_median_v1',repeat_confirmation_status:'NOT_CONFIRMED',
+  sampling_decision_diagnostic_status:'COMPLETE',sampling_decision_sensitive:false,foldx_repeat_count:3,
+  foldx_repeat_slots:[0,1,2],foldx_repeat_slot_values_kcal_mol:[.2,.3,.4],foldx_repeat_gate_kcal_mol:2,
+  cross_execution_conflict:false}};
+assert.equal(ui.recommendationSelectionRecord(policyEnabledThreeSlot,null).id,'POLICY-THREE-SLOT');
+const policyEnabledSensitiveTen={...qualified,candidate_id:'POLICY-SENSITIVE-TEN',stability_repeat_diagnostic:{
+  repeat_confirmation_policy:'ten_slot_median_v1',repeat_confirmation_status:'NOT_CONFIRMED',
+  recommendation_risk_label:'SAMPLING_SENSITIVE_REVIEW',sampling_decision_diagnostic_status:'COMPLETE',
+  sampling_decision_sensitive:true,foldx_repeat_count:10,foldx_repeat_slots:Array.from({length:10},(_,i)=>i),
+  foldx_repeat_slot_values_kcal_mol:[2.5,1,1,1,1,1,1,1,1,1],foldx_repeat_gate_kcal_mol:2,
+  cross_execution_conflict:false}};
+assert.equal(ui.recommendationSelectionRecord(policyEnabledSensitiveTen,null),null);
+assert(ui.renderSectorRecommendations([policyEnabledSensitiveTen]).includes('采样需复核'));
+const tenSlotAudit={repeat_confirmation_policy:'ten_slot_median_v1',repeat_confirmation_status:'CONFIRMED_PASS',
+  recommendation_risk_label:'TEN_SLOT_MEDIAN_CONFIRMED',sampling_decision_diagnostic_status:'COMPLETE',
+  sampling_decision_sensitive:true,foldx_repeat_count:10,foldx_repeat_slots:[0,1,2,3,4,5,6,7,8,9],
+  foldx_repeat_slot_values_kcal_mol:[2.5,1,1,1,1,1,1,1,1,1],foldx_repeat_gate_kcal_mol:2,
+  foldx_repeat_min_kcal_mol:1,foldx_repeat_max_kcal_mol:2.5,foldx_repeat_above_gate_count:1,
+  foldx_repeat_at_or_below_gate_count:9,cross_execution_conflict:false};
+const tenSlotPass={...qualified,candidate_id:'TEN-SLOT-PASS',stability_repeat_diagnostic:tenSlotAudit};
+assert.equal(ui.recommendationSelectionRecord(tenSlotPass,null).id,'TEN-SLOT-PASS');
+html=ui.renderSectorRecommendations([tenSlotPass]);
+assert(html.includes('十槽复算确认通过；存在采样波动'));
+assert(html.includes('范围 1.000–2.500'));
+assert(html.includes('门上 1/10') && html.includes('门内 9/10'));
+assert.equal(ui.recommendationSelectionRecord({...tenSlotPass,stability_repeat_diagnostic:{
+  ...tenSlotAudit,foldx_repeat_slots:[1,2,3,4,5,6,7,8,9,10]}},null),null);
+assert.equal(ui.recommendationSelectionRecord({...tenSlotPass,stability_repeat_diagnostic:{
+  ...tenSlotAudit,foldx_repeat_slot_values_kcal_mol:[2.5,2.2,1,1,1,1,1,1,1,1]}},null),null);
+assert.equal(ui.recommendationSelectionRecord({...tenSlotPass,stability_repeat_diagnostic:{
+  ...tenSlotAudit,foldx_repeat_slot_values_kcal_mol:[2.5,1,1,2.1,2.2,2.3,2.4,2.6,1,1]}},null),null);
+assert.equal(ui.recommendationSelectionRecord({...tenSlotPass,stability_repeat_diagnostic:{
+  ...tenSlotAudit,cross_execution_conflict:true}},null),null);
+delete state.result.execution_protocol;
 item.primary_comparison={baseline_candidate_id:'BASE',baseline_metrics:{mean_coverage_fraction:0.25},candidate_metrics:{mean_coverage_fraction:0.5},coverage_difference:0.25,worst_threshold_utilization_difference:null};
 html=ui.renderSectorRecommendations([item]);
 assert(html.includes('与本区首选的定量比较'));

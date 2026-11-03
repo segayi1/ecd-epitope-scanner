@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
+from contextlib import contextmanager
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -445,6 +447,19 @@ def score_with_foldx(
         return round(float(median(values)), 4) if values else None
 
 
+_CASE_FOLDX_POOL = ContextVar('case_foldx_pool', default=None)
+
+
+@contextmanager
+def foldx_execution_scope():
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        token = _CASE_FOLDX_POOL.set(pool)
+        try:
+            yield
+        finally:
+            _CASE_FOLDX_POOL.reset(token)
+
+
 def score_many_with_foldx(
     binary: str,
     pdb_path: Path,
@@ -454,6 +469,7 @@ def score_many_with_foldx(
     already_repaired: bool = False,
     max_workers: int | None = None,
     time_seed_rotabase: bool = False,
+    candidate_errors: list[dict] | None = None,
 ) -> list[float | None]:
     """Use one canonical construct per process; neighbours must not advance its sampler."""
     if not mutation_groups:
@@ -462,14 +478,33 @@ def score_many_with_foldx(
     workers = max(1, min(int(workers), len(mutation_groups)))
     chunks = [[sorted(group, key=lambda item: (item[2], item[1], item[0], item[3]))]
               for group in mutation_groups]
+    def run_candidate(index, chunk):
+        try:
+            values = _run_foldx_batch(binary, pdb_path, chunk, workdir, runs,
+                                      already_repaired, time_seed_rotabase)
+            if len(values) != 1:
+                raise ValueError('Isolated FoldX candidate returned an invalid score count')
+            return values
+        except Exception as exc:
+            if candidate_errors is None:
+                raise
+            candidate_errors.append({"candidate_index": index, "message": str(exc)})
+            return [None]
     if workers <= 1:
-        return [value for chunk in chunks for value in _run_foldx_batch(
-            binary, pdb_path, chunk, workdir, runs, already_repaired, time_seed_rotabase)]
+        return [value for index, chunk in enumerate(chunks)
+                for value in run_candidate(index, chunk)]
     results: list[list[float | None] | None] = [None] * len(chunks)
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    shared_pool = _CASE_FOLDX_POOL.get()
+    from threading import BoundedSemaphore
+    limit = BoundedSemaphore(workers)
+    def run_limited(index, chunk):
+        with limit:
+            return run_candidate(index, chunk)
+    with (nullcontext(shared_pool) if shared_pool is not None
+          else ThreadPoolExecutor(max_workers=workers)) as pool:
         futures = {
             index: pool.submit(
-                _run_foldx_batch, binary, pdb_path, chunk, workdir, runs, already_repaired, time_seed_rotabase
+                run_limited, index, chunk
             )
             for index, chunk in enumerate(chunks)
         }
