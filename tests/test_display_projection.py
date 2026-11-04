@@ -31,6 +31,8 @@ def test_display_projection_preserves_cards_and_does_not_mutate_saved_evidence()
     assert project_display_analysis(display) == display
     v4 = display["joint_v4_ml"]
     assert "candidates" not in v4 and v4["candidates_reference"]["count"] == 1
+    assert v4["candidates_reference"]["ids"] == ["C1"]
+    assert v4["surface_hypotheses_reference"]["ids"] == ["h1"]
     assert "selected_panel" not in display["partitioning"]
     shown = v4["selected_panel"]["sector_recommendations"][0]
     for field in ("gate_checks", "site_details", "stability_evidence"):
@@ -76,6 +78,32 @@ def test_display_projection_preserves_cards_and_does_not_mutate_saved_evidence()
 def test_legacy_display_projection_keeps_existing_payload():
     legacy = {"regions": [{"id": "R1"}], "designs": [], "residues": []}
     assert project_display_analysis(legacy) == legacy
+
+
+def test_on_disk_analysis_uses_id_references_while_sidecar_keeps_full_records(tmp_path):
+    from ecd_epitope_scanner.exporting import write_analysis_artifact
+
+    candidate = {"candidate_id": "C1", "mutations": ["A1D", "E2K"]}
+    hypothesis = {"hypothesis_id": "H1", "residues": [1, 2]}
+    (tmp_path / "panel_candidates.json").write_text(json.dumps([candidate]), encoding="utf-8")
+    (tmp_path / "surface_hypotheses_v4.json").write_text(json.dumps([hypothesis]), encoding="utf-8")
+    analysis = {"joint_v4_ml": {
+        "candidates": [candidate],
+        "surface_hypotheses": [hypothesis],
+        "models": {"spurs": {"source_files_sha256": {"weights.pt": "sha256"}}},
+        "selected_panel": {},
+    }}
+    write_analysis_artifact(tmp_path, analysis)
+    saved = json.loads((tmp_path / "analysis.json").read_text(encoding="utf-8"))
+    assert "candidates" not in saved["joint_v4_ml"]
+    assert saved["joint_v4_ml"]["candidates_reference"] == {
+        "file": "panel_candidates.json", "json_path": [], "count": 1, "ids": ["C1"],
+    }
+    assert saved["joint_v4_ml"]["surface_hypotheses_reference"]["ids"] == ["H1"]
+    assert saved["joint_v4_ml"]["models"]["spurs"]["source_files_sha256"] == {
+        "weights.pt": "sha256"
+    }
+    assert json.loads((tmp_path / "panel_candidates.json").read_text(encoding="utf-8")) == [candidate]
 
 
 def test_externalization_without_hierarchy_needs_no_hierarchy_artifact(tmp_path):

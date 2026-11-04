@@ -226,6 +226,9 @@ def test_postvalidation_rejects_overbudget_ledger(tmp_path):
         "design_summary": {"sector_recommendations": []}})
     assert result["status"] == "NEEDS_REVIEW"
     assert not result["checks"]["spurs_budget"] and not result["checks"]["foldx_budget"]
+    ranked = runner.validate_case_output(tmp_path, {"execution_protocol": {"name": "ordinary_three_principle_adaptive_v1"}},
+                                         spurs_request_limit=10000)
+    assert ranked["checks"]["spurs_budget"] and not ranked["checks"]["foldx_budget"]
 
 
 def test_postvalidation_reads_real_recommendation_csv_large_provenance_field(tmp_path):

@@ -379,9 +379,9 @@ def _public_job(job: dict[str, Any], *, view: str = "full") -> dict[str, Any]:
 
 def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
     """Small list payload; full residue/design records stay on the detail API."""
-    result = job.get("result") or {}
-    protein = result.get("protein") or {}
-    summary = result.get("summary") or {}
+    evidence = job.get("summary") or job.get("result") or {}
+    protein = evidence.get("protein") or {}
+    summary = evidence.get("summary") or {}
     return {
         key: job[key]
         for key in (
@@ -413,7 +413,7 @@ def favicon() -> Response:
 
 @app.get("/api/jobs")
 def list_jobs() -> list[dict[str, Any]]:
-    return [_job_summary(item) for item in STORE.list()]
+    return [_job_summary(item) for item in STORE.summaries()]
 
 
 @app.post("/api/jobs", status_code=202)
@@ -809,7 +809,9 @@ def _hydrate_for_custom(
 ) -> tuple[
     dict[str, Any], ProteinContext, list[ResidueRecord], list[RegionRecord], list[DesignRecord]
 ]:
-    analysis = read_json(Path(job["workdir"]) / "analysis.json")
+    from copy import deepcopy
+
+    analysis = deepcopy(job.get("result")) or read_json(Path(job["workdir"]) / "analysis.json")
     protein_data = analysis["protein"]
     uniprot_path = Path(job["workdir"]) / "uniprot.json"
     if uniprot_path.exists():
@@ -899,13 +901,15 @@ def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]
     analysis["design_summary"]["final_library_size"] = len(designs)
     analysis["summary"]["custom_constructs"] = sum(item.custom for item in designs)
     output_dir = Path(job["workdir"])
-    from .exporting import finalize_scientific_bundle, write_scientific_outputs
+    from .exporting import (
+        finalize_scientific_bundle, write_analysis_artifact, write_scientific_outputs,
+    )
 
     files = write_scientific_outputs(
         output_dir, analysis, protein, records, regions, designs, original_cds=original_cds
     )
     analysis["files"] = files
-    write_json(output_dir / "analysis.json", analysis)
+    write_analysis_artifact(output_dir, analysis)
     finalize_scientific_bundle(output_dir)
     STORE.update(job_id, result_json=analysis, message=f"Custom design {design.id} saved")
     return {"design": to_dict(design), "job": _public_job(STORE.get(job_id))}

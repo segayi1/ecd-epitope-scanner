@@ -62,7 +62,30 @@ def test_one_lane_head_never_crosses_site_set_and_expands_only_after_failures():
     assert 0 < expanded <= 27
     assert store.ledger()["initial_candidate_count"] == 9
     assert expanded == 27  # 6 x 6 minus the already evaluated 3 x 3.
-    assert all(c.impact_evidence["site_set_id"] == group_id for c in store.head(sector, principle, 999))
+    expanded_head = store.head(sector, principle, 999)
+    assert all(c.impact_evidence["site_set_id"] == group_id for c in expanded_head)
+    for candidate in expanded_head:
+        store.record_outcome(sector, principle, candidate.candidate_id, "SCIENTIFIC_FAILURE")
+    deep_head = store.head(sector, principle, 999)
+    assert len(deep_head) == 13  # A 7 x 7 pass over the prior 6 x 6 failures.
+    assert all(c.impact_evidence["representative_tier"] == "deep" for c in deep_head)
+    assert store.ledger()["deep_candidate_count"] == 13
+    store.close()
+
+
+def test_prefetch_reads_hidden_groups_without_advancing_or_expanding_queue():
+    store = build_site_first_queues(*_inputs())
+    head = store.head("s", "sector_coverage", 1)[0]
+    before = store.ledger()
+    groups = list(store.prefetch_groups("s", "sector_coverage"))
+    assert len(groups) >= 2
+    assert groups[0][0].candidate_id == head.candidate_id
+    assert len({group[0].impact_evidence["site_set_id"] for group in groups}) == len(groups)
+    assert all(c.impact_evidence["representative_tier"] == "initial" for group in groups for c in group)
+    after = store.ledger()
+    assert after["expanded_candidate_count"] == before["expanded_candidate_count"]
+    assert after["initial_candidate_count"] == before["initial_candidate_count"]
+    assert store.head("s", "sector_coverage", 1)[0].candidate_id == head.candidate_id
     store.close()
 
 

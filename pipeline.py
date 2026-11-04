@@ -18,7 +18,9 @@ from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 from . import config, models
 from .assay_profiles import get_assay_profile
 from .design import design_regions
-from .exporting import finalize_scientific_bundle, write_scientific_outputs
+from .exporting import (
+    finalize_scientific_bundle, write_analysis_artifact, write_scientific_outputs,
+)
 from .joint_design import run_joint_v3
 from .joint_design_v4 import run_joint_v4_ml
 from .joint_design_v4.sector_recommendations import read_structure_evidence
@@ -1245,6 +1247,8 @@ def _run_pipeline(
             },
             disable_external_engines=bool(request.metadata.get("disable_external_engines")),
             execution_trace=execution_trace,
+            spurs_progress=lambda done, total: progress(
+                "PROCALIPER_ANALYSIS", 0.62, f"SPURS 预评分：本窗 {done}/{total}"),
         )
         graph_snapshot = read_json(output_dir / "surface_graph_v4.json")
         graph_nodes = {int(row["uniprot_pos"]): row for row in graph_snapshot.get("nodes", [])}
@@ -1908,7 +1912,7 @@ def _run_pipeline(
     if request.design_engine == "joint_v4_ml" and request.surface_strategy == "legacy" and request.ml_mode == "strict":
         from .joint_design_v4.impact_completeness import write_card_acceptance
         display_receipt = write_card_acceptance(output_dir, analysis)
-    write_json(output_dir / "analysis.json", analysis)
+    write_analysis_artifact(output_dir, analysis)
     if request.export_mode == "deliverable":
         manifest_path = output_dir / "run_manifest.json"
         manifest = read_json(manifest_path)

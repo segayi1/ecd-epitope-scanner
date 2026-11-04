@@ -205,6 +205,16 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> Non
             writer.writerow({field: _join(row.get(field, "")) for field in fields})
 
 
+def write_analysis_artifact(output_dir: Path, analysis: dict[str, Any]) -> None:
+    """Persist the display projection; canonical evidence remains in sidecars."""
+    from .joint_design_v4.reporting import project_display_analysis
+
+    write_json(
+        output_dir / "analysis.json",
+        project_display_analysis(analysis, compact_bulk_identity=False),
+    )
+
+
 def write_scientific_outputs(
     output_dir: Path,
     analysis: dict[str, Any],
@@ -216,7 +226,7 @@ def write_scientific_outputs(
     *, defer_archive: bool = False,
 ) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(output_dir / "analysis.json", analysis)
+    write_analysis_artifact(output_dir, analysis)
     write_json(output_dir / "regions.json", [to_dict(item) for item in regions])
     write_json(output_dir / "designs.json", [to_dict(item) for item in designs])
     if analysis.get("assay_profile"):
@@ -759,7 +769,7 @@ def finalize_scientific_bundle(output_dir: Path, analysis: dict | None = None) -
                     analysis.setdefault("files", {})[name] = name
                     manifest.setdefault("files", {})[name] = ""
             write_json(v4_manifest_path, v4_manifest)
-            write_json(analysis_path, analysis)
+            write_analysis_artifact(output_dir, analysis)
     has_structure = (output_dir / "structure_for_energy.pdb").is_file()
     if has_structure:
         (output_dir / "offline_report.html").write_text(

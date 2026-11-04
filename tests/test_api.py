@@ -28,18 +28,32 @@ def test_job_restart_liveness_check_handles_current_and_missing_processes():
     assert not _process_alive(0x7FFFFFFF)
 
 
-def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path):
+def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path, monkeypatch):
+    import ecd_epitope_scanner.api as api_module
     from ecd_epitope_scanner.jobs import JobStore
     from ecd_epitope_scanner.pipeline import PipelineRequest
 
     store = JobStore(tmp_path / "workspace")
     job = store.create(PipelineRequest(input_type="uniprot", identifier="Q9NZQ7"))
+    store.update(job["id"], result_json={
+        "protein": {"accession": "Q9NZQ7"},
+        "summary": {"regions": 2, "recommended_constructs": 4},
+    })
+    assert "summary_json" not in store.get(job["id"])
     assert job["owner_id"] == "local"
     assert store.list(owner_id="another-user") == []
+    assert store.summaries(owner_id="another-user") == []
+    monkeypatch.setattr(api_module, "STORE", store)
+    monkeypatch.setattr(store, "get", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("list endpoint parsed the full job")
+    ))
     # The HTTP list endpoint must not serialize full per-residue analyses.
     response = client.get("/api/jobs")
     assert response.status_code == 200
     assert all("result" not in item and "request" not in item for item in response.json())
+    assert response.json()[0]["accession"] == "Q9NZQ7"
+    assert response.json()[0]["regions"] == 2
+    assert response.json()[0]["recommended_constructs"] == 4
 
 
 def test_upload_defaults_to_fixed_jurkat_fab_k562_antigen_profile(monkeypatch, tmp_path):
@@ -62,7 +76,7 @@ def test_upload_defaults_to_fixed_jurkat_fab_k562_antigen_profile(monkeypatch, t
     assert request["accession"] is None
 
 
-def test_af3_resume_backfills_accession_from_identifier(monkeypatch, tmp_path):
+def test_af3_resume_backfills_accession_from_identifier(monkeypatch, tmp_path, request):
     """P0 regression: a UniProt job must survive the AF3-upload resume.
 
     The API form stores the UniProt accession in `identifier` and leaves
@@ -72,8 +86,15 @@ def test_af3_resume_backfills_accession_from_identifier(monkeypatch, tmp_path):
     "requires sequence, ecd_start and ecd_end".
     """
     import ecd_epitope_scanner.api as api_module  # noqa: F401  (import sanity)
+    from ecd_epitope_scanner.jobs import JobRunner, JobStore
     from ecd_epitope_scanner.pipeline import PipelineRequest
     from ecd_epitope_scanner.util import WaitingForAF3
+
+    store = JobStore(tmp_path / "af3-workspace")
+    runner = JobRunner(store)
+    monkeypatch.setattr(api_module, "STORE", store)
+    monkeypatch.setattr(api_module, "RUNNER", runner)
+    request.addfinalizer(lambda: runner.executor.shutdown(wait=True))
 
     seen_requests: list[PipelineRequest] = []
 

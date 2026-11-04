@@ -73,6 +73,9 @@ def test_adaptive_engine_maps_worker_positions_and_exports_only_qualified_winner
     assert foldx_calls
     if protocol == "ordinary_site_first_v2":
         assert result.execution_protocol['name'] == protocol
+        assert result.execution_protocol['representative_policy'] == 'role_ladder_3_6_7_v1'
+        assert result.execution_protocol['foldx_site_exploration_policy'] == 'uncovered_residue_before_retry_v1'
+        assert result.execution_protocol['foldx_site_exploration_reserve'] == 1
         assert all(path.parent.name == 'fx_batches' for path in foldx_calls)
         assert not (tmp_path/'ordinary_candidate_index.sqlite3').exists()
         assert any(len(groups) > 1 for key, groups, _ in calls if key == 'foldx')

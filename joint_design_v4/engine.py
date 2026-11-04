@@ -1047,6 +1047,7 @@ def run_joint_v4_ml(
     assay_format: str | None = None,
     disable_external_engines: bool = False,
     execution_trace=None,
+    spurs_progress=None,
 ) -> JointV4Result:
     def phase(name):
         if execution_trace is not None:
@@ -1087,8 +1088,19 @@ def run_joint_v4_ml(
         }
     )
     if site_first_protocol and adaptive_protocol:
+        requested_protocol = (parameters or {}).get("execution_protocol") or {}
+        requested_protocol = requested_protocol if isinstance(requested_protocol, dict) else {}
+        policy = requested_protocol.get("spurs_prefetch_policy")
+        if policy == "ranked_window_v1":
+            execution_protocol["spurs_unique_request_limit"] = requested_protocol.get("spurs_unique_request_limit", 10000)
+            execution_protocol.setdefault("spurs_prefetch_window", 1024)
+        elif policy is not None:
+            raise ValueError("Unknown SPURS prefetch policy")
         execution_protocol.setdefault("display_prefilter", "known_review_v1")
         execution_protocol.setdefault("repeat_confirmation_policy", "ten_slot_median_v1")
+        execution_protocol.setdefault("representative_policy", "role_ladder_3_6_7_v1")
+        execution_protocol.setdefault("foldx_site_exploration_policy", "uncovered_residue_before_retry_v1")
+        execution_protocol.setdefault("foldx_site_exploration_reserve", 1)
     if not physical_preview:
         params["spurs_multi"] = {**params["spurs_multi"], "stability_threshold_policy": "ordinary_v4_directional_v1"}
         params["candidate_search"] = {**params["candidate_search"],
@@ -1195,6 +1207,11 @@ def run_joint_v4_ml(
             disabled=disable_external_engines,
         ),
     }
+    if execution_protocol.get("spurs_prefetch_policy") == "ranked_window_v1":
+        command = adapters["spurs_multi"].command or []
+        if (len(command) < 2 or Path(command[1]).name != "wsl_bridge.py"
+                or not any(Path(arg).name == "spurs_gpu_worker.py" for arg in command)):
+            raise ValueError("ranked_window_v1 requires the managed persistent SPURS backend")
     inventories = {name: adapter.inventory() for name, adapter in adapters.items()}
     graph_provenance: dict[str, Any] = {}
     phase("V4_SURFACE_GRAPH")
@@ -1703,7 +1720,13 @@ def run_joint_v4_ml(
                 foldx_slot_limit=int(execution_protocol["foldx_slot_limit"]),
                 foldx_recheck=recheck_adaptive_candidate,
                 **({"max_workers": params["foldx_confirmation"].get("max_workers", 8),
-                    "display_prefilter": execution_protocol.get("display_prefilter")} if site_first_protocol else {}),
+                    "display_prefilter": execution_protocol.get("display_prefilter"),
+                    "spurs_prefetch_policy": execution_protocol.get("spurs_prefetch_policy"),
+                    "spurs_prefetch_window": execution_protocol.get("spurs_prefetch_window", 1024),
+                    "spurs_progress": spurs_progress,
+                    "spurs_audit": (lambda event, details: execution_trace.record(
+                        "SPURS_PREFETCH", "PROCALIPER_ANALYSIS", None, event, details=details
+                    )) if execution_trace is not None else None} if site_first_protocol else {}),
             )
         finally:
             adaptive_store.close()
@@ -2554,9 +2577,10 @@ def run_joint_v4_ml(*args, **kwargs):
     from ..integrations.process_runner import persistent_spurs_scope
     bound = _signature(_run_joint_v4_ml_without_persistent_scope).bind_partial(*args, **kwargs)
     settings = bound.arguments.get("parameters") or {}
-    if not (settings.get("runtime_optimization") or {}).get("spurs_persistent", False):
-        return _run_joint_v4_ml_without_persistent_scope(*args, **kwargs)
     protocol = settings.get('execution_protocol')
+    ranked = isinstance(protocol, dict) and protocol.get('spurs_prefetch_policy') == 'ranked_window_v1'
+    if not ranked and not (settings.get("runtime_optimization") or {}).get("spurs_persistent", False):
+        return _run_joint_v4_ml_without_persistent_scope(*args, **kwargs)
     name = protocol.get('name') if isinstance(protocol, dict) else protocol
     if name != 'ordinary_site_first_v2':
         raise ValueError('runtime optimization requires ordinary_site_first_v2')

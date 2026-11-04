@@ -428,7 +428,8 @@ def regional_principle_coverage(ledger: dict) -> dict:
 
 
 def validate_case_output(workdir: Path, analysis: dict | None = None,
-                         expected_protocol: str = "ordinary_three_principle_adaptive_v1") -> dict:
+                         expected_protocol: str = "ordinary_three_principle_adaptive_v1",
+                         spurs_request_limit: int = 1000) -> dict:
     workdir = Path(workdir)
     errors, checks = [], {}
     analysis = analysis or json.loads((workdir / "analysis.json").read_text(encoding="utf-8"))
@@ -449,7 +450,7 @@ def validate_case_output(workdir: Path, analysis: dict | None = None,
     spurs, foldx = ledger.get("spurs") or {}, ledger.get("foldx") or {}
     spurs_requests = spurs.get("unique_requests")
     foldx_slots = foldx.get("attempted_slots")
-    checks["spurs_budget"] = isinstance(spurs_requests, int) and 0 <= spurs_requests <= 1000
+    checks["spurs_budget"] = isinstance(spurs_requests, int) and 0 <= spurs_requests <= spurs_request_limit
     checks["foldx_budget"] = isinstance(foldx_slots, int) and 0 <= foldx_slots <= 300
     if not checks["spurs_budget"]: errors.append(f"invalid or exceeded SPURS request budget: {spurs_requests!r}")
     if not checks["foldx_budget"]: errors.append(f"invalid or exceeded FoldX slot budget: {foldx_slots!r}")

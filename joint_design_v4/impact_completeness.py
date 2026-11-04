@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import json
 from itertools import combinations
 
 
@@ -28,6 +29,14 @@ def _repeat_protocol(analysis):
 
 def write_card_acceptance(output_dir, analysis):
     from ..util import sha256_file, write_json
+    from ..exporting import write_analysis_artifact
+
+    if not analysis.get("design_summary", {}).get("sector_recommendations"):
+        sidecar = output_dir / "sector_recommendations_v4.json"
+        if sidecar.is_file():
+            analysis.setdefault("design_summary", {})["sector_recommendations"] = json.loads(
+                sidecar.read_text(encoding="utf-8")
+            )
     recommendations = analysis.get("design_summary", {}).get("sector_recommendations", [])
     names = ("analysis.json", "panel_candidates.json", "sector_recommendations_v4.json")
     policy, expected_slots = _repeat_protocol(analysis)
@@ -39,7 +48,7 @@ def write_card_acceptance(output_dir, analysis):
         "policy": policy,
         "diagnostics_only": receipt["card_count"] == 0,
     }
-    write_json(output_dir / "analysis.json", analysis)
+    write_analysis_artifact(output_dir, analysis)
     receipt["inputs_sha256"] = {name: sha256_file(output_dir / name) for name in names}
     write_json(output_dir / "card_evidence_completeness.json", receipt)
     return receipt

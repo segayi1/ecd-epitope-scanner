@@ -17,6 +17,27 @@ from .ordinary_adaptive_validation import (
 PROTOCOL = "ordinary_site_first_v2"
 
 
+def _candidate_site_key(candidate):
+    evidence = getattr(candidate, "impact_evidence", {}) or {}
+    site_set_id = evidence.get("site_set_id")
+    if site_set_id:
+        return str(site_set_id)
+    positions = sorted(
+        mutation.residue.uniprot_pos
+        for mutation in (getattr(candidate, "mutations", ()) or ())
+        if getattr(getattr(mutation, "residue", None), "uniprot_pos", None) is not None
+    )
+    return "positions:" + ",".join(map(str, positions)) if positions else (
+        "candidate:" + str(getattr(candidate, "candidate_id", "unknown"))
+    )
+
+
+def _candidate_positions(candidate):
+    return {mutation.residue.uniprot_pos
+            for mutation in (getattr(candidate, "mutations", ()) or ())
+            if getattr(getattr(mutation, "residue", None), "uniprot_pos", None) is not None}
+
+
 class SiteFirstValidation(AdaptiveValidation):
     """Batch validation while preserving each lane's current site-first head."""
 
@@ -33,7 +54,10 @@ class SiteFirstValidation(AdaptiveValidation):
                                  failed_slots=0, released_slots=0, technical_failure=False,
                                  budget_exhausted=False, batches=[], stop_reason=None,
                                  timings={"first_pass_seconds": 0.0, "append_seconds": 0.0},
-                                 model_batches=0, reserved_budget=0)
+                                 model_batches=0, reserved_budget=0,
+                                 unseen_site_priority="distinct_site_first_v1",
+                                 unseen_site_reserve_candidates=1,
+                                 unseen_site_candidates=0, attempted_site_keys=[])
 
     @staticmethod
     def _recheck(callback, candidate, result):
@@ -66,7 +90,7 @@ class SiteFirstValidation(AdaptiveValidation):
         gate = gates[candidate_id]
         return "DISPLAY_REVIEW" if gate.get("display_status") == "DISPLAY_REVIEW" else gate["status"]
 
-    def _score_spurs_batch(self, candidates, predict, recheck):
+    def _score_spurs_batch(self, candidates, predict, recheck, progress=None, audit=None):
         ledger = self.spurs_ledger
         unseen = {}
         for candidate in candidates:
@@ -75,6 +99,7 @@ class SiteFirstValidation(AdaptiveValidation):
         signatures = list(unseen)
         if not signatures:
             return
+        initial_requests = ledger["unique_requests"]
         batches = [signatures[i:i + SPURS_BATCH_SIZE]
                    for i in range(0, len(signatures), SPURS_BATCH_SIZE)]
         for batch_sigs in batches:
@@ -107,6 +132,8 @@ class SiteFirstValidation(AdaptiveValidation):
                            "status": _status(response), "errors": _errors(response),
                            "invalid_identity": invalid, "provenance": dict(provenance)}
             ledger["batches"].append(batch_audit)
+            if audit is not None:
+                audit("chunk", batch_audit)
             ledger["model_batches"] += 1
             if global_failure:
                 ledger["technical_failure"] = True
@@ -147,6 +174,8 @@ class SiteFirstValidation(AdaptiveValidation):
                 if status == "PASS":
                     self._recheck(recheck, unseen[sig], value)
             ledger["timings"]["seconds"] += perf_counter() - started
+            if progress is not None:
+                progress(min(len(signatures), ledger["unique_requests"] - initial_requests), len(signatures))
             if ledger["technical_failure"]:
                 break
 
@@ -236,23 +265,40 @@ class SiteFirstValidation(AdaptiveValidation):
     def run_indexed(self, store, predict: Callable, foldx_predict: Callable, *,
                     spurs_request_limit=SPURS_REQUEST_LIMIT,
                     foldx_slot_limit=FOLDX_ATTEMPT_LIMIT, spurs_recheck=None,
-                    foldx_recheck=None, max_workers=8, display_prefilter=None):
+                    foldx_recheck=None, max_workers=8, display_prefilter=None,
+                    spurs_prefetch_policy=None, spurs_prefetch_window=1024, spurs_progress=None,
+                    spurs_audit=None):
         if display_prefilter not in {None, "known_review_v1"}:
             raise ValueError("Unknown site-first display prefilter")
+        if spurs_prefetch_policy not in {None, "ranked_window_v1"}:
+            raise ValueError("Unknown SPURS prefetch policy")
+        ranked = spurs_prefetch_policy == "ranked_window_v1"
+        if ranked and not 1 <= int(spurs_prefetch_window) <= 1024:
+            raise ValueError("SPURS prefetch window must be between 1 and 1024")
+        if ranked and not hasattr(store, "prefetch_groups"):
+            raise ValueError("Ranked prefetch requires site-first queue support")
         from .site_first_display import known_display_review_reasons
-        spurs_limit = min(max(0, int(spurs_request_limit)), SPURS_REQUEST_LIMIT)
+        spurs_limit = min(max(0, int(spurs_request_limit)), 10000 if ranked else SPURS_REQUEST_LIMIT)
         foldx_limit = min(max(0, int(foldx_slot_limit)), FOLDX_ATTEMPT_LIMIT)
         workers = min(8, max(1, int(max_workers)))
         self._init_ledgers(spurs_limit, foldx_limit)
+        self.spurs_ledger.update(prefetch_policy=spurs_prefetch_policy,
+                                 prefetch_window=int(spurs_prefetch_window) if ranked else None,
+                                 windows=[])
+        consumed = set()
         self.spurs_ledger["display_prefilter"] = {"policy": display_prefilter, "candidates": {}}
         lanes = [tuple(lane) for lane in store.queue_states()
                  if store.status(*lane)["status"] != "not_applicable"]
         lane_status = {}
         lane_heads = {}
+        explored_positions = set()
+        self.foldx_ledger["exploration_policy"] = "uncovered_residue_before_retry_v1"
         foldx = {"passed": {}, "lane_status": {}, "ledger": self.foldx_ledger,
                  "results": self.foldx_results}
 
         while len(lane_status) < len(lanes):
+            if hasattr(store, "prioritize_uncovered"):
+                store.prioritize_uncovered(explored_positions)
             lane_heads.clear()
             for lane in lanes:
                 if lane in lane_status:
@@ -282,26 +328,68 @@ class SiteFirstValidation(AdaptiveValidation):
                 for candidates in lane_heads.values()
             ):
                 # Refill only on a cache miss; round-robin keeps every lane's head ahead of tails.
-                frontiers = [store.head(*lane, limit=SPURS_BATCH_SIZE) for lane in lane_heads]
+                # Preserve SPURS capacity for hidden site groups before prefetching retries.
                 unseen = {}
-                batch_limit = min(SPURS_BATCH_SIZE, remaining_spurs)
-                for offset in range(max(map(len, frontiers), default=0)):
-                    for frontier in frontiers:
-                        if offset >= len(frontier):
-                            continue
-                        candidate = frontier[offset]
-                        if display_prefilter and known_display_review_reasons(candidate):
-                            continue
-                        sig = _mutations(candidate)
-                        if sig not in self.spurs_results:
-                            unseen.setdefault(sig, candidate)
-                        if len(unseen) >= batch_limit:
-                            break
-                    if len(unseen) >= batch_limit:
-                        break
-                batch = [self.materialized_candidates.setdefault(
-                    candidate.candidate_id, candidate) for candidate in unseen.values()]
-                self._score_spurs_batch(batch, predict, spurs_recheck)
+                offered = 0
+                batch_limit = min(int(spurs_prefetch_window) if ranked else SPURS_BATCH_SIZE, remaining_spurs)
+                def offer(candidate):
+                    nonlocal offered
+                    if display_prefilter and known_display_review_reasons(candidate):
+                        return
+                    offered += 1
+                    sig = _mutations(candidate)
+                    if sig not in self.spurs_results and len(unseen) < batch_limit:
+                        unseen.setdefault(sig, candidate)
+
+                for candidates in lane_heads.values():
+                    offer(candidates[0])
+                if ranked:
+                    iterators = [iter(store.prefetch_groups(*lane)) for lane in lane_heads]
+                    tails = []
+                    while iterators and len(unseen) < batch_limit:
+                        active = []
+                        for iterator in iterators:
+                            group = next(iterator, None)
+                            if group:
+                                offer(group[0])
+                                tails.append(iter(group[1:]))
+                                active.append(iterator)
+                        iterators = active
+                    while tails and len(unseen) < batch_limit:
+                        active = []
+                        for iterator in tails:
+                            candidate = next(iterator, None)
+                            if candidate is not None:
+                                offer(candidate)
+                                active.append(iterator)
+                        tails = active
+                else:
+                    exploring = (hasattr(store, "needs_exploration")
+                                 and store.needs_exploration(explored_positions))
+                    frontier_limit = 1 if exploring else SPURS_BATCH_SIZE
+                    frontiers = [store.head(*lane, limit=frontier_limit) for lane in lane_heads]
+                    for offset in range(max(map(len, frontiers), default=0)):
+                        for frontier in frontiers:
+                            if offset < len(frontier):
+                                offer(frontier[offset])
+                batch = list(unseen.values())
+                before = self.spurs_ledger["unique_requests"]
+                batch_start = len(self.spurs_ledger["batches"])
+                window = {"candidates_considered": offered, "unique_candidates": len(batch),
+                          "duplicates_or_already_scored": offered - len(batch),
+                          "budget_before": remaining_spurs, "status": "running"}
+                self.spurs_ledger["windows"].append(window)
+                if ranked and spurs_audit is not None:
+                    spurs_audit("window_started", dict(window))
+                self._score_spurs_batch(batch, predict, spurs_recheck, spurs_progress if ranked else None,
+                                        spurs_audit if ranked else None)
+                audits = self.spurs_ledger["batches"][batch_start:]
+                window.update(requests=self.spurs_ledger["unique_requests"] - before,
+                              cache_hit_batches=sum(bool(a.get("provenance", {}).get("cache_hit")) for a in audits),
+                              budget_after=spurs_limit - self.spurs_ledger["unique_requests"],
+                              status="failed" if self.spurs_ledger["technical_failure"] else "completed")
+                if ranked and spurs_audit is not None:
+                    spurs_audit("window_finished", dict(window))
             passed_heads = {}
             by_signature = {}
             blocked = []
@@ -309,6 +397,8 @@ class SiteFirstValidation(AdaptiveValidation):
                 current = candidates[0]
                 sig = _mutations(current)
                 outcome = self.spurs_results.get(sig)
+                if outcome is not None:
+                    consumed.add(sig)
                 if outcome is None:
                     blocked.append(lane)
                 elif outcome["status"] == "PASS":
@@ -318,6 +408,7 @@ class SiteFirstValidation(AdaptiveValidation):
                     store.mark_queue_state(*lane, "technical_failure" if outcome["status"] in {"TECHNICAL_FAILURE", "BLOCKED_UNSCORED"} else "candidate_failures")
                     lane_status[lane] = "BLOCKED_UNSCORED"
                 else:
+                    explored_positions.update(_candidate_positions(current))
                     store.record_outcome(*lane, current.candidate_id, "SPURS_" + outcome["status"])
             if self.spurs_ledger["technical_failure"]:
                 store.mark_all_technical_failure()
@@ -335,6 +426,11 @@ class SiteFirstValidation(AdaptiveValidation):
             for sig in cached:
                 physical = self.foldx_results[sig]
                 for lane, candidate in by_signature[sig]:
+                    explored_positions.update(_candidate_positions(candidate))
+                    self.foldx_ledger["attempted_site_keys"] = sorted(
+                        set(self.foldx_ledger["attempted_site_keys"])
+                        | {_candidate_site_key(candidate)}
+                    )
                     status = self._candidate_gate(physical, candidate, foldx_recheck)
                     if status == "PASS":
                         store.complete(*lane, candidate.candidate_id)
@@ -356,7 +452,18 @@ class SiteFirstValidation(AdaptiveValidation):
             if not passed_heads:
                 continue
             remaining = foldx_limit - self.foldx_ledger["attempted_slots"] - self.foldx_ledger["reserved_slots"]
-            selected = list(passed_heads.items())[:min(workers, max(0, remaining // 10))]
+            slots = min(workers, max(0, remaining // 10))
+            attempted_sites = set(self.foldx_ledger["attempted_site_keys"])
+            preferred, deferred = [], []
+            # Fill each batch with untried site sets before revisiting a lane.
+            for item in passed_heads.items():
+                key = _candidate_site_key(item[1])
+                if key not in attempted_sites:
+                    attempted_sites.add(key)
+                    preferred.append(item)
+                else:
+                    deferred.append(item)
+            selected = (preferred + deferred)[:slots]
             if not selected:
                 self.foldx_ledger["budget_exhausted"] = True
                 self.foldx_ledger["stop_reason"] = "FOLDX_BUDGET_INSUFFICIENT"
@@ -366,6 +473,15 @@ class SiteFirstValidation(AdaptiveValidation):
                         lane_status[lane] = "STOPPED_BY_BUDGET"
                 break
             selected_candidates = [c for _, c in selected]
+            for candidate in selected_candidates:
+                explored_positions.update(_candidate_positions(candidate))
+            self.foldx_ledger["explored_positions"] = sorted(explored_positions)
+            dispatched_sites = {_candidate_site_key(c) for c in selected_candidates}
+            new_sites = dispatched_sites.difference(self.foldx_ledger["attempted_site_keys"])
+            self.foldx_ledger["unseen_site_candidates"] += len(new_sites)
+            self.foldx_ledger["attempted_site_keys"] = sorted(
+                set(self.foldx_ledger["attempted_site_keys"]) | dispatched_sites
+            )
             audits = {}
             for sig, candidate in selected:
                 self.foldx_ledger["reserved_slots"] += 10
@@ -440,6 +556,8 @@ class SiteFirstValidation(AdaptiveValidation):
             self.spurs_ledger["stop_reason"] = "QUEUES_EXHAUSTED"
         if not self.foldx_ledger["stop_reason"]:
             self.foldx_ledger["stop_reason"] = "QUEUES_EXHAUSTED"
+        self.spurs_ledger["consumed_signatures"] = len(consumed)
+        self.spurs_ledger["prefetched_unused"] = len(set(self.spurs_results) - consumed)
         foldx["passed"] = {sig: result for sig, result in self.foldx_results.items()
                             if result["status"] == "PASS"}
         foldx["lane_status"] = dict(lane_status)

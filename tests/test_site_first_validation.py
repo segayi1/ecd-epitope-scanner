@@ -129,6 +129,52 @@ class CopyingStore(Store):
         return deepcopy(self.queues[tuple(lane)][:limit])
 
 
+def test_ranked_prefetch_shares_signatures_and_consumes_only_formal_heads():
+    class PrefetchStore(Store):
+        def prefetch_groups(self, *lane):
+            for item in self.queues[tuple(lane)]:
+                yield [item]
+
+    store = PrefetchStore({("s1", "coverage"): [candidate("a", "A1D"), candidate("later", "A2D")],
+                           ("s2", "coverage"): [candidate("shared", "A1D"), candidate("other", "A3D")]})
+    requests = []
+    def predict(batch):
+        requests.append([c.mutations[0].notation for c in batch])
+        return spurs(batch)
+    def foldx(batch, *, slot_start, runs):
+        return PredictionResult("success", records=[pair_row(c, [1.] * runs, slot_start) for c in batch])
+    result = SiteFirstValidation().run_indexed(store, predict, foldx, spurs_request_limit=3,
+        spurs_prefetch_policy="ranked_window_v1", spurs_prefetch_window=3)
+    assert requests == [["A1D", "A2D", "A3D"]]
+    assert len(store.completed) == 2 and not store.outcomes
+    assert result["spurs"]["ledger"]["prefetched_unused"] == 2
+    assert result["foldx"]["ledger"]["attempted_slots"] == 3
+
+
+@pytest.mark.parametrize("limit,expected", [(10000, 1024), (70, 70)])
+def test_ranked_window_is_bounded_and_split_into_64(limit, expected):
+    class PrefetchStore(Store):
+        def prefetch_groups(self, *lane):
+            for item in self.queues[tuple(lane)]:
+                yield [item]
+    items = [candidate(str(i), f"A{i}D") for i in range(1, 1101)]
+    store = PrefetchStore({("s", "coverage"): items})
+    calls, progress, events = [], [], []
+    def predict(batch):
+        calls.append(len(batch))
+        return spurs(batch)
+    def foldx(batch, *, slot_start, runs):
+        return PredictionResult("success", records=[pair_row(c, [1.] * runs, slot_start) for c in batch])
+    result = SiteFirstValidation().run_indexed(store, predict, foldx, spurs_request_limit=limit,
+        spurs_prefetch_policy="ranked_window_v1", spurs_progress=lambda done, total: progress.append((done, total)),
+        spurs_audit=lambda event, details: events.append((event, details.copy())))
+    assert sum(calls) == expected and max(calls) == 64
+    assert progress[-1] == (expected, expected)
+    assert events[0][0] == "window_started" and events[-1][0] == "window_finished"
+    assert sum(event == "chunk" for event, _ in events) == len(calls)
+    assert result["spurs"]["ledger"]["prefetched_unused"] == expected - 1
+
+
 def spurs(batch, scores=None):
     scores = scores or {}
     return PredictionResult("success", records=[
@@ -162,6 +208,31 @@ def test_foldx_batches_multiple_heads_and_matches_unordered_rows():
     assert result["foldx"]["results"][("A1D",)]["repeat_audit"]["execution_protocol"] == PROTOCOL
     assert result["spurs"]["ledger"]["batches"][0]["provenance"]["cache_hit"] is True
     assert result["foldx"]["results"][("A1D",)]["provenance"][0]["cache_hit"] is True
+
+
+def test_foldx_prioritizes_an_unattempted_site_when_budget_allows():
+    shared1, shared2, unseen = candidate("shared1", "A1D"), candidate("shared2", "A2D"), candidate("new", "C3D")
+    shared1.impact_evidence = shared2.impact_evidence = {"site_set_id": "same"}
+    unseen.impact_evidence = {"site_set_id": "different"}
+    store = Store({("s1", "coverage"): [shared1],
+                   ("s2", "coverage"): [shared2],
+                   ("s3", "coverage"): [unseen]})
+    calls = []
+
+    def foldx(batch, *, slot_start, runs):
+        calls.append([item.candidate_id for item in batch])
+        return PredictionResult("success", records=[
+            pair_row(item, ([1.] * 3 if slot_start == 0 else [1.] * runs), slot_start)
+            for item in batch
+        ])
+
+    result = SiteFirstValidation().run_indexed(
+        store, lambda batch: spurs(batch), foldx, foldx_slot_limit=30, max_workers=2
+    )
+    assert calls == [["shared1", "new"], ["shared2"]]
+    assert result["foldx"]["ledger"]["unseen_site_candidates"] == 2
+    assert result["foldx"]["ledger"]["attempted_site_keys"] == ["different", "same"]
+    assert result["foldx"]["ledger"]["slot_limit"] == 30
 
 
 def test_mixed_three_of_ten_rules_and_releases_reserved_budget():

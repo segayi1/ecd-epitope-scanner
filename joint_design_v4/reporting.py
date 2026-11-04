@@ -800,7 +800,9 @@ def externalize_checkpoint_pair_diagnostics(analysis, output_dir):
     analysis.setdefault('files',{})[artifact.name]=artifact.name
 
 
-def project_display_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
+def project_display_analysis(
+    analysis: dict[str, Any], *, compact_bulk_identity: bool = True
+) -> dict[str, Any]:
     """Project saved results for both viewers without mutating scientific evidence."""
     if not analysis.get("joint_v4_ml"):
         return dict(analysis)
@@ -810,10 +812,16 @@ def project_display_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
 
     projected = dict(analysis)
     v4 = projected["joint_v4_ml"] = dict(analysis["joint_v4_ml"])
-    for name, artifact in (("candidates", "panel_candidates.json"),
-                           ("surface_hypotheses", "surface_hypotheses_v4.json")):
+    for name, artifact, id_field in (
+        ("candidates", "panel_candidates.json", "candidate_id"),
+        ("surface_hypotheses", "surface_hypotheses_v4.json", "hypothesis_id"),
+    ):
         if name in v4:
-            v4[name + "_reference"] = reference(artifact, [], v4.pop(name))
+            rows = v4.pop(name)
+            ref = reference(artifact, [], rows)
+            ref["ids"] = [row.get(id_field) for row in rows
+                          if isinstance(row, dict) and row.get(id_field) is not None]
+            v4[name + "_reference"] = ref
     panel = v4["selected_panel"] = dict(v4.get("selected_panel", {}))
     if "nearby_hypothesis_pairs" in panel:
         name = "nearby_hypothesis_pairs"
@@ -867,5 +875,5 @@ def project_display_analysis(analysis: dict[str, Any]) -> dict[str, Any]:
                      "per_residue_diagnostics", "domain_pae", "minority_contacts"):
             if name in compact:
                 compact[name + "_reference"] = reference(artifact, [name], compact.pop(name))
-    return compact_identity(projected)
+    return compact_identity(projected) if compact_bulk_identity else projected
 

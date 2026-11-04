@@ -6,7 +6,7 @@ import itertools
 import math
 import time
 from collections import defaultdict
-from copy import deepcopy
+from copy import copy, deepcopy
 from dataclasses import replace
 
 from .models import V4Candidate
@@ -72,7 +72,21 @@ def _representatives(sector, options):
                     break
         if not progressed:
             break
-    return initial, selected
+    # A later seven-way product adds the next observed substitution only after
+    # the first two physical tiers fail.
+    expanded = selected[:6]
+    while len(selected) < min(len(options), 7):
+        progressed = False
+        for role in roles:
+            option = next((item for item in by_role[role] if item.mutant_aa not in used), None)
+            if option is not None:
+                selected.append((role, option))
+                used.add(option.mutant_aa)
+                progressed = True
+                break
+        if not progressed:
+            break
+    return initial, expanded, selected
 
 
 def _principle_key(candidate, principle):
@@ -140,9 +154,11 @@ class SiteFirstQueue:
         self._geometry = {}
         self._sequence = None
         self._closed = False
-        self._ledger = {"schema_version": "ordinary_site_first_ledger_v2", "policy": POLICY,
+        self._ledger = {"schema_version": "ordinary_site_first_ledger_v3", "policy": POLICY,
+                        "representative_policy": "role_ladder_3_6_7_v1",
                         "site_set_count": 0, "geometry_evaluations": 0,
-                        "expanded_candidate_count": 0, "initial_candidate_count": 0,
+                        "expanded_candidate_count": 0, "deep_candidate_count": 0,
+                        "initial_candidate_count": 0,
                         "site_preparation_seconds": 0.0, "representative_expansion_seconds": 0.0,
                         "uncompleted_gaps": []}
 
@@ -182,28 +198,48 @@ class SiteFirstQueue:
             return []
         group = lane["groups"][lane["group_index"]]
         if group["items"] is None:
-            group["items"] = self._materialize_group(group, principle, expanded=False)
-            if not group["items"]:
-                group["items"] = self._materialize_group(group, principle, expanded=True)
-                group["expanded"] = 1
-                self._ledger["expanded_candidate_count"] += len(group["items"])
+            self._set_group_tier(group, principle, "initial")
+            self._advance_empty_group_tier(group, principle)
         while not group["items"] and lane["group_index"] + 1 < len(lane["groups"]):
             lane["group_index"] += 1
             self._skip_preblocked(sector, principle, lane)
             if lane["state"] != "ready" or lane["group_index"] >= len(lane["groups"]):
                 return []
             group = lane["groups"][lane["group_index"]]
-            group["items"] = self._materialize_group(group, principle, expanded=False)
-            if not group["items"]:
-                group["items"] = self._materialize_group(group, principle, expanded=True)
-                group["expanded"] = 1
-                self._ledger["expanded_candidate_count"] += len(group["items"])
+            self._set_group_tier(group, principle, "initial")
+            self._advance_empty_group_tier(group, principle)
         if not group["items"]:
             lane["state"] = "candidate_failures"
             self._ledger["uncompleted_gaps"].append({"sector_id": str(sector), "principle": principle,
                                                        "status": lane["state"]})
             return []
         return [self.materialize(row["id"]) for row in group["items"] if row["state"] == "pending"][:limit]
+
+    def prefetch_groups(self, sector, principle):
+        """Yield ranked pending candidates without changing the live queue."""
+        lane = self._lane(sector, principle)
+        if lane["state"] != "ready":
+            return
+        shadow = copy(self)
+        shadow._candidate = {}
+        shadow._seen_candidate_ids = set()
+        shadow._ledger = deepcopy(self._ledger)
+        for index in range(lane["group_index"], len(lane["groups"])):
+            group = lane["groups"][index]
+            if ((principle == "epitope_support" and group["site_priority"] is None)
+                    or (group["order"] == 3 and not group["triple_gain_gate_passed"])):
+                continue
+            if index == lane["group_index"] and group["items"] is not None:
+                rows = [deepcopy(self._candidate[row["id"]]) for row in group["items"]
+                        if row["state"] == "pending" and row["id"] in self._candidate]
+            else:
+                temporary = deepcopy(group)
+                temporary["items"] = None
+                shadow._candidate.clear()
+                items = shadow._materialize_group(temporary, principle, tier="initial")
+                rows = [shadow._candidate[row["id"]] for row in items]
+            if rows:
+                yield rows
 
     def _skip_preblocked(self, sector, principle, lane):
         while lane["group_index"] < len(lane["groups"]):
@@ -230,6 +266,39 @@ class SiteFirstQueue:
         candidates = self.head(sector, principle, limit=offset + 1)
         return candidates[offset].candidate_id if len(candidates) > offset else None
 
+    def prioritize_uncovered(self, covered_positions):
+        """Reserve the next attempt for a new residue before retrying covered sites."""
+        for (_, principle), lane in self._lanes.items():
+            index = lane["group_index"]
+            groups = lane["groups"]
+            if lane["state"] != "ready" or index >= len(groups):
+                continue
+            current = groups[index]
+            if not set(current["positions"]).issubset(covered_positions):
+                continue
+            for later in range(index + 1, len(groups)):
+                group = groups[later]
+                if (set(group["positions"]).issubset(covered_positions)
+                        or (group["order"] == 3 and not group["triple_gain_gate_passed"])
+                        or (principle == "epitope_support" and group["site_priority"] is None)):
+                    continue
+                # Suspended pending rows are regenerated from evidence when resumed.
+                current["history"].extend(row for row in (current["items"] or [])
+                                          if row["state"] != "pending")
+                current["items"] = None
+                current["tier"] = "initial"
+                groups.insert(index, groups.pop(later))
+                break
+
+    def needs_exploration(self, covered_positions):
+        return any(
+            not set(group["positions"]).issubset(covered_positions)
+            and (group["order"] != 3 or group["triple_gain_gate_passed"])
+            and (principle != "epitope_support" or group["site_priority"] is not None)
+            for (_, principle), lane in self._lanes.items() if lane["state"] == "ready"
+            for group in lane["groups"][lane["group_index"]:]
+        )
+
     def materialize(self, candidate_id):
         if candidate_id not in self._candidate:
             raise KeyError(candidate_id)
@@ -251,15 +320,9 @@ class SiteFirstQueue:
         row["state"] = str(outcome)
         group = lane["groups"][lane["group_index"]]
         if all(item["state"] != "pending" for item in group["items"]):
+            group["history"].extend(group["items"])
             # Failures open the next tier, then the next physical site set.
-            if group["expanded"] == 0 and group["expansion"]:
-                group["history"].extend(group["items"])
-                group["items"] = self._materialize_group(group, principle, expanded=True)
-                group["expansion"] = []
-                group["expanded"] = 1
-                self._ledger["expanded_candidate_count"] += len(group["items"])
-                self._prune_candidates()
-            else:
+            if not self._advance_group_tier(group, principle):
                 lane["group_index"] += 1
                 self._prune_candidates()
                 if lane["group_index"] >= len(lane["groups"]):
@@ -267,9 +330,38 @@ class SiteFirstQueue:
                     self._ledger["uncompleted_gaps"].append({"sector_id": str(sector), "principle": principle,
                                                                "status": lane["state"]})
 
-    def _materialize_group(self, group, principle, *, expanded):
+    def _set_group_tier(self, group, principle, tier):
+        group["tier"] = tier
+        group["items"] = self._materialize_group(group, principle, tier=tier)
+        group["expanded"] = {"initial": 0, "expanded": 1, "deep": 2}[tier]
+        if tier == "expanded":
+            self._ledger["expanded_candidate_count"] += len(group["items"])
+        elif tier == "deep":
+            self._ledger["deep_candidate_count"] += len(group["items"])
+
+    def _advance_group_tier(self, group, principle):
+        while True:
+            current = group.get("tier", "initial")
+            if current == "initial" and group["expansion"]:
+                next_tier = "expanded"
+            elif current == "expanded" and group.get("deep_options"):
+                next_tier = "deep"
+            else:
+                return False
+            self._set_group_tier(group, principle, next_tier)
+            if group["items"]:
+                self._prune_candidates()
+                return True
+
+    def _advance_empty_group_tier(self, group, principle):
+        if group["items"]:
+            return
+        group["history"].extend(group["items"])
+        self._advance_group_tier(group, principle)
+
+    def _materialize_group(self, group, principle, *, tier):
         started = time.perf_counter()
-        options = group["expanded_options"] if expanded else group["initial_options"]
+        options = group[tier + "_options"]
         combos = itertools.product(*options)
         old = {row["id"] for row in group["history"] + (group["items"] or [])}
         rows = []
@@ -303,7 +395,7 @@ class SiteFirstQueue:
                                                                     group["sector_id"])
                                                         for omitted in selected)
             candidate.impact_evidence.update({"protocol": POLICY, "site_set_id": group["site_set_id"],
-                "source_site_set_id": group["site_set_id"], "representative_tier": "expanded" if expanded else "initial",
+                "source_site_set_id": group["site_set_id"], "representative_tier": tier,
                 "approximate_pre_ranking": {"regional_gain": group["gain"], "geometry": group["geometry"]},
                 "representative_roles": [row[0] for row in combo]})
             candidate.epitope_score = sum(float(getattr(o, "epitope_prior", 0.0) or 0.0) for o in selected)
@@ -322,7 +414,7 @@ class SiteFirstQueue:
             ranked.sort(key=lambda c: _principle_key(c, principle))
         order = {c.candidate_id: i for i, c in enumerate(ranked)}
         rows.sort(key=lambda row: order[row["id"]])
-        if not expanded and not group.get("initial_materialized"):
+        if tier == "initial" and not group.get("initial_materialized"):
             self._ledger["initial_candidate_count"] += len(rows)
             group["initial_materialized"] = True
         self._ledger["representative_expansion_seconds"] += time.perf_counter() - started
@@ -360,7 +452,7 @@ class SiteFirstQueue:
         result = deepcopy(self._ledger)
         result["counts"] = {"lanes": len(self._lanes), "legal_candidates": len(self._seen_candidate_ids),
                              "resident_candidates": len(self._candidate),
-                             "legal_candidate_count_scope": "materialized_initial_or_expanded_only",
+                             "legal_candidate_count_scope": "materialized_initial_expanded_or_deep",
                              "ready_lanes": sum(x["state"] == "ready" for x in self._lanes.values()),
                              "completed_lanes": sum(x["state"] == "complete" for x in self._lanes.values())}
         rows = []
@@ -494,7 +586,8 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
                                         "baseline_site_set_id": _site_id(sector.sector_id, baseline_positions) if baseline_positions else None,
                                         "baseline_coverage": baseline_coverage,
                                         "initial_options": [representatives[p][0] for p in positions],
-                                        "expanded_options": [representatives[p][1] for p in positions]}
+                                        "expanded_options": [representatives[p][1] for p in positions],
+                                        "deep_options": [representatives[p][2] for p in positions]}
         # Every principle gets an independent winner queue, while physical site sets and geometry are shared.
         for principle in PRINCIPLES:
             groups = []
@@ -541,7 +634,7 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
                     definition["site_priority"] = _principle_key(witnesses[0], principle) if witnesses else None
                 definition["witness_count"] = len(witnesses)
                 group = {**definition, "sector_id": str(sector.sector_id), "items": None,
-                         "history": [], "expansion": True, "expanded": 0}
+                         "history": [], "expansion": True, "expanded": 0, "tier": "initial"}
                 groups.append(group)
                 groups_by_positions[positions] = group
             if principle == "mechanism_pareto" and all_mechanism_witnesses:

@@ -72,6 +72,8 @@ class JobStore:
         self._lock = threading.RLock()
         self._timing_cache = {}
         self._initialize()
+        self._summary_migration = threading.Thread(target=self._backfill_summaries, daemon=True)
+        self._summary_migration.start()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -94,6 +96,7 @@ class JobStore:
                     message TEXT NOT NULL,
                     request_json TEXT NOT NULL,
                     result_json TEXT,
+                    summary_json TEXT,
                     error TEXT,
                     workdir TEXT NOT NULL,
                     created_at TEXT NOT NULL,
@@ -108,6 +111,8 @@ class JobStore:
                 connection.execute("ALTER TABLE jobs ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'local'")
             if "owner_pid" not in columns:
                 connection.execute("ALTER TABLE jobs ADD COLUMN owner_pid INTEGER")
+            if "summary_json" not in columns:
+                connection.execute("ALTER TABLE jobs ADD COLUMN summary_json TEXT")
             # Jobs left QUEUED/RUNNING by a previous process can never finish:
             # the single worker thread died with the old interpreter.  Mark them
             # failed so SSE streams terminate and the UI does not spin forever.
@@ -121,6 +126,32 @@ class JobStore:
                     (_now(), row["id"]),
                 )
             connection.commit()
+
+    def _backfill_summaries(self):
+        """Migrate old rows off the request path, committing one compact row at a time."""
+        with self._connect() as connection:
+            ids = [row[0] for row in connection.execute(
+                "SELECT id FROM jobs WHERE summary_json IS NULL AND result_json IS NOT NULL")]
+        for job_id in ids:
+            with self._connect() as connection:
+                # Multiple JSON paths share a single parse inside SQLite; no blob enters Python.
+                try:
+                    row = connection.execute("""SELECT json_extract(result_json,
+                        '$.protein.accession', '$.summary.regions', '$.summary.recommended_constructs')
+                        FROM jobs WHERE id=? AND summary_json IS NULL""", (job_id,)).fetchone()
+                except sqlite3.OperationalError as exc:
+                    if "malformed JSON" in str(exc):
+                        continue
+                    raise
+                if row is None or row[0] is None:
+                    continue
+                accession, regions, constructs = json.loads(row[0])
+                summary = {"protein": {"accession": accession}, "summary": {
+                    "regions": regions, "recommended_constructs": constructs}}
+                with self._lock:
+                    connection.execute("UPDATE jobs SET summary_json=? WHERE id=? AND summary_json IS NULL",
+                                       (json.dumps(summary, ensure_ascii=False), job_id))
+                    connection.commit()
 
     def create(self, request: PipelineRequest, job_id: str | None = None, owner_id: str = "local") -> dict[str, Any]:
         job_id = job_id or uuid.uuid4().hex[:12]
@@ -168,6 +199,23 @@ class JobStore:
         payload = {key: value for key, value in values.items() if key in allowed}
         if not payload:
             return self.get(job_id)
+        if "result_json" in payload:
+            result = payload["result_json"]
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except (TypeError, ValueError):
+                    result = None
+            result = result if isinstance(result, dict) else {}
+            payload["summary_json"] = json.dumps({
+                "protein": {"accession": (result.get("protein") or {}).get("accession")},
+                "summary": {
+                    "regions": (result.get("summary") or {}).get("regions"),
+                    "recommended_constructs": (result.get("summary") or {}).get(
+                        "recommended_constructs"
+                    ),
+                },
+            }, ensure_ascii=False)
         payload["updated_at"] = _now()
         assignments = ", ".join(f"{key}=?" for key in payload)
         parameters = [
@@ -191,6 +239,7 @@ class JobStore:
         if row is None:
             raise KeyError(job_id)
         data = dict(row)
+        data.pop("summary_json", None)
         for key in ("request_json", "result_json"):
             raw = data.pop(key)
             data[key.removesuffix("_json")] = json.loads(raw) if raw else None
@@ -203,6 +252,23 @@ class JobStore:
                 "SELECT id FROM jobs WHERE owner_id=? ORDER BY created_at DESC LIMIT ?", (owner_id, limit)
             ).fetchall()
         return [self.get(row["id"], owner_id) for row in rows]
+
+    def summaries(self, limit: int = 30, owner_id: str = "local") -> list[dict[str, Any]]:
+        """Return list-page fields without parsing request or result JSON."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT id,status,stage,progress,message,summary_json,error,created_at,updated_at
+                   FROM jobs WHERE owner_id=? ORDER BY created_at DESC LIMIT ?""",
+                (owner_id, limit),
+            ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            raw = data.pop("summary_json")
+            data["summary"] = json.loads(raw) if raw else {}
+            data["terminal"] = data["status"] in TERMINAL_STATUSES
+            result.append(data)
+        return result
 
     def request_for(self, job_id: str, owner_id: str = "local") -> PipelineRequest:
         return PipelineRequest(**self.get(job_id, owner_id)["request"])
