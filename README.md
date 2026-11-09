@@ -139,7 +139,7 @@ The browser preview completed and its saved result was reloaded successfully. De
 python -m pip install pytest
 $releaseRoot = (Get-Location).Path
 Push-Location $env:TEMP
-python -m pytest --import-mode=importlib -q "$releaseRoot\tests"
+python -m pytest --import-mode=importlib --rootdir "$releaseRoot\tests" --confcutdir "$releaseRoot\tests" -q "$releaseRoot\tests"
 Pop-Location
 ```
 

@@ -160,7 +160,7 @@ python -c "import procaliper; print('ProCaliper OK')"
 3. Extract the supplied files into `model_assets\vendor\foldx\`, keeping the executable and its accompanying files together.
 4. Set `ECD_FOLDX_BINARY` to the executable's full path in the PowerShell session that launches the application.
 
-An anonymous download command cannot replace the registration/license step. FoldX is not redistributed here; commercial and redistribution terms remain governed by its license.
+FoldX is obtained through the licensed download portal. Commercial use and redistribution are governed by its license.
 
 
 ```powershell
@@ -247,7 +247,7 @@ First run the README preview command to check main-package installation, mapping
 | WSL path missing | Linux username, distribution name, conda environment path, and Windows checkout accessibility from WSL. |
 | ESM checkpoint missing | Both main and contact-regression weights under the SPURS environment's PyTorch hub checkpoint directory. |
 | CUDA unavailable / OOM | Windows driver and `torch.cuda.is_available()` in WSL. Workers record OOM/retry/CPU fallback; CPU execution may be slower. |
-| FoldX unavailable | `ECD_FOLDX_BINARY`, accepted license and extracted files. Missing output never becomes a fabricated kcal/mol score. |
+| FoldX unavailable | `ECD_FOLDX_BINARY`, license status, and extracted accompanying files. |
 
 The recorded strict acceptance used existing local model environments. These download commands have not been repeated as a fresh-machine installation. Record the versions, model identities, and hardware actually used for your analysis.
 
