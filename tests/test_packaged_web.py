@@ -10,6 +10,11 @@ def test_health_and_packaged_web_assets(monkeypatch, tmp_path):
     api = importlib.reload(api)
 
     assert api.health()["status"] == "ok"
+    from ecd_epitope_scanner import __version__
+    from ecd_epitope_scanner.pipeline import _software_versions
+
+    assert api.health()["version"] == api.app.version == __version__
+    assert _software_versions()["ecd_epitope_workbench"].endswith(" " + __version__)
     index = (api.WEB_ROOT / "index.html").read_text(encoding="utf-8")
     assert "PDBe Mol*" in index or "molstar" in index.lower()
     assert 'href="/experiments"' not in index

@@ -102,7 +102,7 @@ class CustomDesignInput(BaseModel):
 
 app = FastAPI(
     title="ECD Epitope Workbench",
-    version="1.0.0",
+    version="1.0.1",
     description="Auditable ECD surface-region mutation design for single-pass membrane proteins",
 )
 
@@ -160,7 +160,7 @@ def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "ECD Epitope Workbench", "version": "1.0.0"}
+    return {"status": "ok", "service": "ECD Epitope Workbench", "version": "1.0.1"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)

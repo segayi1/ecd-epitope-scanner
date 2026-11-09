@@ -2,9 +2,13 @@
 
 Validation date: 2026-11-09. The local application environment used Windows and Python 3.12.10. SPURS and DiscoTope ran in existing WSL/CUDA environments; paired energy calculations used licensed FoldX 5.1.
 
+## Version 1.0.1
+
+The installed distribution passed 91 local tests. Export redaction covers supported Windows, home, WSL and POSIX temporary-directory paths. Regression cases exercise nested request metadata, compressed artifacts, public URLs and application routes. The service and exported software metadata identify the installed patch version. Current Python 3.11/3.12 results are available in the repository's GitHub Actions runs.
+
 ## Installed distribution and interface
 
-The final wheel passed **84 tests in 110.12 seconds** from a directory outside the source checkout. A separate extraction of the source archive rebuilt a wheel with identical payload contents.
+The version 1.0.0 baseline wheel passed **84 tests in 110.12 seconds** from a directory outside the source checkout. A separate extraction of the source archive rebuilt a wheel with identical payload contents.
 
 The suite covers structure/sequence mapping, confidence provenance, AF3 atom mapping, connected surface geometry, site-first scheduling, construct/sampling budgets, evidence pairing, missing evidence, export consistency, privacy, and packaged browser resources. Automated scheduling tests use controlled scoring fixtures.
 
