@@ -3,4 +3,4 @@
 from .pipeline import PipelineRequest, run_pipeline
 
 __all__ = ["PipelineRequest", "run_pipeline"]
-__version__ = "1.0.1"
+__version__ = "1.0.2"

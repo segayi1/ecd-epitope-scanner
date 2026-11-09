@@ -1,0 +1,12 @@
+# Direct inference packages recorded in the accepted SPURS environment.
+torch==2.5.1
+omegaconf==2.3.1
+huggingface-hub==1.32.0
+fair-esm==2.0.0
+biopython==1.88
+einops==0.8.2
+e3nn==0.6.0
+fairscale==0.4.13
+numpy==2.4.6
+lmdb==2.3.0
+atom3d==0.2.6

@@ -688,7 +688,7 @@ def _standardize_cif(parsed: ParsedStructure, output_path: Path) -> Path:
 
 def _software_versions() -> dict[str, str]:
     return {
-        "ecd_epitope_workbench": models.__name__.split(".")[0] + " 1.0.1",
+        "ecd_epitope_workbench": models.__name__.split(".")[0] + " 1.0.2",
         "python": platform.python_version(),
         "biopython": Bio.__version__,
         "numpy": np.__version__,

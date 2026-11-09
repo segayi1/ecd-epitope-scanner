@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "scope": "Offline comparison and command validation; no fresh-machine external installation or model download.",
+  "spurs_code_revision": "70cbb99af5cdf1f6da392389aaf93fd245610efb",
+  "spurs_model_revision": "0cc7a565af8f31eb122819f95a9d16e27b3d1596",
+  "spurs_model_files_matching_recorded_inputs": 4,
+  "discotope_code_revision": "35d9f2e55f97eaba2a7acefbc394db58fb9670bc",
+  "discotope_source_and_archive_files_compared": 28,
+  "accepted_torch": "2.5.1+cu124",
+  "direct_package_constraints_matched": 21,
+  "documented_shell_blocks_parsed": 23,
+  "worker_configuration_resolution": "PASS with a path containing spaces and no venv activation",
+  "recorded_strict_inspection": {
+    "protocol": "ordinary_site_first_v2",
+    "complete_queues": 33,
+    "uncompleted_gaps": 0,
+    "valid_foldx_slots": 113,
+    "failed_foldx_slots": 0,
+    "outcome": "PANEL_SELECTED"
+  },
+  "fresh_machine_installation": "NOT_RUN",
+  "external_model_downloads": "NOT_RUN"
+}

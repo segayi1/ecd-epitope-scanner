@@ -40,6 +40,7 @@ Clone the repository and open PowerShell in its root directory:
 ```powershell
 git clone https://github.com/segayi1/ecd-epitope-scanner.git
 cd ecd-epitope-scanner
+git checkout v1.0.2
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -57,6 +58,8 @@ If virtual-environment activation is unavailable, invoke `.\.venv\Scripts\python
 ### External software
 
 The [external-tool installation guide](docs/external-tools.md) provides download and configuration commands for SPURS, ESM-2, DiscoTope3, optional ProCaliper, and FoldX. It specifies a fixed SPURS revision and the accompanying inference patch.
+
+For the recorded strict analysis, follow the guide's pinned SPURS and DiscoTope revisions, Python 3.11 constraints, PyTorch 2.5.1 CUDA 12.4 setup, and ESM-2 / ESM-IF1 checkpoint instructions. The guide distinguishes the separately licensed FoldX download from the open-source installation steps.
 
 Users obtain model weights and scientific executables from their upstream sources. FoldX requires registration and license acceptance; DiscoTope3 is distributed under CC BY-NC 4.0. Additional terms are summarized in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -101,7 +104,38 @@ Preview evaluates structure mapping, surface partitioning, candidate generation,
 
 ### Strict V2 execution
 
-After configuring the external workers, replace `--ml-mode preview` with `--ml-mode strict` and use a new output directory, such as `.\workspace_data\pdl1_strict`. Strict mode executes `ordinary_site_first_v2`.
+After configuring the external workers in the same PowerShell session, run the public example in a new output directory:
+
+```powershell
+python -m ecd_epitope_scanner analyze `
+  --structure examples\pdl1_run\structure.pdb `
+  --accession Q9NZQ7 `
+  --chain A `
+  --sequence examples\pdl1_run\canonical.fasta `
+  --ecd 19:238 `
+  --allow-partial `
+  --ml-mode strict `
+  --output .\workspace_data\pdl1_strict
+```
+
+Strict mode executes `ordinary_site_first_v2`. Inspect the saved evidence:
+
+```powershell
+$resultDir = '.\workspace_data\pdl1_strict'
+$protocol = Get-Content "$resultDir\execution_protocol.json" -Raw | ConvertFrom-Json
+$ledger = Get-Content "$resultDir\ordinary_candidate_ledger.json" -Raw | ConvertFrom-Json
+$diagnostics = Get-Content "$resultDir\recommendation_diagnostics_v41.json" -Raw | ConvertFrom-Json
+[pscustomobject]@{
+  Protocol = $protocol.name
+  CompletedQueues = @($ledger.queues | Where-Object state -eq 'complete').Count
+  UncompletedGaps = @($ledger.uncompleted_gaps).Count
+  ValidFoldXSlots = $ledger.foldx.valid_slots
+  FailedFoldXSlots = $ledger.foldx.failed_slots
+  RecommendationOutcome = $diagnostics.outcome
+}
+```
+
+Review queue states, missing evidence, and worker errors in the full files; candidate and region counts depend on the input and scoring results.
 
 | Evidence artifact | Content |
 | --- | --- |
@@ -147,7 +181,7 @@ The suite covers residue mapping, confidence handling, region geometry, queue sc
 
 ## Reproducibility and interpretation
 
-Record the software release or commit, external-tool versions, model identities, input structure, residue mapping, and confidence source for each analysis. Exact scores and candidate selections can vary with sampling and numerical environment. FoldX sampling slots represent computational side-chain sampling. The public PDB example was processed as an ordinary structure upload; ProCaliper was not invoked in that run. Fresh-machine external installation and AF3 multi-model inference are outside the recorded acceptance scope.
+Record the software release or commit, external-tool versions, model identities, input structure, residue mapping, and confidence source for each analysis. The published setup targets the recorded workflow and inputs; exact scores and candidate selections can vary with FoldX sampling and numerical environment. FoldX sampling slots represent computational side-chain sampling. The public PDB example was processed as an ordinary structure upload; ProCaliper was not invoked in that run. Fresh-machine external installation and AF3 multi-model inference are outside the recorded acceptance scope.
 
 The pipeline generates computationally qualified designs for experimental evaluation. Establishing effects on binding, expression, or folding requires the corresponding experimental measurements.
 
@@ -163,12 +197,12 @@ python scripts\check_export_privacy.py .\workspace_data\pdl1_preview\ecd_epitope
 Cite the software release or exact commit used in an analysis, together with the external methods and structural data sources. Machine-readable software metadata is provided in [CITATION.cff](CITATION.cff). The associated manuscript citation can be added when its bibliographic record is available.
 
 ```bibtex
-@software{ecd_epitope_scanner_1_0_1,
+@software{ecd_epitope_scanner_1_0_2,
   author  = {segayi1},
   title   = {ECD Epitope Scanner},
-  version = {1.0.1},
+  version = {1.0.2},
   year    = {2026},
-  url     = {https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.1}
+  url     = {https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.2}
 }
 ```
 

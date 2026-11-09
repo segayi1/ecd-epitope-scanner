@@ -2,6 +2,10 @@
 
 Validation date: 2026-11-09. The local application environment used Windows and Python 3.12.10. SPURS and DiscoTope ran in existing WSL/CUDA environments; paired energy calculations used licensed FoldX 5.1.
 
+## External setup audit
+
+The external setup guide pins the upstream revisions and direct dependency versions observed in the recorded SPURS and DiscoTope environments. The four SPURS model/configuration files match the recorded inputs; 28 DiscoTope source/model-archive files match the pinned upstream revision. Offline checks cover shell syntax, worker-command resolution, and inspection of the recorded strict output. The installation commands have not been executed on a fresh machine. See [the setup audit](acceptance/external_setup_audit.json).
+
 ## Version 1.0.1
 
 The installed distribution passed 91 local tests. Export redaction covers supported Windows, home, WSL and POSIX temporary-directory paths. Regression cases exercise nested request metadata, compressed artifacts, public URLs and application routes. The service and exported software metadata identify the installed patch version. Current Python 3.11/3.12 results are available in the repository's GitHub Actions runs.
