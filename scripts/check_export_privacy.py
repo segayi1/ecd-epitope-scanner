@@ -1,4 +1,4 @@
-"""Check archive text for local user directories and caller-supplied private markers."""
+"""Check archive text for user/temporary directories and caller-supplied private markers."""
 
 import argparse
 import gzip
@@ -9,8 +9,9 @@ import zipfile
 from pathlib import Path
 
 USER_PATH = re.compile(
-    r'(?i)(?:[a-z]:[\\/]+(?:users|userdata)[\\/]+[^\\/\s"<>]+|'
+    r'(?i)(?<![A-Za-z0-9])(?:[a-z]:[\\/]+(?:users|userdata)[\\/]+[^\\/\s"<>]+|'
     r'/home/(?![<[(])[^/\s"<>]+(?:/|(?=[\s"<>]|$))|'
+    r'/(?:tmp|var/tmp)/(?![<[(])[^/\s"<>]+/|'
     r'/mnt/[a-z]/(?:users|userdata)/[^/\s"<>]+(?:/|(?=[\s"<>]|$)))'
 )
 

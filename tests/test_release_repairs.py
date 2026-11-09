@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -163,12 +165,18 @@ def test_portable_projection_redacts_drive_home_and_mnt_paths(tmp_path):
         'windows': ('C:' + '\\Users\\private-owner\\run\\analysis.json'),
         'home': ('/' + 'home/' + 'private-linux/work'),
         'mnt': ('/' + 'mnt/e/private-owner/data'),
+        'tmp': '/' + 'tmp/' + 'private-owner/work',
+        'var_tmp': '/' + 'var/tmp/' + 'private-owner/work',
         'url': 'https://example.org/not-a-local-path',
+        'temporary_url': 'https://example.org/tmp/reference',
+        'api_url': '/api/jobs/example/files/structure.cif',
     }
     portable = portable_projection(value)
     text = json.dumps(portable)
     assert 'private-owner' not in text and 'private-linux' not in text
     assert portable['url'] == value['url']
+    assert portable['temporary_url'] == 'https://example.org/tmp/reference'
+    assert portable['api_url'] == '/api/jobs/example/files/structure.cif'
     artifact = tmp_path / 'analysis.json'
     artifact.write_text(json.dumps(value), encoding='utf-8')
     assert sanitize_text_file(artifact)
@@ -178,10 +186,13 @@ def test_portable_projection_redacts_drive_home_and_mnt_paths(tmp_path):
     assert 'private-owner' not in portable_text(escaped)
 
 
-def test_request_export_projection_keeps_runtime_path_out_of_serialized_identity(tmp_path):
+@pytest.mark.parametrize('temporary_root', [None, ('tmp',), ('var', 'tmp')])
+def test_request_export_projection_keeps_runtime_path_out_of_serialized_identity(tmp_path, temporary_root):
     from ecd_epitope_scanner.pipeline import PipelineRequest
+    from pathlib import PurePosixPath
 
-    private = tmp_path / 'private-owner' / 'run'
+    root = PurePosixPath('/').joinpath(*temporary_root) if temporary_root else tmp_path
+    private = root / 'private-owner' / 'run'
     request = PipelineRequest(input_type='structure', output_dir=str(private),
                               structure_path=str(private / 'model.pdb'),
                               metadata={'joint_v4_ml': {'custom': {'command': [
@@ -192,3 +203,5 @@ def test_request_export_projection_keeps_runtime_path_out_of_serialized_identity
     exported = request.export_dict()
     assert 'private-owner' not in json.dumps(exported)
     assert exported['output_dir'] == '<local-path>'
+    assert exported['metadata']['joint_v4_ml']['custom']['command'][1] == '<local>/foldx_worker.py'
+    assert request.structure_path == str(private / 'model.pdb')

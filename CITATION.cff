@@ -2,10 +2,10 @@ cff-version: 1.2.0
 message: "Cite this software release or the exact commit used in your analysis."
 type: software
 title: "ECD Epitope Scanner"
-version: "1.0.0"
+version: "1.0.1"
 date-released: 2026-11-09
 authors:
   - name: "segayi1"
 license: MIT
 repository-code: "https://github.com/segayi1/ecd-epitope-scanner"
-url: "https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.0"
+url: "https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.1"

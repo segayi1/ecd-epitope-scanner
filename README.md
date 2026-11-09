@@ -163,12 +163,12 @@ python scripts\check_export_privacy.py .\workspace_data\pdl1_preview\ecd_epitope
 Cite the software release or exact commit used in an analysis, together with the external methods and structural data sources. Machine-readable software metadata is provided in [CITATION.cff](CITATION.cff). The associated manuscript citation can be added when its bibliographic record is available.
 
 ```bibtex
-@software{ecd_epitope_scanner_1_0_0,
+@software{ecd_epitope_scanner_1_0_1,
   author  = {segayi1},
   title   = {ECD Epitope Scanner},
-  version = {1.0.0},
+  version = {1.0.1},
   year    = {2026},
-  url     = {https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.0}
+  url     = {https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.1}
 }
 ```
 

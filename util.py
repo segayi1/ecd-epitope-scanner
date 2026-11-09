@@ -64,7 +64,7 @@ def portable_command(command: list[str]) -> list[str]:
 
 
 _LOCAL_PATH = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:[A-Z]:[\\/][^\r\n\"'<>|,;]+|/home/[^\r\n\"'<>|,;]+|/mnt/[A-Za-z]/[^\r\n\"'<>|,;]+)"
+    r"(?i)(?<![A-Za-z0-9])(?:[A-Z]:[\\/][^\r\n\"'<>|,;]+|/(?:home|tmp|var/tmp)/[^\r\n\"'<>|,;]+|/mnt/[A-Za-z]/[^\r\n\"'<>|,;]+)"
 )
 _LOCAL_TOOL_NAMES = {
     "python", "python.exe", "wsl_bridge.py", "spurs_gpu_worker.py",

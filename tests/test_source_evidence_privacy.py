@@ -4,6 +4,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from ecd_epitope_scanner import exporting
 from ecd_epitope_scanner.foldx_source_evidence import (
     copy_foldx_source_evidence,
@@ -125,8 +127,10 @@ def test_finalizer_sanitizes_all_export_text_before_hashing(tmp_path, monkeypatc
         assert digest == sha256_file(output / name)
 
 
-def test_gzip_sanitizer_streams_and_redacts_local_paths(tmp_path):
-    private = ('C:' + '\\Users\\private-owner\\results.csv')
+@pytest.mark.parametrize('root_parts', [None, ('tmp',), ('var', 'tmp')])
+def test_gzip_sanitizer_streams_and_redacts_local_paths(tmp_path, root_parts):
+    private = ('/' + '/'.join((*root_parts, 'private-owner', 'results.csv'))
+               if root_parts else 'C:' + '\\Users\\private-owner\\results.csv')
     artifact = tmp_path / "rows.csv.gz"
     with gzip.open(artifact, "wt", encoding="utf-8", newline="") as handle:
         handle.write(f"path,value\n{private},1\n")

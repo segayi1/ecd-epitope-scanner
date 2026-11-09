@@ -7,13 +7,16 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
 
-def test_scan_recurses_into_compressed_artifacts(tmp_path):
+
+@pytest.mark.parametrize('root_parts', [('home',), ('tmp',), ('var', 'tmp')])
+def test_scan_recurses_into_compressed_artifacts(tmp_path, root_parts):
     script = Path(__file__).resolve().parents[1] / 'scripts' / 'check_export_privacy.py'
     inner = io.BytesIO()
     with zipfile.ZipFile(inner, 'w') as archive:
         archive.writestr('report.json.gz', gzip.compress(
-            json.dumps({'path': '/' + 'home/' + 'example_user/file'}).encode()))
+            json.dumps({'path': '/' + '/'.join((*root_parts, 'example_user', 'file'))}).encode()))
     outer = tmp_path / 'result.zip'
     with zipfile.ZipFile(outer, 'w') as archive:
         archive.writestr('nested.zip', inner.getvalue())
@@ -90,3 +93,18 @@ def test_wheel_members_are_scanned(tmp_path):
     assert result.returncode == 1
     assert 'Affected archive entries: 1' in result.stdout
     assert 'example_user' not in result.stdout
+
+
+def test_public_urls_and_app_routes_are_not_user_directories(tmp_path):
+    script = Path(__file__).resolve().parents[1] / 'scripts' / 'check_export_privacy.py'
+    archive_path = tmp_path / 'public.zip'
+    with zipfile.ZipFile(archive_path, 'w') as archive:
+        archive.writestr('links.json', json.dumps({
+            'reference': 'https://example.org/tmp/reference',
+            'home': 'https://example.org/home/reference',
+            'structure': '/api/jobs/example/files/structure.cif',
+            'shared_lock': '/tmp/ecd_v4_gpu.lock',
+        }))
+    result = subprocess.run([sys.executable, str(script), str(archive_path)], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert 'Privacy scan: PASSED' in result.stdout
