@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "base_revision": "70cbb99af5cdf1f6da392389aaf93fd245610efb",
+  "files": [
+    "requirements.inference.txt",
+    "spurs/models/stability/spurs_multi.py"
+  ],
+  "check": "Patch applies to pristine revision and matches tested local files after newline normalization.",
+  "model_downloaded": false,
+  "model_inference_run": false
+}

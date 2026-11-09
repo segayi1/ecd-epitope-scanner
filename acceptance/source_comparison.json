@@ -1,0 +1,10 @@
+{
+  "compared_files": 124,
+  "changed_files": [
+    "api.py",
+    "assay_profiles.py",
+    "web/app.js",
+    "web/index.html",
+    "web/offline_template.html"
+  ]
+}

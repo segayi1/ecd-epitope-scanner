@@ -1,0 +1,13 @@
+{
+  "name": "ordinary_site_first_v2",
+  "spurs_batch_size": 64,
+  "spurs_unique_request_limit": 1000,
+  "foldx_slot_limit": 300,
+  "foldx_initial_slots": 3,
+  "foldx_append_slots": 7,
+  "display_prefilter": "known_review_v1",
+  "repeat_confirmation_policy": "ten_slot_median_v1",
+  "representative_policy": "role_ladder_3_6_7_v1",
+  "foldx_site_exploration_policy": "uncovered_residue_before_retry_v1",
+  "foldx_site_exploration_reserve": 1
+}

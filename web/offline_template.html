@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>__TASK_TITLE__</title>
+<style>
+:root{
+  --bg:#f3f6f7; --surface:#fff; --ink:#172b35; --muted:#657780; --line:#dce5e8;
+  --teal:#127c80; --teal-dark:#0b5c60; --red:#b94e43; --sel:#0b5c60; --off:#c8d2d5; --ok:#28734f; --warn:#8a5a15;
+}
+*{box-sizing:border-box; margin:0}
+html,body{min-height:100%;height:100%} body{font:13px/1.6 "Segoe UI","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden}
+.recommendation-region{border-top:1px solid var(--line);padding:12px 0}
+.recommendation-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.recommendation-card p{margin:8px 0}
+.recommendation-tags{display:flex;flex-wrap:wrap;gap:6px}
+.recommendation-table{overflow-x:auto;max-width:100%;margin:8px 0}
+.recommendation-table table{border-collapse:collapse;width:100%;min-width:260px}
+.recommendation-table th,.recommendation-table td{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.recommendation-sequence{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow-y:auto;background:#f3f6f7;padding:8px}
+.recommendation-details summary{cursor:pointer;color:var(--teal-dark);padding:8px 0}
+.recommendation-details h4{margin:12px 0 4px}
+.recommendation-warning{color:#8b3c24}
+.swatch{display:inline-block;width:12px;height:12px}
+.mut-chip{display:inline-block;padding:2px 7px;border:1px solid #e0b8ad;border-radius:5px;margin:2px}
+.tag{display:inline-block;font-size:11px}
+#bar{display:flex; align-items:center; gap:12px; padding:9px 16px; background:var(--surface); border-bottom:1px solid var(--line); flex-wrap:wrap}
+#bar b{font-size:14px; white-space:nowrap}
+#bar .sp{flex:1}
+.btn{border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; font-size:12px; line-height:1.3}
+.btn:hover{border-color:var(--teal); color:var(--teal-dark)}
+.btn.on{background:var(--teal-dark); color:#fff; border-color:var(--teal-dark)}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+#steps{display:flex; gap:5px; flex-wrap:nowrap; max-width:min(100%, 920px); overflow-x:auto; padding:2px; scrollbar-width:thin}
+.step{display:flex; flex:none; gap:6px; align-items:center; border:1px solid transparent; border-radius:8px; padding:5px 8px; cursor:pointer; background:transparent; color:var(--muted); font:inherit; font-size:12px; white-space:nowrap}
+.step .n{width:19px; height:19px; border-radius:50%; background:#edf2f3; color:var(--muted); display:flex; align-items:center; justify-content:center; font-size:11px}
+.step.active{border-color:#b7d4d5; background:#eef7f7; color:var(--teal-dark); font-weight:600}
+.step.active .n{background:var(--teal-dark); color:#fff}
+.step.done .n{background:#e5f1eb; color:var(--ok)}
+#main{display:grid; grid-template-columns:minmax(0,2fr) minmax(340px,1fr); min-height:0; overflow:hidden}
+#main[data-step="5"],#main[data-step="6"],#main[data-step="7"]{grid-template-columns:minmax(0,1.55fr) minmax(360px,1fr)}
+#viewportWrap{position:relative; min-width:0; min-height:0}
+#viewport{position:absolute; inset:0}
+#legend{position:absolute; left:14px; bottom:14px; background:rgba(255,255,255,.94); border:1px solid var(--line); border-radius:10px; padding:9px 11px; font-size:12px; max-width:280px; box-shadow:0 4px 18px rgba(23,43,53,.08)}
+#legend .li{display:flex; gap:6px; align-items:center; margin:2px 0; padding:2px 4px; font-size:11px}
+#legend .sw{width:11px; height:11px; border-radius:3px; display:inline-block}
+#viewhud{position:absolute; left:10px; top:10px; display:flex; gap:6px}
+#btn-legend{display:none}
+#panel{min-width:0; border-left:1px solid var(--line); background:var(--surface); overflow-y:auto; padding:16px}
+#panel h2{font-size:16px; margin-bottom:12px; letter-spacing:-.01em}
+.box{border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; background:var(--surface)}
+.box h3{font-size:13px; margin-bottom:6px}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{border:1px solid var(--line); border-radius:999px; padding:2px 10px; font-size:12px; background:#fff}
+.note{font-size:12px; color:var(--muted); line-height:1.65; margin-bottom:10px}
+.li{display:flex; width:100%; gap:7px; align-items:center; padding:7px 8px; border:0; border-radius:8px; font:inherit; text-align:left; font-size:12.5px; color:var(--ink); background:transparent}
+.li.click{cursor:pointer}
+.li.click:hover{background:#f1f6f6}
+.li.on{background:#eaf4f4; box-shadow:0 0 0 1px #b7d4d5 inset}
+.li .sw{width:12px; height:12px; border-radius:3px}
+.li .cnt{margin-left:auto; color:var(--muted); font-size:11.5px}
+table{width:100%; border-collapse:collapse; font-size:12px}
+th,td{border-bottom:1px solid var(--line); padding:4px 6px; text-align:left}
+th{color:var(--muted); font-weight:500}
+.mut{background:#f7e3de; border-radius:4px; padding:0 2px}
+.tag{display:inline-block; border-radius:6px; padding:1px 7px; font-size:11px; border:1px solid var(--line); margin:1px}
+.tag.ok{background:#eaf3de; color:var(--ok)}
+.tag.warn{background:#faeeda; color:var(--warn)}
+.tag.bad{background:#fcebeb; color:#A32D2D}
+#seqbar{border-top:1px solid var(--line); background:var(--surface); padding:7px 16px;max-height:34dvh;overflow:auto}
+.seq-head{display:flex; align-items:center; gap:12px; min-height:30px}
+.seq-head strong{font-size:12px}
+.seq-summary{margin-left:10px; color:var(--muted); font-size:12px}
+.seq-head .btn{margin-left:auto}
+#seq-content{padding-top:7px}
+.seqrow{display:flex; gap:8px; align-items:flex-start; margin:5px 0}
+.seqlabel{width:70px; flex:none; font-size:11px; color:var(--muted); padding-top:3px}
+.seq{font:12px/1.7 ui-monospace,Consolas,monospace; word-break:break-all; flex:1;min-width:0}
+.seq-residue{border:0; border-radius:3px; padding:0 1px; color:inherit; background:transparent; cursor:pointer; font:inherit}
+.seq-residue:hover,.seq-residue:focus-visible{outline:1px solid var(--teal); background:#eaf4f4}
+.seq-residue.mut{background:#f8e5e1; color:var(--sel); font-weight:bold}
+.seq-residue.focus{outline:1px solid var(--teal); background:#d9eeee; color:var(--teal-dark); font-weight:bold}
+#inspector{position:absolute; right:14px; top:14px; width:min(280px,calc(100% - 28px)); background:rgba(255,255,255,.97); border:1px solid var(--line); border-radius:12px; padding:12px; font-size:12px; display:none; max-height:70%; overflow:auto; box-shadow:0 4px 18px rgba(23,43,53,.1)}
+#toast{position:fixed;right:16px;bottom:16px;z-index:8;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);box-shadow:0 4px 18px rgba(23,43,53,.12);opacity:0;pointer-events:none;transition:opacity .15s}
+#toast.show{opacity:1}
+button:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+@media (max-height:700px) and (min-width:801px){body{height:auto;min-height:100%;overflow:auto}#main{height:calc(100vh - 130px);min-height:420px}#seqbar{max-height:none}}
+@media (max-width:1000px){#bar{gap:8px}#steps{order:3; flex-basis:100%; max-width:100%}#main,#main[data-step="5"],#main[data-step="6"],#main[data-step="7"]{grid-template-columns:minmax(0,1.6fr) minmax(310px,1fr)}#panel{padding:12px}}
+@media (max-width:800px){html,body{height:auto;min-height:100%}body{display:block;overflow:auto}#bar{position:sticky;top:0;z-index:4}#bar b{flex-basis:100%;max-width:100%;white-space:normal;overflow-wrap:anywhere}#main,#main[data-step="5"],#main[data-step="6"],#main[data-step="7"]{display:block;overflow:visible}#viewportWrap{width:100%;height:50vh;min-height:300px}#btn-legend{display:inline-block}#legend{display:none;left:8px;bottom:8px;max-width:210px;max-height:23vh;overflow:auto;padding:5px 7px}#legend.show{display:block}#panel{width:100%;border-left:0;border-top:1px solid var(--line);overflow:visible}#seqbar{max-height:45vh}.seqrow{min-width:0;flex-wrap:wrap}.seqlabel{width:100%}.seq{min-width:0;max-width:100%}}
+.grid2{display:grid; grid-template-columns:auto 1fr; gap:2px 10px}
+.grid2 .k{color:var(--muted)}
+select,input[type=text]{border:1px solid var(--line); border-radius:8px; padding:4px 8px; font-size:12px; background:#fff}
+
+.recommendation-selection { margin: 14px 0 4px; padding: 14px; border: 1px solid #c4d3d8; border-radius: 12px; background: #f6f9fa; }
+.recommendation-selection-head, .recommendation-selection-list > li { display: flex; align-items: center; gap: 9px; }
+.recommendation-selection-head h3 { flex: 1; margin: 0; }
+.recommendation-selection-list, .recommendation-selection-relations { display: grid; gap: 8px; padding-left: 18px; }
+.recommendation-selection-list > li { flex-wrap: wrap; }
+.recommendation-selection-list > li > .recommendation-selection-site { flex: 1; }
+.recommendation-selection-site { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.recommendation-selection-site i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; flex: 0 0 11px; }
+.recommendation-selection-site small { color: #657780; font: 11px ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <b>__TASK_BRAND__</b>
+  <span class="sp"></span>
+  <nav id="steps" aria-label="分析步骤"></nav>
+  <span class="sp"></span>
+  <button class="btn" id="btn-beads"></button>
+  <button class="btn" id="btn-cartoon"></button>
+  <button class="btn" id="btn-lang"></button>
+</div>
+<div id="main">
+  <div id="viewportWrap">
+    <div id="viewport"></div>
+    <div id="viewhud">
+      <button class="btn" id="btn-legend" type="button" aria-expanded="false"></button>
+      <button class="btn" id="btn-iface"></button>
+      <button class="btn" id="btn-glycan"></button>
+      <button class="btn" id="btn-reset">⌂</button>
+    </div>
+    <div id="legend"></div>
+    <div id="inspector"></div>
+  </div>
+  <div id="panel"></div>
+</div>
+<div id="seqbar"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>/*__3DMOL__*/</script>
+<script>/*__RECOMMENDATIONS__*/</script>
+<script>
+window.APP_DATA = __DATA__;
+window.APP_I18N = __I18N__;
+window.APP_PDB  = __PDB__;
+window.APP_LANG = "__LANG__";
+</script>
+<script>
+(function(){
+"use strict";
+var D = window.APP_DATA, LANG = window.APP_LANG === "en" ? "en" : "zh";
+var I18N = window.APP_I18N;
+var residues = D.residues || [];
+var regions  = D.regions  || [];
+var designs  = (D.designs || []).filter(function(d){ return d.mutations && d.mutations.length; });
+var protein  = D.protein  || {};
+var byPos = {}; residues.forEach(function(r){ byPos[r.uniprot_pos] = r; });
+var ecdStart = protein.ecd_start || 1;
+var wtSeq = protein.ecd_sequence || "";
+var OFF = "#c8d2d5", RED = "#b94e43", SEL = "#0b5c60", DIM = "#657780";
+
+var state = {
+  step: 1, renderer: "beads", showIface: true, showGlycan: false,
+  sequenceExpanded: false,
+  focusRegion: null, designId: (designs[0] ? designs[0].id : null), previewMode: "construct",
+  recommendationSelections: new Map(),
+  custom: {},          // uniprot_pos -> mutant aa
+  lastPick: null
+};
+var viewer = null;
+var recommendationUI = null;
+
+function t(key, vars){
+  var s = (I18N[LANG] && I18N[LANG][key]) || (I18N.en && I18N.en[key]) || key;
+  if (I18N[LANG] && !I18N[LANG][key] && I18N.en && I18N.en[key]) console.warn("i18n missing", key);
+  if (vars) Object.keys(vars).forEach(function(k){ s = s.replace("{{"+k+"}}", vars[k]); });
+  return s;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function el(id){ return document.getElementById(id); }
+
+/* ---------- colour semantics (single source of truth) ---------- */
+function regionColor(pos){
+  var r = byPos[pos];
+  if (!r || r.region_id == null) return null;
+  for (var i=0;i<regions.length;i++) if (regions[i].id === r.region_id) return regions[i].color;
+  return null;
+}
+function isInterface(r){ return state.showIface && r.interface; }
+function isSelected(pos){ return state.previewMode === "custom" && state.custom[pos] != null; }
+function isDesignSite(pos){
+  if (recommendationSiteColor(pos)) return true;
+  var d = designById(state.designId);
+  if (!d) return false;
+  return d.mutations.some(function(m){ return m.position === pos; });
+}
+function colorOf(r){
+  if (state.lastPick === r.uniprot_pos || isSelected(r.uniprot_pos)) return SEL;
+  var recommendationColor = recommendationSiteColor(r.uniprot_pos);
+  if (recommendationColor) return recommendationColor;
+  if (isDesignSite(r.uniprot_pos)) return SEL;
+  if (isInterface(r)) return RED;
+  if (state.showGlycan && r.glycan_shielded) return "#C9A87F";
+  var c = regionColor(r.uniprot_pos);
+  if (r.surface_accessible || r.folding_screen_pass) return c || "#9CB89C";
+  return OFF;
+}
+function recommendationSiteColor(pos){
+  if (!state.recommendationSelections.size) return null;
+  var variants = new Map(), i = 0, ui = recommendationRenderer();
+  state.recommendationSelections.forEach(function(selection){
+    selection.mutations.forEach(function(m){
+      if (m.position === pos) variants.set(m.wt+">"+m.mutant, ui.selectionColor(i));
+    });
+    i++;
+  });
+  return variants.size > 1 ? "#D81B60" : (variants.size ? variants.values().next().value : null);
+}
+function recommendationRenderer(){
+  state.result = D; state.lang = LANG;
+  return recommendationUI || (recommendationUI = createRecommendationRenderer({state:state,h:esc,fmt:function(v,d){return Number(v).toFixed(d==null?2:d);},fmtPct:function(v){return (100*v).toFixed(0)+"%";},notation:function(m){return m.wt+m.position+m.mutant;}}));
+}
+function recommendationItems(){
+  return (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]).reduce(function(all,item){
+    return all.concat([item],(item.alternatives||[]).map(function(candidate){return Object.assign({},candidate,{sector_id:item.sector_id});}),(item.all_formal_local_candidates||[]).map(function(candidate){return Object.assign({},candidate,{sector_id:item.sector_id});}));
+  },[]);
+}
+function toggleRecommendationSelection(id){
+  if(state.recommendationSelections.has(id)) state.recommendationSelections.delete(id);
+  else {
+    var item = recommendationItems().find(function(candidate){return String(candidate.candidate_id||candidate.design_id)===id;});
+    if(!item) return;
+    var selection = recommendationRenderer().recommendationSelectionRecord(item,designById(item.design_id));
+    if(selection) state.recommendationSelections.set(selection.id,selection);
+  }
+  renderPanel(); applyStyles();
+}
+function designById(id){ for (var i=0;i<designs.length;i++) if (designs[i].id===id) return designs[i]; return null; }
+
+/* ---------- 3D ---------- */
+function initViewer(){
+  var cfg = {backgroundColor:"#f3f6f7", antialias:true};
+  var initialZoom = window.innerWidth <= 800 ? 0.8 : 1.1;
+  viewer = $3Dmol.createViewer(el("viewport"), cfg);
+  viewer.addModel(window.APP_PDB, "pdb");
+  viewer.zoomTo(); viewer.zoom(initialZoom);
+  applyStyles();
+}
+function applyStyles(){
+  if (!viewer) return;
+  viewer.setStyle({}, {});
+  viewer.removeAllLabels();
+  residues.forEach(function(r){
+    var col = colorOf(r);
+    var spec = (state.renderer === "cartoon")
+      ? {cartoon:{color:col}}
+      : {sphere:{radius:(isSelected(r.uniprot_pos)||isDesignSite(r.uniprot_pos))?2.0:1.8, color:col}};
+    viewer.addStyle({chain:r.chain_id, resi:r.auth_seq_id}, spec);
+  });
+  /* picking must be armed AFTER styles and BEFORE render */
+  viewer.setClickable({}, true, function(atom){
+    var r = byPos[posFromAtom(atom)]; if (r) { showInspector(r); applyStyles(); renderSeq(); }
+  });
+  viewer.setHoverable({}, true, function(atom){
+    var r = byPos[posFromAtom(atom)];
+    if (r) el("viewport").title = r.aa + r.uniprot_pos + "  rSASA=" + (r.rsasa!=null?r.rsasa.toFixed(2):"-");
+  }, function(){ el("viewport").title = ""; });
+  viewer.render();
+  renderLegend();
+}
+function posFromAtom(atom){
+  /* 3Dmol reports author numbering; map back to uniprot_pos */
+  for (var i=0;i<residues.length;i++){
+    var r = residues[i];
+    if (r.chain_id === atom.chain && r.auth_seq_id === atom.resi) return r.uniprot_pos;
+  }
+  return null;
+}
+function renderLegend(){
+  var items = [];
+  function li(c,txt){ items.push('<div class="li"><span class="sw" style="background:'+c+'"></span>'+esc(txt)+'</div>'); }
+  if (isSelectedCount()) li(SEL, t("legend.selected")+ " ("+isSelectedCount()+")");
+  else if (designById(state.designId)) li(SEL, t("legend.designSites")+" ("+designById(state.designId).mutations.length+")");
+  if (state.showIface && interfaceResidues().length) li(RED, t("legend.interface"));
+  if (state.showGlycan) li("#C9A87F", t("legend.glycan"));
+  regions.forEach(function(g){
+    var n = (g.envelope_residues && g.envelope_residues.length) ? g.envelope_residues.length : g.residues.length;
+    li(g.color, esc(g.name)+" ("+n+")");
+  });
+  li(OFF, t("legend.off"));
+  el("legend").innerHTML = items.join("");
+}
+function isSelectedCount(){ return state.previewMode === "custom" ? Object.keys(state.custom).length : 0; }
+function interfaceResidues(){ return residues.filter(function(r){ return r.interface; }); }
+function interfacePartners(){
+  var set = {};
+  interfaceResidues().forEach(function(r){ (r.interface_partners||[]).forEach(function(p){
+    set[p.split(":")[0]] = 1; }); });
+  return Object.keys(set).sort();
+}
+
+/* ---------- inspector ---------- */
+function showInspector(r){
+  state.lastPick = r.uniprot_pos;
+  var tags = [];
+  if (r.interface) tags.push('<span class="tag bad">'+esc(t("tag.interface"))+'</span>');
+  if (r.glycan_shielded) tags.push('<span class="tag warn">'+esc(t("tag.glycan"))+'</span>');
+  if (r.disulfide) tags.push('<span class="tag bad">'+esc(t("tag.disulfide"))+'</span>');
+  if (r.salt_bridge) tags.push('<span class="tag warn">'+esc(t("tag.saltbridge"))+'</span>');
+  if (r.surface_accessible) tags.push('<span class="tag ok">'+esc(t("tag.surface"))+'</span>');
+  (r.risk_flags||[]).forEach(function(f){ tags.push('<span class="tag warn">'+esc(f)+'</span>'); });
+  (r.hard_exclusions||[]).forEach(function(f){ tags.push('<span class="tag bad">'+esc(f)+'</span>'); });
+  var sel = state.custom[r.uniprot_pos];
+  var aa = "ACDEFGHIKLMNPQRSTVWY".split("").map(function(a){
+    return '<option'+(sel===a?" selected":"")+'>'+a+'</option>';
+  }).join("");
+  el("inspector").innerHTML =
+    '<div style="font-size:14px"><b>'+esc(r.aa)+r.uniprot_pos+'</b> <span style="color:var(--muted)">auth '+esc(String(r.auth_seq_id))+esc(r.insertion_code||"")+'</span></div>'
+    +'<div style="margin:4px 0">'+tags.join("")+'</div>'
+    +'<div class="grid2">'
+    +'<span class="k">rSASA</span><span>'+(r.rsasa!=null?r.rsasa.toFixed(3):"-")+'</span>'
+    +'<span class="k">SC SASA</span><span>'+(r.sidechain_sasa!=null?r.sidechain_sasa.toFixed(1)+" Å²":"-")+'</span>'
+    +'<span class="k">'+esc(t("insp.region"))+'</span><span>'+(r.region_id!=null?esc(regionName(r.region_id)):"-")+'</span>'
+    +'<span class="k">'+esc(t("insp.sse"))+'</span><span>'+esc(r.secondary_structure||"-")+'</span>'
+    +'</div>'
+    +'<div style="margin-top:6px">'+esc(t("insp.mutantTo"))+' <select id="insp-aa"><option value="">--</option>'+aa+'</select> '
+    +'<button class="btn" id="insp-add">'+esc(t("insp.add"))+'</button>'
+    +(sel?'<button class="btn" id="insp-rm">'+esc(t("insp.remove"))+'</button>':'')
+    +'</div>';
+  el("inspector").style.display = "block";
+  el("insp-add").onclick = function(){
+    var v = el("insp-aa").value;
+    if (!v) return;
+    state.custom[r.uniprot_pos] = v;
+    showInspector(r); applyStyles(); renderSeq(); renderPanel();
+  };
+  var rm = el("insp-rm");
+  if (rm) rm.onclick = function(){ delete state.custom[r.uniprot_pos]; showInspector(r); applyStyles(); renderSeq(); renderPanel(); };
+}
+function regionName(id){ for (var i=0;i<regions.length;i++) if (regions[i].id===id) return regions[i].name; return "-"; }
+
+/* ---------- sequence bar ---------- */
+function designedSeq(){
+  var d = designById(state.designId);
+  var base = wtSeq.split("");
+  var map = {};
+  if (state.previewMode === "custom" && isSelectedCount()) map = state.custom;
+  else if (d) d.mutations.forEach(function(m){ map[m.position] = m.mutant; });
+  var out = wtSeq.split("");
+  Object.keys(map).forEach(function(p){
+    var idx = Number(p) - ecdStart;
+    if (idx >= 0 && idx < out.length) out[idx] = map[p];
+  });
+  return {seq: out.join(""), map: map};
+}
+function renderSeq(){
+  var des = designedSeq();
+  function html(seq, map){
+    var h = "";
+    for (var i=0;i<seq.length;i++){
+      var pos = ecdStart + i;
+      var mut = map && map[pos] != null;
+      var focus = state.lastPick === pos;
+      h += '<button type="button" class="seq-residue'+(mut?" mut":"")+(focus?" focus":"")+'" data-pos="'+pos+'" aria-label="'+esc(seq[i]+pos)+'"'+(focus?' aria-current="true"':'')+'>'+seq[i]+'</button>';
+    }
+    return h;
+  }
+  var d = designById(state.designId);
+  var mutationCount = state.previewMode === "custom" && isSelectedCount() ? isSelectedCount() : (d ? d.mutations.length : 0);
+  var summary = LANG === "zh" ? wtSeq.length+" aa · "+mutationCount+" 个变化" : wtSeq.length+" aa · "+mutationCount+" changes";
+  var toggle = LANG === "zh" ? (state.sequenceExpanded ? "收起序列" : "展开序列") : (state.sequenceExpanded ? "Hide sequence" : "Show sequence");
+  el("seqbar").innerHTML =
+    '<div class="seq-head"><div><strong>'+esc(LANG === "zh" ? "序列" : "Sequence")+'</strong><span class="seq-summary">'+esc(summary)+'</span></div>'
+    +'<button class="btn" id="seq-toggle" type="button" aria-expanded="'+state.sequenceExpanded+'" aria-controls="seq-content">'+esc(toggle)+'</button></div>'
+    +'<div id="seq-content"'+(state.sequenceExpanded?'':' hidden')+'>'
+    +'<div class="seqrow"><span class="seqlabel">'+esc(t("seq.wt"))+' ['+ecdStart+'–'+(ecdStart+wtSeq.length-1)+']</span>'
+    +'<div class="seq" role="group" aria-label="'+esc(t("seq.wt"))+'">'+html(wtSeq, null)+'</div>'
+    +'<button class="btn" id="cp-wt-aa" type="button">⧉ 复制 ECD</button>'
+    +'<button class="btn" id="cp-wt-nt" type="button">⧉ '+esc(t("seq.copyCDS"))+'</button></div>'
+    +'<div class="seqrow"><span class="seqlabel">'+esc(t("seq.designed"))+'</span>'
+    +'<div class="seq" role="group" aria-label="'+esc(t("seq.designed"))+'">'+html(des.seq, des.map)+'</div>'
+    +'<button class="btn" id="cp-mu-aa" type="button">⧉ 复制 ECD</button>'
+    +'<button class="btn" id="cp-mu-nt" type="button"'+(d?"":" disabled")+'>⧉ '+esc(t("seq.copyCDS"))+(d?"":" — "+esc(t("seq.customNoCDS")))+'</button></div></div>';
+  el("seq-toggle").onclick = function(){ state.sequenceExpanded = !state.sequenceExpanded; renderSeq(); };
+  if (!state.sequenceExpanded) return;
+  function copy(txt, msg){
+    function done(success){
+      var toast = el("toast");
+      toast.textContent = success ? msg : (LANG === "zh" ? "复制失败，请手动选择序列" : "Copy failed; select the sequence manually");
+      toast.classList.add("show");
+      window.setTimeout(function(){ toast.classList.remove("show"); }, 1800);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(function(){ done(true); }, function(){ done(fallbackCopy(txt)); });
+    else done(fallbackCopy(txt));
+  }
+  function fallbackCopy(txt){
+    var ta = document.createElement("textarea"); ta.value = txt;
+    document.body.appendChild(ta); ta.select();
+    var copied = false;
+    try{ copied = document.execCommand("copy"); }catch(e){}
+    document.body.removeChild(ta);
+    return copied;
+  }
+  el("cp-wt-aa").onclick = function(){ copy(wtSeq, t("msg.copied")); };
+  el("cp-wt-nt").onclick = function(){ copy(protein.ecd_coding_sequence||"", t("msg.copied")); };
+  el("cp-mu-aa").onclick = function(){ copy(des.seq, t("msg.copied")); };
+  var b = el("cp-mu-nt");
+  if (d) b.onclick = function(){ copy(d.mutant_coding_sequence||"", t("msg.copied")); };
+  /* letter click -> inspector (WT row) */
+  Array.prototype.forEach.call(el("seqbar").querySelectorAll(".seq-residue"), function(sp){
+    sp.onclick = function(){
+      var pos = Number(sp.getAttribute("data-pos")), r = byPos[pos];
+      if (r) {
+        showInspector(r); applyStyles(); renderSeq();
+        var selected = el("seqbar").querySelector('[data-pos="'+pos+'"]');
+        if (selected) selected.focus();
+      }
+    };
+  });
+}
+
+/* ---------- panel / steps ---------- */
+var STEPS = ["step.surface","step.tolerance","step.regions","step.interface","step.design","step.custom","step.overview"];
+function renderSteps(){
+  el("steps").innerHTML = STEPS.map(function(k,i){
+    var cls = "step"+(state.step===i+1?" active":"")+(i+1<state.step?" done":"");
+    return '<button type="button" class="'+cls+'" data-step="'+(i+1)+'" aria-current="'+(state.step===i+1?'step':'false')+'"><span class="n">'+(i+1)+'</span><span>'+esc(t(k))+'</span></button>';
+  }).join("");
+  Array.prototype.forEach.call(el("steps").querySelectorAll(".step"), function(s){
+    s.onclick = function(){ state.step = Number(s.getAttribute("data-step")); renderSteps(); renderPanel(); };
+  });
+  el("main").setAttribute("data-step", state.step);
+}
+function renderPanel(){
+  var h = '<h2>'+esc(t(STEPS[state.step-1]))+'</h2>';
+  if (state.step===1) h += stepSurface();
+  else if (state.step===2) h += stepTolerance();
+  else if (state.step===3) h += stepRegions();
+  else if (state.step===4) h += stepInterface();
+  else if (state.step===5) h += stepDesign();
+  else if (state.step===6) h += stepCustom();
+  else h += stepOverview();
+  h += '<div class="note">'+esc(t("note.disclaimer"))+'</div>';
+  el("panel").innerHTML = h;
+  wirePanel();
+}
+function chip(label, val){ return '<span class="chip">'+esc(label)+' <b>'+val+'</b></span>'; }
+function stepOverview(){
+  var source=D.source||{}, selection=D.structure_selection||{}, summary=D.summary||{}, partition=D.partitioning||{}, request=D.request||{};
+  var range=(protein.ecd_start&&protein.ecd_end) ? protein.ecd_start+'–'+protein.ecd_end+' ('+(protein.ecd_sequence||'').length+' aa)' : '—';
+  var rows=[
+    [t('overview.accession'), protein.accession||request.identifier||'—'],
+    [t('overview.ecd'), range], [t('overview.topology'),protein.topology||'—'],
+    [t('overview.structure'),selection.selected_identifier||source.identifier||'—'],
+    [t('overview.provider'),[source.provider,source.kind].filter(Boolean).join(' / ')||'—'],
+    [t('overview.chain'),selection.selected_chain||selection.chain||'—'],
+    [t('overview.confidence'),(D.methods||{}).confidence_method||(request.input_type==='af3_upload'?'AF3 confidence JSON':'—')],
+    [t('overview.run'),D.created_at||'—'], [t('overview.structureFile'),source.identifier||selection.selected_identifier||'—'],
+    [t('overview.summary'),(summary.mapped_ecd_residues||'—')+' ECD residues · '+(partition.actual_regions||regions.length)+' '+(partition.partition_mode==='compact_surface_face'?t('region.surfaceFace'):'patches')+' · '+designs.length+' design records（含控制与逐区建议 / including controls and sector suggestions）'],
+    [t('overview.coverage'),partition.coverage!=null?Math.round(partition.coverage*100)+'%':'—'],
+    [t('overview.files'),Object.keys(D.files||{}).join(', ')||'—']
+  ];
+  var recommendations = (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]);
+  if (recommendations.length) rows.push(['逐区建议（通过 / 待审查 / 无组合） / Sector suggestions', ['PASSED','NEAR_THRESHOLD','NO_COMBINATION'].map(function(status){ return recommendations.filter(function(item){return item.status===status;}).length; }).join(' / ')]);
+  var af3=(D.methods||{}).af3_preprocessing;
+  if(af3){
+    rows.push([t('af3.preprocessing'), [af3.method||af3.status, t('af3.selectedModel')+': '+(af3.selected_model_id||'—'), t('af3.baselines')+': '+Object.entries(af3.baselines||{}).map(function(entry){return entry[0]+': '+(Array.isArray(entry[1])?entry[1].join(', '):entry[1]==null?'—':entry[1]);}).join(' · ')].filter(Boolean).join(' · ')]);
+    if((af3.models||[]).length) rows.push([t('af3.models'), af3.models.map(function(model){return (model.model_id||'—')+(model.model_id===af3.selected_model_id?' ('+t('af3.selected')+')':'')+' '+(model.eligible?t('af3.eligible'):(model.exclusion_reasons||[]).join(', '));}).join(' · ')]);
+  }
+  var af3Table='';
+  if(af3){
+    var columns=['model_id','coverage','f70','mean_plddt','ptm','ranking_score','consensus_score'];
+    af3Table='<table><thead><tr>'+columns.map(function(key){return '<th>'+esc(key)+'</th>';}).join('')+'</tr></thead><tbody>'+(af3.models||[]).map(function(model){return '<tr>'+columns.map(function(key){return '<td>'+esc(typeof model[key]==='number'?model[key].toFixed(4):model[key]==null?'—':model[key])+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table><p>'+esc((af3.warnings||[]).concat(af3.core_max_rmsd_flag?['Reliable core pairwise RMSD > 2 Å']:[]).join(' · '))+'</p>';
+  }
+  return '<div class="box"><h3>'+esc((protein.protein_name||protein.accession||'ECD Epitope Workbench'))+'</h3><div class="grid2">'+rows.map(function(r){return '<span class="k">'+esc(r[0])+'</span><span>'+esc(r[1])+'</span>';}).join('')+'</div>'+af3Table+'</div>';
+}
+function stepSurface(){
+  var surf = residues.filter(function(r){ return r.surface_accessible; });
+  var h = '<div class="note">'+esc(t("surface.note"))+'</div><div class="box"><h3>'+esc(t("surface.counts"))+'</h3><div class="chips">'
+    + chip(t("surface.total"), residues.length) + chip(t("surface.passed"), surf.length)
+    + chip(t("surface.threshold"), "rSASA≥0.25 · SC≥20Å²") + '</div></div>';
+  var reasons = {};
+  residues.forEach(function(r){ (r.hard_exclusions||[]).forEach(function(x){ reasons[x]=(reasons[x]||0)+1; }); });
+  h += '<div class="box"><h3>'+esc(t("surface.excluded"))+'</h3>'+ Object.keys(reasons).sort().map(function(k){
+    return '<div class="li"><span>'+esc(k)+'</span><span class="cnt">'+reasons[k]+'</span></div>'; }).join("") + '</div>';
+  return h;
+}
+function stepTolerance(){
+  var d = designById(state.designId);
+  var h = '<div class="note">'+esc(t("tol.note"))+'</div>';
+  if (!d) return h + '<div class="box">'+esc(t("tol.noDesign"))+'</div>';
+  var rows = "";
+  Object.keys(d.saturation_scan||{}).forEach(function(pos){
+    (d.saturation_scan[pos]||[]).forEach(function(c){
+      if (!c.allowed) return;
+      rows += '<tr><td><b>'+esc(c.wt)+c.position+'</b></td><td>'+esc(c.mutant)+'</td><td>'
+        +(c.foldx_ddg!=null?c.foldx_ddg.toFixed(3):"—")+'</td><td>'+esc(c.stability_class||"")+'</td></tr>';
+    });
+  });
+  h += '<div class="box"><h3>'+esc(t("tol.passed"))+' · '+esc(d.name)+'</h3><table><tr><th>'+esc(t("tol.site"))+'</th><th>AA</th><th>ΔΔG</th><th>'+esc(t("tol.class"))+'</th></tr>'+rows+'</table></div>';
+  return h;
+}
+function stepRegions(){
+  var h = '<div class="note">'+esc(t("region.note"))+'</div><div class="box">';
+  regions.forEach(function(g){
+    var on = state.focusRegion===g.id ? " on":"";
+    var accessibility = g.predicted_accessibility==="reduced"
+      ? " · "+t("region.reducedAccessibility")+" ("+Number(g.membrane_accessibility_score||0).toFixed(2)+")" : "";
+    var envelope = (g.envelope_residues && g.envelope_residues.length) ? g.envelope_residues.length : g.residues.length;
+    var mutable = (g.mutable_residues && g.mutable_residues.length) ? g.mutable_residues.length : g.residues.length;
+    var prefix = g.partition_mode==='compact_surface_face' ? t('region.surfaceFace')+' '+g.id+' · ' : '';
+    h += '<button type="button" class="li click'+on+'" data-region="'+g.id+'" aria-pressed="'+(state.focusRegion===g.id)+'"><span class="sw" style="background:'+g.color+'"></span>'
+      + esc(prefix+g.name) + '<span class="cnt">'+envelope+' '+t('region.surfaceSites')+' · '+mutable+' '+t('region.mutableSites')+' · '+((g.candidate_footprints||[]).length)+' '+t('region.candidateFootprints')+' · '+esc(g.membrane_position||"")+esc(accessibility)+'</span></button>';
+  });
+  return h + '</div>';
+}
+function stepInterface(){
+  var partners = interfacePartners();
+  var ifs = interfaceResidues();
+  var h = '<div class="note">'+esc(t("iface.note"))+'</div><div class="box"><h3>'+esc(t("iface.detected"))+'</h3>';
+  if (!partners.length) h += '<div class="li"><span>'+esc(t("iface.none"))+'</span></div>';
+  else partners.forEach(function(p){
+    var n = {}; ifs.forEach(function(r){ (r.interface_partners||[]).forEach(function(q){ if (q.split(":")[0]===p) n[q]=1; }); });
+    h += '<div class="li"><span class="sw" style="background:'+RED+'"></span>'+esc(t("iface.with"))+' '+esc(p)
+      +'<span class="cnt">'+Object.keys(n).length+' '+esc(t("iface.contacts"))+'</span></div>';
+  });
+  h += '</div><div class="box"><button type="button" class="li click'+(state.showIface?" on":"")+'" id="tg-iface" aria-pressed="'+state.showIface+'"><span class="sw" style="background:'+RED+'"></span>'+esc(t("iface.toggle"))+'</button>';
+  h += '<button type="button" class="li click'+(state.showGlycan?" on":"")+'" id="tg-glycan" aria-pressed="'+state.showGlycan+'"><span class="sw" style="background:#C9A87F"></span>'+esc(t("glycan.toggle"))+'</button></div>';
+  return h;
+}
+function stepDesign(){
+  var recommendations = (((D.joint_v4_ml||{}).selected_panel||{}).sector_recommendations||[]);
+  var designNote = recommendations.length
+    ? (LANG === "zh"
+        ? "各分区按设计原则独立给出通过门槛的推荐，数量不受全局精简面板预算限制。选择组合可联动结构与序列；未通过项单列审查详情。"
+        : "Each region independently recommends combinations that pass the gates under each design principle, without the global compact-panel limit. Select a combination to inspect its structure and sequence; failed candidates appear in review details.")
+    : t("design.note");
+  var h = '<div class="note">'+esc(designNote)+'</div>';
+  if (recommendations.length) {
+    state.result = D; state.lang = LANG;
+    return h + createRecommendationRenderer({state:state, h:esc, fmt:function(value,digits){return Number(value).toFixed(digits==null?2:digits);}, fmtPct:function(value){return (100*value).toFixed(0)+'%';}, notation:function(mutation){return mutation.wt+mutation.position+mutation.mutant;}}).renderSectorRecommendations(recommendations);
+  }
+  designs.forEach(function(d){
+    var on = state.designId===d.id ? " on":"";
+    var origin = d.score_origin || "proxy";
+    var unit = origin==="proxy" ? "" : " kcal/mol";
+    h += '<div class="box"><button type="button" class="li click'+on+'" data-design="'+esc(d.id)+'" aria-pressed="'+(state.designId===d.id)+'" style="margin:-4px -6px 4px"><b>'+esc(d.name)+'</b>'
+      +'<span class="cnt">'+esc(d.status)+'</span></button>'
+      +'<div>'+d.mutations.map(function(m){ return '<span class="tag mut">'+esc(m.wt)+m.position+'→'+esc(m.mutant)+'</span>'; }).join("")+'</div>'
+      +'<div style="margin-top:5px">'+chip(t("design.engine"), esc(d.stability_engine)) + (d.combined_stability_score!=null?chip("ΔΔG", d.combined_stability_score+unit):"")+'</div>'
+      +(origin==="proxy"?'<div class="note" style="margin-top:4px">'+esc(t("design.proxyWarn"))+'</div>':"");
+    (d.warnings||[]).forEach(function(w){ h += '<div class="note" style="margin-top:3px">· '+esc(w)+'</div>'; });
+    h += '</div>';
+  });
+  return h;
+}
+function stepCustom(){
+  var keys = Object.keys(state.custom).sort(function(a,b){ return a-b; });
+  var h = '<div class="note">'+esc(t("custom.note"))+'</div><div class="box"><h3>'+esc(t("custom.current"))+' ('+keys.length+')</h3>'
+    +(keys.length?'<button class="btn" data-preview-custom="1">预览自定义草稿</button>':'');
+  if (!keys.length) h += '<div class="note">'+esc(t("custom.empty"))+'</div>';
+  keys.forEach(function(p){
+    h += '<div class="li"><span><b>'+esc(byPos[p].aa+p)+'</b> → '+esc(state.custom[p])+'</span>'
+      +'<span class="cnt"><button class="btn" data-rm="'+p+'">✕</button></span></div>';
+  });
+  return h + '</div>';
+}
+function wirePanel(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-review-design]'), function(button){
+    button.onclick = function(){ state.designId=button.getAttribute('data-review-design'); state.previewMode='construct'; applyStyles(); renderSeq(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-select-recommendation]'), function(button){
+    button.onclick = function(){ toggleRecommendationSelection(button.getAttribute('data-select-recommendation')); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-remove-recommendation]'), function(button){
+    button.onclick = function(){ toggleRecommendationSelection(button.getAttribute('data-remove-recommendation')); };
+  });
+  var clearRecommendations = document.querySelector('[data-clear-recommendations]');
+  if(clearRecommendations) clearRecommendations.onclick = function(){ state.recommendationSelections.clear(); renderPanel(); applyStyles(); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy-design]'), function(button){
+    button.onclick = function(){ var design=designs.find(function(item){return item.id===button.getAttribute('data-copy-design');}); if(design){state.custom={}; design.mutations.forEach(function(m){state.custom[m.position]=m.mutant;}); state.step=6; renderSteps();renderPanel();} };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy-candidate]'), function(button){
+    button.onclick = function(){ if(navigator.clipboard){navigator.clipboard.writeText(button.getAttribute('data-copy-candidate')).catch(function(){button.textContent='请手动复制 / Copy manually';});}else{button.textContent='请手动复制 / Copy manually';} };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-region]"), function(s){
+    s.onclick = function(){
+      var id = Number(s.getAttribute("data-region"));
+      state.focusRegion = (state.focusRegion===id) ? null : id;
+      renderPanel(); applyStyles();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-design]"), function(s){
+    s.onclick = function(){
+      state.designId = s.getAttribute("data-design");
+      state.previewMode = "construct";
+      renderPanel(); applyStyles(); renderSeq();
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-rm]"), function(s){
+    s.onclick = function(){ delete state.custom[s.getAttribute("data-rm")]; renderPanel(); applyStyles(); renderSeq(); };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-preview-custom]"), function(s){
+    s.onclick = function(){ state.previewMode="custom"; renderPanel(); applyStyles(); renderSeq(); };
+  });
+  var ti = el("tg-iface"); if (ti) ti.onclick = function(){ state.showIface=!state.showIface; renderPanel(); applyStyles(); renderLegend(); };
+  var tg = el("tg-glycan"); if (tg) tg.onclick = function(){ state.showGlycan=!state.showGlycan; renderPanel(); applyStyles(); renderLegend(); };
+}
+
+/* ---------- hud ---------- */
+function applyStaticText(){
+  el("btn-beads").textContent = t("hud.beads");
+  el("btn-cartoon").textContent = t("hud.cartoon");
+  el("btn-iface").textContent = t("hud.iface");
+  el("btn-glycan").textContent = t("hud.glycan");
+  el("btn-legend").textContent = LANG==="zh" ? "图例" : "Legend";
+  el("btn-lang").textContent = LANG==="zh" ? "EN" : "中文";
+}
+function setRenderer(mode){
+  state.renderer = mode;
+  el("btn-beads").className = "btn"+(mode==="beads"?" on":"");
+  el("btn-cartoon").className = "btn"+(mode==="cartoon"?" on":"");
+  applyStyles();
+}
+el("btn-beads").onclick = function(){ setRenderer("beads"); };
+el("btn-cartoon").onclick = function(){ setRenderer("cartoon"); };
+el("btn-reset").onclick = function(){ if (viewer){ viewer.zoomTo(); viewer.zoom(window.innerWidth <= 800 ? 0.8 : 1.1); viewer.render(); } };
+el("btn-legend").onclick = function(){ var open=el("legend").classList.toggle("show"); el("btn-legend").setAttribute("aria-expanded",open); };
+el("btn-lang").onclick = function(){
+  LANG = LANG==="zh" ? "en" : "zh";
+  try{ localStorage.setItem("ecd.lang", LANG); }catch(e){}
+  applyStaticText(); renderSteps(); renderPanel(); renderSeq(); applyStyles();
+};
+
+/* ---------- boot ---------- */
+try{ var saved = localStorage.getItem("ecd.lang"); if (saved==="en"||saved==="zh") LANG = saved; }catch(e){}
+applyStaticText();
+renderSteps();
+renderPanel();
+renderSeq();
+initViewer();
+})();
+</script>
+</body>
+</html>

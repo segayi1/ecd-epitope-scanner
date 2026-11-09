@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema_version", "project_id", "name", "source_job_id", "source_v4_schema_version", "revision", "reference_sequence", "frozen_hashes", "artifacts", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "project_id": {"type": "string", "pattern": "^[a-f0-9]{16}$"},
+    "name": {"type": "string", "minLength": 1},
+    "source_job_id": {"type": "string"},
+    "source_v4_schema_version": {"const": "4.0"},
+    "source_software": {"type": "object"},
+    "revision": {"const": 1},
+    "reference_sequence": {"type": "string", "pattern": "^[ACDEFGHIKLMNPQRSTVWY]+$"},
+    "frozen_hashes": {
+      "type": "object", "required": ["structure", "mapping", "sectors", "surface_graph"],
+      "properties": {
+        "structure": {"$ref": "#/$defs/hash"}, "mapping": {"$ref": "#/$defs/hash"},
+        "sectors": {"$ref": "#/$defs/hash"}, "surface_graph": {"$ref": "#/$defs/hash"}
+      }, "additionalProperties": false
+    },
+    "artifacts": {"type": "array", "minItems": 6, "items": {"type": "object", "required": ["id", "kind", "relative_path", "sha256", "size_bytes", "media_type", "read_only", "created_at"], "properties": {
+      "id": {"type": "string"}, "kind": {"type": "string"},
+        "relative_path": {"type": "string", "pattern": "^(reference|constructs|raw/fcs|raw/flowjo|raw/flowjo_result_tables|compensation/matrices|analyses/flowjo_imports|analyses/gate_runs|analyses/effect_runs|analyses/paraplume_runs|analyses/constraint_exports|analyses/flowjo_percentage_imports|analyses/flowjo_percentage_effects)/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$"},
+      "sha256": {"$ref": "#/$defs/hash"}, "size_bytes": {"type": "integer", "minimum": 1},
+      "media_type": {"type": "string"}, "read_only": {"const": true}, "created_at": {"type": "string"}
+    }}},
+    "created_at": {"type": "string"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

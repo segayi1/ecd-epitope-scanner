@@ -1,0 +1,46 @@
+{
+  "status": "PASS",
+  "protocol": "ordinary_site_first_v2",
+  "region_count": 11,
+  "design_count": 57,
+  "design_roles": {
+    "STAGE1_PROBE": 7,
+    "STAGE2_SINGLE": 16,
+    "STAGE2_PAIRWISE": 8,
+    "SECTOR_RECOMMENDATION": 26
+  },
+  "queues_complete": 33,
+  "uncompleted_gaps": [],
+  "queue_failure_counters": {
+    "no_legal_candidates": 0,
+    "candidate_failures": 0,
+    "not_yet_scored": 0,
+    "pending_count_unknown_lanes": 0,
+    "technical_failures": 0,
+    "missing_evidence": 0
+  },
+  "foldx": {
+    "slot_limit": 300,
+    "attempted_slots": 113,
+    "valid_slots": 113,
+    "failed_slots": 0,
+    "released_slots": 217
+  },
+  "spurs_unique_requests": 62,
+  "portable_evidence_verified": true,
+  "validated_pairs": 113,
+  "paired_records": 33,
+  "evidence_cards": 66,
+  "card_status": "PASS",
+  "strict_result_zip": {
+    "sha256": "dbff36f77f069ca80cba83f3c5c1293e0e61e2a700cf0282dc45ae3a7e6c31e3",
+    "bytes": 544203356,
+    "files": 737,
+    "verified_manifest_files": 736,
+    "extra_files": [
+      "run_manifest.json"
+    ]
+  },
+  "executed_source_snapshot_sha256": "952f69ba3f66e498f8488f16ba47ab54686f4947ef67cfb8ec942fa358a27498",
+  "procaliper": "Not configured/invoked in this run; tool inventory reports installed."
+}

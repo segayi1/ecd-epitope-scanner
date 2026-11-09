@@ -1,0 +1,541 @@
+{
+  "schema_version": "card_evidence_completeness_v1",
+  "status": "PASS",
+  "card_count": 66,
+  "inputs_sha256": {
+    "analysis.json": "6f75fb1e08be9341a376d46a779e97e953cdc74672e501bbd2ab66421858fbbc",
+    "panel_candidates.json": "bc207a3143a8bacadadb33c3dad9c16796e02221dbed53a743fff3e0e52b3b1e",
+    "sector_recommendations_v4.json": "2183a52f0ddd650616a652aeb94781d3e9aa4bede0a343c221513e353fbb3f28"
+  },
+  "cards": [
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_49dbe8ab9e245e53",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_b458e94f3e8671be",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_02bc2f6582cd5e62",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_49dbe8ab9e245e53",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_b458e94f3e8671be",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS001",
+      "sector_id": "VS001",
+      "candidate_id": "VS001|V41_02bc2f6582cd5e62",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_07da3732fb4a022d",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_17beb816fd46f1fd",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_4ea9ba458a92aadc",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_07da3732fb4a022d",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_17beb816fd46f1fd",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS002",
+      "sector_id": "VS002",
+      "candidate_id": "VS002|V41_4ea9ba458a92aadc",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_1ec3e0e3076bc442",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_a2e4c81c65dd34ac",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_1154f5db33eb23f2",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_1ec3e0e3076bc442",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_1154f5db33eb23f2",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS003",
+      "sector_id": "VS003",
+      "candidate_id": "VS003|V41_a2e4c81c65dd34ac",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_0c9a97b72fe6a94d",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_644c0c9d52bdb89b",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_3e79d9ed3889da66",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_644c0c9d52bdb89b",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_0c9a97b72fe6a94d",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS004",
+      "sector_id": "VS004",
+      "candidate_id": "VS004|V41_3e79d9ed3889da66",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_1c951637076d6380",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_aa59a5cf2297cb96",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_19aaa7c95b437d55",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_aa59a5cf2297cb96",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_19aaa7c95b437d55",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS005",
+      "sector_id": "VS005",
+      "candidate_id": "VS005|V41_1c951637076d6380",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_4ba3009e24e16a08",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_8ac40328375111bf",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_9bcf109a0d8e6b16",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_4ba3009e24e16a08",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_9bcf109a0d8e6b16",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS006",
+      "sector_id": "VS006",
+      "candidate_id": "VS006|V41_8ac40328375111bf",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_10647c4b08d13006",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_86e4e6f4774b1e69",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_c95d3483745e26a5",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_10647c4b08d13006",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_c95d3483745e26a5",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS007",
+      "sector_id": "VS007",
+      "candidate_id": "VS007|V41_86e4e6f4774b1e69",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_3f27d3976bccfd42",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_2ff268705067f0dc",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_a812f167488d876a",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_a812f167488d876a",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_3f27d3976bccfd42",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS008",
+      "sector_id": "VS008",
+      "candidate_id": "VS008|V41_2ff268705067f0dc",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_174bdd6c881a3633",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_24d521bd20643162",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_ba45f2486370e71e",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_174bdd6c881a3633",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_ba45f2486370e71e",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS009",
+      "sector_id": "VS009",
+      "candidate_id": "VS009|V41_24d521bd20643162",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_06941142b931820f",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_d3c8ded56771e13a",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_029a8b8737fde4ab",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_d3c8ded56771e13a",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_029a8b8737fde4ab",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS010",
+      "sector_id": "VS010",
+      "candidate_id": "VS010|V41_06941142b931820f",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_3017484374eb8e15",
+      "role": "PRIMARY",
+      "display_list": "primary",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_0888d28731f64d1d",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_ae444f3bdff9746b",
+      "role": "ALTERNATIVE",
+      "display_list": "alternatives",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_0888d28731f64d1d",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_ae444f3bdff9746b",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    },
+    {
+      "parent_sector_id": "VS011",
+      "sector_id": "VS011",
+      "candidate_id": "VS011|V41_3017484374eb8e15",
+      "role": "ALL_FORMAL_LOCAL",
+      "display_list": "all_formal_local_candidates",
+      "missing_fields": []
+    }
+  ],
+  "missing_fields": []
+}

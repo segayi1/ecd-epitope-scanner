@@ -1,0 +1,710 @@
+from __future__ import annotations
+
+import asyncio
+import csv
+import json
+import os
+import re
+import subprocess
+import uuid
+from dataclasses import asdict
+from pathlib import Path, PurePosixPath
+from typing import Any, Literal
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, model_validator
+
+from .assay_profiles import DEFAULT_ASSAY_PROFILE_ID
+from .jobs import JobRunner, JobStore
+from .models import (
+    DesignRecord,
+    FeatureRange,
+    MutationChoice,
+    ProteinContext,
+    RegionRecord,
+    ResidueRecord,
+    to_dict,
+)
+from .pipeline import PipelineRequest
+from .sequences import apply_mutations, coding_fragment
+from .stability import evaluate_substitution
+from .util import read_json, safe_name, write_json
+
+ROOT = Path(__file__).resolve().parent
+WEB_ROOT = ROOT / "web"
+DATA_ROOT = Path(os.environ.get("ECD_DATA_DIR", str(Path.home() / ".ecd-epitope-scanner")))
+STORE = JobStore(DATA_ROOT)
+RUNNER = JobRunner(STORE)
+
+
+class JobCreate(BaseModel):
+    input_type: Literal["uniprot", "pdb_id"] = "uniprot"
+    identifier: str = Field(min_length=4, max_length=32)
+    accession: str | None = None
+    chain: str | None = None
+    ecd_start: int | None = None
+    ecd_end: int | None = None
+    original_cds: str | None = None
+    strict_af3: bool = True
+    allow_partial: bool = False
+    structure_candidate_id: str | None = None
+    assay_format: Literal["cell_surface", "purified"] = "cell_surface"
+    design_engine: Literal["joint_v4_ml"] = "joint_v4_ml"
+    ml_mode: Literal["strict", "preview"] = "strict"
+    surface_strategy: Literal["legacy"] = "legacy"
+    optimization_profile: Literal["legacy"] = "legacy"
+    candidate_ids: list[str] | None = None
+    calibration_repeat_schedule: list[int] | None = None
+    export_mode: Literal["checkpoint", "deliverable"] = "deliverable"
+    model_assets_root: str | None = None
+    case_time_budget_seconds: float | None = Field(default=None,gt=0,allow_inf_nan=False)
+    case_byte_budget: int | None = Field(default=None,gt=0)
+    max_sectors: int = 7
+    target_sector_residues: int | None = Field(default=None, ge=7, le=15)
+    maximum_sector_geodesic_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    maximum_sector_ca_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    max_primary_constructs: int | None = Field(default=None, ge=1, le=8)
+    minimum_constructs: int | None = Field(default=None, ge=1, le=8)
+    target_constructs: int | None = Field(default=None, ge=1, le=8)
+    maximum_constructs: int | None = Field(default=None, ge=1, le=8)
+    adaptive_budget: bool | None = None
+    assay_profile: str | None = DEFAULT_ASSAY_PROFILE_ID
+    allow_spurs_only_final: bool = False
+    biological_context_mode: str = "provided_structure"
+
+    @model_validator(mode="after")
+    def validate_panel_budget(self):
+        from .joint_design_v4.budget import resolve_budget, optimizer_budget
+        from .assay_profiles import get_assay_profile
+        profile = get_assay_profile(self.assay_profile)
+        budget = resolve_budget(minimum=self.minimum_constructs, target=self.target_constructs,
+                       maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
+                       legacy_max=self.max_primary_constructs,
+                       policy=profile["design_policy"] if profile else None,
+                       maximum_limit=8)
+        optimizer_budget(profile, budget)
+        PipelineRequest(**self.model_dump())
+        return self
+
+
+class MutationInput(BaseModel):
+    position: int
+    mutant: str = Field(pattern="^[ACDEFGHIKLMNPQRSTVWY]$")
+
+
+class CustomDesignInput(BaseModel):
+    name: str = Field(default="Custom construct", min_length=1, max_length=80)
+    mutations: list[MutationInput] = Field(min_length=1, max_length=12)
+    force_high_risk: bool = False
+
+
+app = FastAPI(
+    title="ECD Epitope Workbench",
+    version="1.0.0",
+    description="Auditable ECD surface-region mutation design for single-pass membrane proteins",
+)
+
+
+def _job_or_404(job_id: str) -> dict[str, Any]:
+    try:
+        return STORE.get(job_id)
+    except KeyError as exc:
+        raise HTTPException(404, "Job not found") from exc
+
+
+def _public_job(job: dict[str, Any], *, view: str = "full") -> dict[str, Any]:
+    result = job.get("result")
+    if result and job["status"] == "COMPLETE":
+        result = dict(result)
+        result["structure_url"] = f"/api/jobs/{job['id']}/files/ecd_structure.cif"
+        result["download_url"] = f"/api/jobs/{job['id']}/files/ecd_epitope_design.zip"
+        result["job_id"] = job["id"]
+        if view == "display":
+            from .joint_design_v4.reporting import project_display_analysis
+            result = project_display_analysis(result)
+    output = dict(job)
+    output["result"] = result
+    output["time_estimate"] = STORE.time_estimate(job)
+    request = dict(output.get("request") or {})
+    if request.get("original_cds"):
+        request["original_cds"] = "<provided>"
+    output["request"] = request
+    return output
+
+
+def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    """Small list payload; full residue/design records stay on the detail API."""
+    evidence = job.get("summary") or job.get("result") or {}
+    protein = evidence.get("protein") or {}
+    summary = evidence.get("summary") or {}
+    return {
+        key: job[key]
+        for key in (
+            "id",
+            "status",
+            "stage",
+            "progress",
+            "message",
+            "error",
+            "created_at",
+            "updated_at",
+        )
+    } | {
+        "accession": protein.get("accession"),
+        "regions": summary.get("regions"),
+        "recommended_constructs": summary.get("recommended_constructs"),
+    }
+
+
+@app.get("/api/health")
+def health() -> dict[str, Any]:
+    return {"status": "ok", "service": "ECD Epitope Workbench", "version": "1.0.0"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(status_code=204)
+
+
+@app.get("/api/jobs")
+def list_jobs() -> list[dict[str, Any]]:
+    return [_job_summary(item) for item in STORE.summaries()]
+
+
+@app.post("/api/jobs", status_code=202)
+def create_job(payload: JobCreate) -> dict[str, Any]:
+    request = PipelineRequest(**payload.model_dump())
+    job = STORE.create(request)
+    RUNNER.submit(job["id"])
+    return _public_job(job)
+
+
+async def _save_upload(upload: UploadFile, path: Path, maximum: int = 80 * 1024 * 1024) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    total = 0
+    with path.open("wb") as handle:
+        while chunk := await upload.read(1024 * 1024):
+            total += len(chunk)
+            if total > maximum:
+                handle.close()
+                path.unlink(missing_ok=True)
+                raise HTTPException(413, "Uploaded file is too large")
+            handle.write(chunk)
+
+
+def _af3_upload_paths(files: list[UploadFile]) -> list[tuple[UploadFile, str]]:
+    if not files:
+        raise HTTPException(422, "Select an extracted AF3 folder")
+    paths: list[tuple[UploadFile, str]] = []
+    seen: set[str] = set()
+    models = confidences = 0
+    for upload in files:
+        raw = upload.filename or ""
+        if not raw or "\\" in raw or "\x00" in raw or raw.startswith("/") or re.match(r"^[A-Za-z]:", raw):
+            raise HTTPException(422, "AF3 folder contains an unsafe relative path")
+        path = PurePosixPath(raw)
+        normalized = path.as_posix()
+        if (not path.parts or path.is_absolute() or raw != normalized
+                or any(part in {"", ".", ".."} for part in path.parts) or ":" in path.parts[0]):
+            raise HTTPException(422, "AF3 folder contains an unsafe relative path")
+        key = normalized.casefold()
+        if key in seen:
+            raise HTTPException(422, "AF3 folder contains duplicate normalized paths")
+        seen.add(key)
+        name = path.name.lower()
+        if (re.fullmatch(r"(?:.*_)?model_\d+\.cif", name) or name == "model.cif"
+                or name.endswith("_model.cif")):
+            models += 1
+        elif (re.fullmatch(r"(?:.*_)?full_data_\d+\.json", name) or name in {"full_data.json", "confidences.json"}
+                or name.endswith("_confidences.json")):
+            confidences += 1
+        paths.append((upload, normalized))
+    if models < 1 or models > 101:
+        raise HTTPException(422, "AF3 folder must contain at most 100 models plus an optional root alias")
+    if not confidences:
+        raise HTTPException(422, "AF3 folder must contain confidence JSON files")
+    return paths
+
+
+async def _import_af3_folder(files: list[UploadFile], workdir: Path) -> Path:
+    paths = _af3_upload_paths(files)  # Reject all unsafe names before writing any bytes.
+    staging = workdir / "af3_directory_upload"
+    if staging.exists() or staging.is_symlink():
+        raise HTTPException(409, "AF3 upload staging path already exists")
+    total = 0
+    created_staging = False
+    try:
+        try:
+            staging.mkdir(parents=True, exist_ok=False)
+            created_staging = True
+        except FileExistsError as exc:
+            raise HTTPException(409, "AF3 upload staging path already exists") from exc
+        for upload, relative in paths:
+            target = staging.joinpath(*PurePosixPath(relative).parts)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            name = target.name.lower()
+            confidence_file = (re.fullmatch(r"(?:.*_)?full_data_\d+\.json", name) is not None
+                               or name in {"full_data.json", "confidences.json"}
+                               or name.endswith("_confidences.json"))
+            model_file = (re.fullmatch(r"(?:.*_)?model_\d+\.cif", name) is not None
+                          or name == "model.cif" or name.endswith("_model.cif"))
+            maximum = 64 * 1024 * 1024 if confidence_file else 80 * 1024 * 1024 if model_file else 1024 * 1024 * 1024
+            written = 0
+            with target.open("xb") as handle:
+                while chunk := await upload.read(1024 * 1024):
+                    written += len(chunk)
+                    total += len(chunk)
+                    if written > maximum or total > 1024 * 1024 * 1024:
+                        raise HTTPException(413, "AF3 folder exceeds its upload size limit")
+                    handle.write(chunk)
+        from .af3_preprocessing import import_af3_directory
+
+        manifest = import_af3_directory(staging, workdir)
+        import shutil
+
+        shutil.rmtree(staging)
+        return manifest
+    except Exception:
+        if created_staging and staging.exists():
+            import shutil
+
+            shutil.rmtree(staging)
+        raise
+
+
+@app.post("/api/jobs/upload", status_code=202)
+async def create_upload_job(
+    structure: UploadFile = File(...),
+    analysis_target: Literal["antigen", "binder"] = Form("antigen"),
+    accession: str | None = Form(None),
+    chain: str | None = Form(None),
+    sequence: str | None = Form(None),
+    ecd_start: int | None = Form(None),
+    ecd_end: int | None = Form(None),
+    original_cds: str | None = Form(None),
+    allow_partial: bool = Form(False),
+    design_engine: Literal["joint_v4_ml"] = Form("joint_v4_ml"),
+    ml_mode: Literal["strict", "preview"] = Form("strict"),
+    surface_strategy: Literal["legacy"] = Form("legacy"),
+    optimization_profile: Literal["legacy"] = Form("legacy"),
+    candidate_ids: list[str] | None = Form(None),
+    calibration_repeat_schedule: list[int] | None = Form(None),
+    export_mode: Literal["checkpoint", "deliverable"] = Form("deliverable"),
+    model_assets_root: str | None = Form(None),
+    case_time_budget_seconds: float | None = Form(None,gt=0,allow_inf_nan=False),
+    case_byte_budget: int | None = Form(None,gt=0),
+    max_sectors: int = Form(7),
+    target_sector_residues: int | None = Form(None, ge=7, le=15),
+    maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    max_primary_constructs: int | None = Form(None, ge=1, le=8),
+    minimum_constructs: int | None = Form(None, ge=1, le=8),
+    target_constructs: int | None = Form(None, ge=1, le=8),
+    maximum_constructs: int | None = Form(None, ge=1, le=8),
+    adaptive_budget: bool | None = Form(None),
+    allow_spurs_only_final: bool = Form(False),
+    biological_context_mode: str = Form("provided_structure"),
+) -> dict[str, Any]:
+    suffix = Path(structure.filename or "structure.cif").suffix.lower()
+    try:
+        from .joint_design_v4.budget import resolve_budget
+        resolve_budget(minimum=minimum_constructs, target=target_constructs,
+                       maximum=maximum_constructs, adaptive=adaptive_budget, legacy_max=max_primary_constructs,
+                       maximum_limit=8)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if suffix not in {".cif", ".mmcif", ".pdb", ".ent"}:
+        raise HTTPException(422, "Structure must be PDB or mmCIF")
+    # Validate stage semantics before allocating a task or saving an upload.
+    try:
+        JobCreate(identifier=accession or 'USER_STRUCTURE',optimization_profile=optimization_profile,
+            candidate_ids=candidate_ids,calibration_repeat_schedule=calibration_repeat_schedule,
+            export_mode=export_mode,model_assets_root=model_assets_root,
+            case_time_budget_seconds=case_time_budget_seconds,case_byte_budget=case_byte_budget,
+            surface_strategy=surface_strategy,minimum_constructs=minimum_constructs,
+            target_constructs=target_constructs,maximum_constructs=maximum_constructs,
+            max_primary_constructs=max_primary_constructs,adaptive_budget=adaptive_budget,
+            target_sector_residues=target_sector_residues,
+            maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+            maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a)
+    except ValueError as exc:
+        raise HTTPException(422,str(exc)) from exc
+    placeholder = PipelineRequest(
+        optimization_profile=optimization_profile,
+        candidate_ids=candidate_ids, calibration_repeat_schedule=calibration_repeat_schedule,
+        export_mode=export_mode, model_assets_root=model_assets_root,
+        case_time_budget_seconds=case_time_budget_seconds, case_byte_budget=case_byte_budget,
+        surface_strategy=surface_strategy,
+        input_type="structure",
+        analysis_target=analysis_target,
+        identifier=structure.filename or "structure",
+        accession=accession or None,
+        chain=chain or None,
+        sequence=sequence or None,
+        ecd_start=ecd_start,
+        ecd_end=ecd_end,
+        original_cds=original_cds or None,
+        allow_partial=allow_partial,
+        assay_profile=(
+            None
+            if analysis_target == "binder"
+            else DEFAULT_ASSAY_PROFILE_ID
+        ),
+        assay_format="unspecified" if analysis_target == "binder" else "cell_surface",
+        minimum_regions=1,
+        maximum_regions=6,
+        design_engine=design_engine,
+        ml_mode=ml_mode,
+        max_sectors=max_sectors,
+        target_sector_residues=target_sector_residues,
+        maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+        maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a,
+        max_primary_constructs=max_primary_constructs,
+        minimum_constructs=minimum_constructs, target_constructs=target_constructs,
+        maximum_constructs=maximum_constructs, adaptive_budget=adaptive_budget,
+        allow_spurs_only_final=allow_spurs_only_final,
+        biological_context_mode=biological_context_mode,
+    )
+    job = STORE.create(placeholder)
+    target = Path(job["workdir"]) / "uploads" / f"structure{suffix}"
+    await _save_upload(structure, target)
+    request = STORE.request_for(job["id"])
+    request.structure_path = str(target)
+    STORE.update(job["id"], request_json=request.as_dict() | {"original_cds": request.original_cds})
+    RUNNER.submit(job["id"])
+    return _public_job(STORE.get(job["id"]))
+
+
+@app.post("/api/jobs/af3-directory", status_code=202)
+async def create_af3_directory_job(
+    files: list[UploadFile] = File(...),
+    analysis_target: Literal["antigen", "binder"] = Form("antigen"),
+    official_source_confirmed: bool = Form(...),
+    accession: str | None = Form(None),
+    chain: str | None = Form(None),
+    sequence: str | None = Form(None),
+    ecd_start: int | None = Form(None),
+    ecd_end: int | None = Form(None),
+    design_engine: Literal["joint_v4_ml"] = Form("joint_v4_ml"),
+    ml_mode: Literal["strict", "preview"] = Form("strict"),
+    surface_strategy: Literal["legacy"] = Form("legacy"),
+    optimization_profile: Literal["legacy"] = Form("legacy"),
+    candidate_ids: list[str] | None = Form(None),
+    calibration_repeat_schedule: list[int] | None = Form(None),
+    export_mode: Literal["checkpoint", "deliverable"] = Form("deliverable"),
+    model_assets_root: str | None = Form(None),
+    case_time_budget_seconds: float | None = Form(None, gt=0, allow_inf_nan=False),
+    case_byte_budget: int | None = Form(None, gt=0),
+    max_sectors: int = Form(7),
+    target_sector_residues: int | None = Form(None, ge=7, le=15),
+    maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
+    max_primary_constructs: int | None = Form(None, ge=1, le=8),
+    minimum_constructs: int | None = Form(None, ge=1, le=8),
+    target_constructs: int | None = Form(None, ge=1, le=8),
+    maximum_constructs: int | None = Form(None, ge=1, le=8),
+    adaptive_budget: bool | None = Form(None),
+    allow_spurs_only_final: bool = Form(False),
+    biological_context_mode: str = Form("provided_structure"),
+) -> dict[str, Any]:
+    if not official_source_confirmed:
+        raise HTTPException(422, "Official AF3 source confirmation is required")
+    _af3_upload_paths(files)
+    try:
+        from .joint_design_v4.budget import resolve_budget
+
+        resolve_budget(minimum=minimum_constructs, target=target_constructs,
+                       maximum=maximum_constructs, adaptive=adaptive_budget,
+                       legacy_max=max_primary_constructs,
+                       maximum_limit=8)
+        request = PipelineRequest(
+            input_type="af3_upload", identifier=accession or "AF3_UPLOAD", accession=accession or None,
+            analysis_target=analysis_target, chain=chain or None, sequence=sequence or None,
+            ecd_start=ecd_start, ecd_end=ecd_end, strict_af3=True, allow_partial=False,
+            minimum_regions=1, maximum_regions=6,
+            design_engine=design_engine, ml_mode=ml_mode, surface_strategy=surface_strategy,
+            optimization_profile=optimization_profile, candidate_ids=candidate_ids,
+            calibration_repeat_schedule=calibration_repeat_schedule, export_mode=export_mode,
+            model_assets_root=model_assets_root, case_time_budget_seconds=case_time_budget_seconds,
+            case_byte_budget=case_byte_budget, max_sectors=max_sectors,
+            target_sector_residues=target_sector_residues,
+            maximum_sector_geodesic_diameter_a=maximum_sector_geodesic_diameter_a,
+            maximum_sector_ca_diameter_a=maximum_sector_ca_diameter_a,
+            max_primary_constructs=max_primary_constructs, minimum_constructs=minimum_constructs,
+            target_constructs=target_constructs, maximum_constructs=maximum_constructs,
+            adaptive_budget=adaptive_budget, allow_spurs_only_final=allow_spurs_only_final,
+            biological_context_mode=biological_context_mode,
+            assay_profile=None if analysis_target == "binder" else DEFAULT_ASSAY_PROFILE_ID,
+            assay_format="unspecified" if analysis_target == "binder" else "cell_surface",
+            metadata={"official_af3_source_confirmed": True},
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    job = STORE.create(request)
+    try:
+        manifest = await _import_af3_folder(files, Path(job["workdir"]))
+        request.af3_manifest_path = str(manifest)
+        STORE.update(job["id"], request_json=request.as_dict() | {"original_cds": request.original_cds})
+        RUNNER.submit(job["id"])
+    except Exception as exc:
+        STORE.update(job["id"], status="FAILED", stage="FAILED", message="AF3 folder import failed", error=f"{type(exc).__name__}: {exc}")
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(422, f"Invalid AF3 folder: {exc}") from exc
+    return _public_job(STORE.get(job["id"]))
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str, view: Literal["full", "display"] = "full") -> dict[str, Any]:
+    return _public_job(_job_or_404(job_id), view=view)
+
+
+@app.get("/api/jobs/{job_id}/events")
+async def job_events(job_id: str) -> StreamingResponse:
+    _job_or_404(job_id)
+
+    async def stream():
+        previous = ""
+        while True:
+            job = _public_job(_job_or_404(job_id))
+            payload = json.dumps(
+                {
+                    "id": job["id"],
+                    "status": job["status"],
+                    "stage": job["stage"],
+                    "progress": job["progress"],
+                    "message": job["message"],
+                    "error": job["error"],
+                    "time_estimate": job["time_estimate"],
+                },
+                ensure_ascii=False,
+            )
+            if payload != previous:
+                yield f"data: {payload}\n\n"
+                previous = payload
+            if job["terminal"]:
+                break
+            await asyncio.sleep(0.6)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/jobs/{job_id}/af3", status_code=202)
+async def upload_af3(
+    job_id: str,
+    structure: UploadFile = File(...),
+    confidence: UploadFile = File(...),
+    official_source_confirmed: bool = Form(...),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id)
+    if job["status"] != "WAITING_FOR_AF3_UPLOAD":
+        raise HTTPException(409, "Job is not waiting for AF3 files")
+    if not official_source_confirmed:
+        raise HTTPException(422, "Official AF3 source confirmation is required")
+    structure_name = (structure.filename or "model.cif").lower()
+    confidence_name = (confidence.filename or "confidences.json").lower()
+    if not structure_name.endswith((".cif", ".mmcif")):
+        raise HTTPException(422, "AF3 structure must be mmCIF")
+    if not confidence_name.endswith(".json"):
+        raise HTTPException(422, "AF3 confidence file must be JSON")
+    upload_dir = Path(job["workdir"]) / "af3_upload"
+    structure_path = upload_dir / "official_af3_model.cif"
+    confidence_path = upload_dir / "official_af3_confidences.json"
+    await _save_upload(structure, structure_path)
+    await _save_upload(confidence, confidence_path, maximum=200 * 1024 * 1024)
+    try:
+        confidence_data = read_json(confidence_path)
+    except Exception as exc:
+        raise HTTPException(422, f"Invalid confidence JSON: {exc}") from exc
+    if not isinstance(confidence_data, dict) or not any(
+        key in confidence_data for key in ("pae", "atom_plddts", "predicted_aligned_error")
+    ):
+        raise HTTPException(422, "Confidence JSON lacks AF3 PAE/pLDDT arrays")
+    RUNNER.resume_with_af3(job_id, structure_path, confidence_path)
+    return _public_job(STORE.get(job_id))
+
+
+@app.post("/api/jobs/{job_id}/af3-directory", status_code=202)
+async def upload_af3_directory(
+    job_id: str,
+    files: list[UploadFile] = File(...),
+    official_source_confirmed: bool = Form(...),
+) -> dict[str, Any]:
+    job = _job_or_404(job_id)
+    if job["status"] != "WAITING_FOR_AF3_UPLOAD":
+        raise HTTPException(409, "Job is not waiting for AF3 files")
+    if not official_source_confirmed:
+        raise HTTPException(422, "Official AF3 source confirmation is required")
+    _af3_upload_paths(files)
+    try:
+        manifest = await _import_af3_folder(files, Path(job["workdir"]))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(422, f"Invalid AF3 folder: {exc}") from exc
+    RUNNER.resume_with_af3_manifest(job_id, manifest)
+    return _public_job(STORE.get(job_id))
+
+
+def _hydrate_for_custom(
+    job: dict[str, Any],
+) -> tuple[
+    dict[str, Any], ProteinContext, list[ResidueRecord], list[RegionRecord], list[DesignRecord]
+]:
+    from copy import deepcopy
+
+    analysis = deepcopy(job.get("result")) or read_json(Path(job["workdir"]) / "analysis.json")
+    protein_data = analysis["protein"]
+    uniprot_path = Path(job["workdir"]) / "uniprot.json"
+    if uniprot_path.exists():
+        sequence = read_json(uniprot_path)["sequence"]["value"]
+    else:
+        sequence = (job.get("request") or {}).get("sequence") or protein_data["ecd_sequence"]
+    features = [FeatureRange(**item) for item in protein_data.get("features", [])]
+    protein = ProteinContext(
+        accession=protein_data["accession"],
+        protein_name=protein_data["protein_name"],
+        organism=protein_data.get("organism", ""),
+        sequence=sequence,
+        ecd_start=protein_data["ecd_start"],
+        ecd_end=protein_data["ecd_end"],
+        membrane_anchor_position=protein_data["membrane_anchor_position"],
+        topology=protein_data["topology"],
+        reviewed=protein_data.get("reviewed", False),
+        features=features,
+    )
+    records = [ResidueRecord(**item) for item in analysis["residues"]]
+    regions = [RegionRecord(**item) for item in analysis["regions"]]
+    designs: list[DesignRecord] = []
+    for item in analysis["designs"]:
+        data = dict(item)
+        data["mutations"] = [MutationChoice(**mutation) for mutation in data.get("mutations", [])]
+        designs.append(DesignRecord(**data))
+    return analysis, protein, records, regions, designs
+
+
+@app.post("/api/jobs/{job_id}/designs")
+def add_custom_design(job_id: str, payload: CustomDesignInput) -> dict[str, Any]:
+    job = _job_or_404(job_id)
+    if job["status"] != "COMPLETE":
+        raise HTTPException(409, "Custom designs require a completed analysis")
+    analysis, protein, records, regions, designs = _hydrate_for_custom(job)
+    by_position = {record.uniprot_pos: record for record in records}
+    choices: list[MutationChoice] = []
+    errors: list[str] = []
+    for item in payload.mutations:
+        record = by_position.get(item.position)
+        if record is None:
+            errors.append(f"Residue {item.position} is outside the mapped ECD")
+            continue
+        if record.hard_exclusions:
+            errors.append(
+                f"{record.aa}{item.position}: protected by {', '.join(record.hard_exclusions)}"
+            )
+            continue
+        choice = evaluate_substitution(record, item.mutant, protein)
+        if not choice.allowed and not payload.force_high_risk:
+            errors.append(f"{choice.notation}: {', '.join(choice.reasons)}")
+            continue
+        choices.append(choice)
+    if errors:
+        raise HTTPException(
+            422, detail={"message": "Custom design failed validation", "issues": errors}
+        )
+    if len({choice.position for choice in choices}) != len(choices):
+        raise HTTPException(422, "Each residue may appear only once in a construct")
+    mutant_sequence = apply_mutations(protein.ecd_sequence, choices, protein.ecd_start)
+    # Preserve the original construct context: users may add a custom probe
+    # after an analysis specifically to order a full-length cell-surface clone.
+    original_cds = STORE.request_for(job_id).original_cds
+    mutant_dna, dna_source = coding_fragment(protein, mutant_sequence, original_cds)
+    design = DesignRecord(
+        id=f"CUSTOM_{len([item for item in designs if item.custom]) + 1:02d}",
+        name=payload.name,
+        region_id=None,
+        mutations=choices,
+        status="USER_CONFIRMED_HIGH_RISK" if payload.force_high_risk else "USER_CONFIRMED",
+        stability_engine="builtin structural-risk proxy",
+        combined_stability_score=round(sum(item.stability_score for item in choices), 4),
+        perturbation_score=round(sum(item.perturbation_score for item in choices), 4),
+        rationale="User-defined cross-region construct validated against mapping and protected-site rules.",
+        warnings=(
+            ["High-risk substitutions were explicitly forced by the user."]
+            if payload.force_high_risk
+            else []
+        )
+        + [f"Coding fragment source: {dna_source}."],
+        mutant_ecd_sequence=mutant_sequence,
+        mutant_coding_sequence=mutant_dna,
+        custom=True,
+    )
+    designs.append(design)
+    analysis["designs"] = [to_dict(item) for item in designs]
+    analysis["design_summary"]["final_library_size"] = len(designs)
+    analysis["summary"]["custom_constructs"] = sum(item.custom for item in designs)
+    output_dir = Path(job["workdir"])
+    from .exporting import (
+        finalize_scientific_bundle, write_analysis_artifact, write_scientific_outputs,
+    )
+
+    files = write_scientific_outputs(
+        output_dir, analysis, protein, records, regions, designs, original_cds=original_cds
+    )
+    analysis["files"] = files
+    write_analysis_artifact(output_dir, analysis)
+    finalize_scientific_bundle(output_dir)
+    STORE.update(job_id, result_json=analysis, message=f"Custom design {design.id} saved")
+    return {"design": to_dict(design), "job": _public_job(STORE.get(job_id))}
+
+
+@app.get("/api/jobs/{job_id}/export/offline")
+def export_offline(job_id: str, lang: str = "zh") -> Response:
+    """Self-contained offline report: structure + data + 3Dmol in one HTML."""
+    job = _job_or_404(job_id)
+    if job.get("status") != "COMPLETE":
+        raise HTTPException(409, "Job is not complete; nothing to export")
+    workdir = Path(job["workdir"])
+    analysis = read_json(workdir / "analysis.json")
+    from .exporting import build_offline_html
+
+    html = build_offline_html(analysis, workdir=workdir, lang=lang)
+    return Response(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="ecd_epitope_offline_{safe_name(job_id)}.html"'
+            )
+        },
+    )
+
+
+@app.get("/api/jobs/{job_id}/files/{filename}")
+def job_file(job_id: str, filename: str) -> FileResponse:
+    job = _job_or_404(job_id)
+    safe = safe_name(filename)
+    if safe != filename:
+        raise HTTPException(400, "Invalid filename")
+    path = Path(job["workdir"]) / safe
+    try:
+        path.resolve().relative_to(Path(job["workdir"]).resolve())
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid result path") from exc
+    if not path.is_file():
+        raise HTTPException(404, "Result file not found")
+    media = "application/zip" if path.suffix == ".zip" else None
+    return FileResponse(path, media_type=media, filename=path.name)
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    return HTMLResponse((WEB_ROOT / "index.html").read_text(encoding="utf-8"))
+
+
+app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")

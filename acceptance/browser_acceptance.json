@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "preview_status": "COMPLETE",
+  "progress": 1.0,
+  "mapped_residues": 220,
+  "regions": 11,
+  "formal_recommendations": 0,
+  "saved_job_reload": "PASS",
+  "retired_entry_points_present": false,
+  "application_console_errors_observed": 0,
+  "browser_extension_messages_excluded": true,
+  "note": "Browser observation from completed saved preview job; separate from strict scientific evidence."
+}
