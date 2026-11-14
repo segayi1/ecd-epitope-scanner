@@ -5,6 +5,7 @@ import gzip
 import io
 import os
 import re
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -27,6 +28,11 @@ def findings(name, data, markers):
             for member in archive.infolist():
                 if not member.is_dir():
                     yield from findings(name + '!' + member.filename, archive.read(member), markers)
+    elif name.lower().endswith(('.tar.gz', '.tgz')):
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+            for member in archive.getmembers():
+                if member.isfile():
+                    yield from findings(name + '!' + member.name, archive.extractfile(member).read(), markers)
     elif name.lower().endswith('.gz'):
         yield from findings(name[:-3], gzip.decompress(data), markers)
     else:

@@ -1,0 +1,5 @@
+include CITATION.cff THIRD_PARTY_NOTICES.md VALIDATION.md requirements-tested.txt
+recursive-include docs *
+recursive-include examples/pdl1_run *
+recursive-include acceptance *
+include scripts/check_export_privacy.py

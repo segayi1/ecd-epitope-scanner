@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -108,3 +109,21 @@ def test_public_urls_and_app_routes_are_not_user_directories(tmp_path):
     result = subprocess.run([sys.executable, str(script), str(archive_path)], capture_output=True, text=True)
     assert result.returncode == 0
     assert 'Privacy scan: PASSED' in result.stdout
+
+
+def test_tar_members_are_scanned_with_vendor_exemption(tmp_path):
+    script = Path(__file__).resolve().parents[1] / 'scripts' / 'check_export_privacy.py'
+    archive_path = tmp_path / 'source.tar.gz'
+    vendor = ('C:' + chr(92) + 'Users' + chr(92) + 'example' + chr(92) + 'file').encode()
+    with tarfile.open(archive_path, 'w:gz') as archive:
+        entry = tarfile.TarInfo('package/web/vendor/bundle.js')
+        entry.size = len(vendor)
+        archive.addfile(entry, io.BytesIO(vendor))
+    result = subprocess.run([sys.executable, str(script), str(archive_path)], capture_output=True, text=True)
+    assert result.returncode == 0
+    with tarfile.open(archive_path, 'w:gz') as archive:
+        entry = tarfile.TarInfo('package/config.json')
+        entry.size = len(vendor)
+        archive.addfile(entry, io.BytesIO(vendor))
+    result = subprocess.run([sys.executable, str(script), str(archive_path)], capture_output=True, text=True)
+    assert result.returncode == 1

@@ -40,7 +40,7 @@ Clone the repository and open PowerShell in its root directory:
 ```powershell
 git clone https://github.com/segayi1/ecd-epitope-scanner.git
 cd ecd-epitope-scanner
-git checkout v1.1.1
+git checkout v1.1.2
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -170,7 +170,7 @@ The browser preview completed and its saved result was reloaded successfully. De
 ### Run the test suite
 
 ```powershell
-python -m pip install pytest
+python -m pip install pytest httpx httpx2
 $releaseRoot = (Get-Location).Path
 Push-Location $env:TEMP
 python -m pytest --import-mode=importlib --rootdir "$releaseRoot\tests" --confcutdir "$releaseRoot\tests" -q "$releaseRoot\tests"
@@ -200,9 +200,9 @@ Cite the software release or exact commit used in an analysis, together with the
 @software{ecd_epitope_scanner_1_1_1,
   author  = {segayi1},
   title   = {ECD Epitope Scanner},
-  version = {1.1.1},
+  version = {1.1.2},
   year    = {2026},
-  url     = {https://github.com/segayi1/ecd-epitope-scanner/tree/v1.1.1}
+  url     = {https://github.com/segayi1/ecd-epitope-scanner/tree/v1.1.2}
 }
 ```
 
