@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-TERMINAL_STATUSES = {"COMPLETE", "FAILED", "WAITING_FOR_AF3_UPLOAD"}
+TERMINAL_STATUSES = {"COMPLETE", "FAILED", "CANCELLED", "WAITING_FOR_AF3_UPLOAD"}
 
 
 @dataclass(slots=True)

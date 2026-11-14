@@ -58,3 +58,9 @@ Publication files were scanned for known private identifiers and user-directory 
 ProCaliper was not configured or invoked in the strict analysis; its tool-inventory entry indicated installation only. The recorded real-model case covers the public ordinary-PDB workflow. AF3 confidence handling is covered by regression tests, while real AF3 multi-model inference and fresh-machine external installation were not part of this acceptance run. Python 3.11/Linux execution is tracked separately by repository CI.
 
 The quantitative results above describe one computational case. They do not constitute measurements of experimental binding, expression, or folding, and do not prescribe candidate counts or runtime for other proteins.
+
+## Version 1.1.0 candidate validation
+
+The optional `ordinary_site_first_perturbation_v1` protocol adds sector-first scheduling, perturbation-field ranking and per-construct audit output. The default remains `ordinary_site_first_v2`. A formal result requires the configured model evidence and scientific gates; field values and DiscoTope scores are computational proxies, not experimental binding measurements.
+
+The version 1.1.0 candidate passed 189 installed-wheel tests on Windows/Python 3.12, including integration fixtures and mock model scheduling. Four additional tests passed against the final source after the epitope-prior provenance correction. The browser submission check confirmed the optional protocol and 12-construct budget. The source archive rebuilt a wheel with identical member contents; source and wheel passed the bundled recursive privacy checker with local marker checks. Details are in acceptance/version_1_1_0.md. Validation used existing dependencies and did not repeat external-model calculations or prove generalization. A development-version CTLA4 run using the new protocol selected 12 formally qualified constructs; this computational result does not establish binding effects or wet-lab performance.

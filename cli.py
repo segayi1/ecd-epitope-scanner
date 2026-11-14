@@ -60,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
         default="strict",
         help="Joint V4 external-evidence policy",
     )
-    analyze.add_argument("--max-sectors", type=int, default=7)
+    analyze.add_argument("--max-sectors", type=int, default=12)
+    analyze.add_argument("--execution-protocol", choices=["ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"], default="ordinary_site_first_v2")
     analyze.add_argument("--optimization-profile", choices=["legacy"], default="legacy")
     analyze.add_argument("--surface-strategy", choices=["legacy"], default="legacy")
     analyze.add_argument("--candidate-ids", nargs="+")
@@ -146,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     request = PipelineRequest(
         optimization_profile=args.optimization_profile,
         surface_strategy=args.surface_strategy,
+        execution_protocol=args.execution_protocol,
         candidate_ids=args.candidate_ids,
         calibration_repeat_schedule=args.calibration_repeat_schedule,
         export_mode=args.export_mode,

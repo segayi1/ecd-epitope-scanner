@@ -2,7 +2,7 @@
 
 A structure-guided computational pipeline for extracellular-domain (ECD) surface partitioning and mutation-panel design. The software supports the generation of spatially resolved mutation panels for experimental epitope mapping through a local web interface and a command-line workflow.
 
-The released protocol, **`ordinary_site_first_v2`**, combines connected surface partitioning, site-first candidate enumeration, and stability-based candidate qualification. The implementation uses the `joint_v4_ml` engine. The repository provides source code, public PD-L1 example inputs, installation instructions, and computational validation records for use as accompanying research software.
+The default protocol, **`ordinary_site_first_v2`**, combines connected surface partitioning, site-first candidate enumeration, and stability-based candidate qualification. The optional **`ordinary_site_first_perturbation_v1`** prioritizes qualified candidates from uncovered regions and surface perturbation proxies. The implementation uses the `joint_v4_ml` engine. The repository provides source code, public PD-L1 example inputs, installation instructions, and computational validation records for use as accompanying research software.
 
 ## Computational workflow
 
@@ -40,7 +40,7 @@ Clone the repository and open PowerShell in its root directory:
 ```powershell
 git clone https://github.com/segayi1/ecd-epitope-scanner.git
 cd ecd-epitope-scanner
-git checkout v1.0.2
+git checkout v1.1.0
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -118,7 +118,7 @@ python -m ecd_epitope_scanner analyze `
   --output .\workspace_data\pdl1_strict
 ```
 
-Strict mode executes `ordinary_site_first_v2`. Inspect the saved evidence:
+Strict mode defaults to `ordinary_site_first_v2`. Select `ordinary_site_first_perturbation_v1` explicitly in the interface or with `--execution-protocol ordinary_site_first_perturbation_v1`. The perturbation field and DiscoTope values are computational proxies, not measured binding loss. Inspect the saved evidence:
 
 ```powershell
 $resultDir = '.\workspace_data\pdl1_strict'
@@ -197,12 +197,12 @@ python scripts\check_export_privacy.py .\workspace_data\pdl1_preview\ecd_epitope
 Cite the software release or exact commit used in an analysis, together with the external methods and structural data sources. Machine-readable software metadata is provided in [CITATION.cff](CITATION.cff). The associated manuscript citation can be added when its bibliographic record is available.
 
 ```bibtex
-@software{ecd_epitope_scanner_1_0_2,
+@software{ecd_epitope_scanner_1_1_0,
   author  = {segayi1},
   title   = {ECD Epitope Scanner},
-  version = {1.0.2},
+  version = {1.1.0},
   year    = {2026},
-  url     = {https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.2}
+  url     = {https://github.com/segayi1/ecd-epitope-scanner/tree/v1.1.0}
 }
 ```
 

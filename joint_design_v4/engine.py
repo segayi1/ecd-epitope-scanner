@@ -705,7 +705,7 @@ def _formal_candidate_reasons(
     ):
         if value is None or not math.isfinite(value):
             reasons.append(f"COMBINATION_{name}_MISSING")
-    if candidate.order > 2:
+    if candidate.order > 2 and not (getattr(candidate, "risk_components", {}) or {}).get("triple_gate_passed"):
         candidate_gain = regional_coverage_gain if regional_gain_required else (
             higher_order_information_gain
             if higher_order_information_gain is not None else
@@ -716,8 +716,8 @@ def _formal_candidate_reasons(
                 reasons.append("HIGHER_ORDER_COVERAGE_BASELINE_MISSING")
             elif candidate_gain < minimum_coverage_gain:
                 reasons.append("INSUFFICIENT_HIGHER_ORDER_COVERAGE_GAIN")
-        if stability is None or stability.foldx_ddg_kcal_mol is None:
-            reasons.append("HIGHER_ORDER_REQUIRES_FOLDX")
+    if candidate.order > 2 and (stability is None or stability.foldx_ddg_kcal_mol is None):
+        reasons.append("HIGHER_ORDER_REQUIRES_FOLDX")
     if require_complete_foldx:
         repeat_audit = (candidate.impact_evidence or {}).get("stability_repeat_audit", {})
         if not repeat_audit.get("foldx_evidence_complete"):
@@ -1069,11 +1069,11 @@ def run_joint_v4_ml(
         raise ValueError("Physical preview is not included in this release")
     protocol_value = params.get("execution_protocol")
     protocol_name = protocol_value.get("name") if isinstance(protocol_value, dict) else protocol_value
-    site_first_protocol = protocol_name == "ordinary_site_first_v2"
+    site_first_protocol = protocol_name in {"ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"}
     adaptive_protocol = (
         not physical_preview
         and params.get("mode", "strict") == "strict"
-        and protocol_name in {"ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}
+        and (protocol_name == "ordinary_three_principle_adaptive_v1" or site_first_protocol)
     )
     execution_protocol = (
         {
@@ -1383,7 +1383,7 @@ def run_joint_v4_ml(
             epitope,
             graph,
             record_map,
-            max(1, int(params.get("max_sectors", 7))),
+            max(1, int(params.get("max_sectors", 12))),
             params.get("sectoring", {}),
             diagnostics=partition_diagnostics,
         )
@@ -1460,13 +1460,15 @@ def run_joint_v4_ml(
             graph,
             areas,
             protein.sequence,
-            **({} if site_first_protocol else {"db_path": output_dir / "ordinary_candidate_index.sqlite3"}),
+            **({"protocol": protocol_name} if site_first_protocol else {"db_path": output_dir / "ordinary_candidate_index.sqlite3"}),
             maximum_span=float(params["candidate_search"].get(
                 "maximum_geodesic_span_a", 24.0)),
             records=records,
             epitope_applicable=epitope_applicable,
         )
         adaptive_validation = Validation()
+        if site_first_protocol:
+            adaptive_validation.protocol = protocol_name
         candidates = []
     else:
         candidates = generate_candidates(
@@ -1797,7 +1799,9 @@ def run_joint_v4_ml(
                   "message": adaptive_run["foldx"]["ledger"].get("stop_reason")}]
                 if adaptive_run["foldx"]["ledger"].get("technical_failure") else []
             ),
-            provenance={"adaptive_ledger": adaptive_run["foldx"]["ledger"]},
+            provenance={"adaptive_ledger": adaptive_run["foldx"]["ledger"],
+                        "worker_metrics": dict(worker_metrics)},
+            runtime_seconds=(worker_metrics["repair_seconds"] + worker_metrics["buildmodel_seconds"]),
         )
     else:
         multi = (
@@ -1869,7 +1873,7 @@ def run_joint_v4_ml(
     ] if mode == "strict" else [item for item in candidates if item.order < 4]
     if mode == "strict" and not physical_preview:
         threshold = float(params["panel_optimizer"].get("minimum_coverage_gain", .05))
-        rejected = [item for item in confirmable if item.order > 2 and (
+        rejected = [item for item in confirmable if item.order > 2 and not item.risk_components.get("triple_gate_passed") and (
             item.risk_components.get("regional_higher_order_gain") is None
             or not math.isfinite(item.risk_components["regional_higher_order_gain"])
             or item.risk_components["regional_higher_order_gain"] < threshold)]
@@ -2232,6 +2236,8 @@ def run_joint_v4_ml(
         risk_penalty_weights=params["panel_optimizer"].get("risk_penalty_weights", {}),
         panel_budget=params.get("panel_budget"),
         stop_parameters=params["panel_optimizer"],
+        epitope_priors={item.residue.uniprot_pos: item.surface_percentile for item in epitope
+                        if item.status == "PREDICTED" and item.surface_percentile is not None},
     )
     if not physical_preview:
         from .identifiability import interface_focused_comparison
@@ -2294,7 +2300,8 @@ def run_joint_v4_ml(
         }
     panel.sector_recommendations = build_sector_recommendations(display_candidates, sectors,
         {item.residue.uniprot_pos: item.mapped_surface_area_a2 for item in surface}, params, selected,
-        graph=graph, records=records, source_provenance=recommendation_source, epitope_evidence=epitope)
+        graph=graph, records=records, source_provenance=recommendation_source, epitope_evidence=epitope,
+        shared_provenance_artifacts=True)
     if site_first_protocol:
         for row in panel.sector_recommendations:
             sector = next((item for item in sectors if item.sector_id == row.get("sector_id")), None)
@@ -2449,7 +2456,7 @@ def run_joint_v4_ml(
         warnings.append("Preview output must not be treated as a formal recommendation.")
     if any(sector.sector_type == "COVERAGE_ONLY" for sector in sectors):
         warnings.append("At least one sector has LOW_EPITOPE_PRIOR.")
-    if len(sectors) > max(1, int(params.get("max_sectors", 7))):
+    if len(sectors) > max(1, int(params.get("max_sectors", 12))):
         warnings.append("Display region count exceeds the soft target to balance surface residue counts while preserving connectivity and diameter constraints; construct budget is unchanged.")
     legacy_regions = _legacy_regions(sectors, records)
     legacy_designs = _legacy_designs(
@@ -2588,8 +2595,8 @@ def run_joint_v4_ml(*args, **kwargs):
     if not ranked and not (settings.get("runtime_optimization") or {}).get("spurs_persistent", False):
         return _run_joint_v4_ml_without_persistent_scope(*args, **kwargs)
     name = protocol.get('name') if isinstance(protocol, dict) else protocol
-    if name != 'ordinary_site_first_v2':
-        raise ValueError('runtime optimization requires ordinary_site_first_v2')
+    if name not in {'ordinary_site_first_v2', 'ordinary_site_first_perturbation_v1'}:
+        raise ValueError('runtime optimization requires a site-first protocol')
     from contextlib import ExitStack
     from ..stability import foldx_execution_scope
     with ExitStack() as stack:

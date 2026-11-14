@@ -1,4 +1,4 @@
-import { createRecommendationRenderer } from "./recommendations.js?v=regional-qualified-20261025-v1";
+import { createRecommendationRenderer } from "./recommendations.js?v=discotope-20261113-v1";
 
 /* ECD Epitope Workbench — frontend (rewrite v4: full-page i18n + interaction fixes)
  *
@@ -125,7 +125,7 @@ async function loadI18n() {
     return;
   }
   for (const lang of ["zh", "en"]) {
-    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=job-eta-20261026-v1`); }
+    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=panel-budget-20261112-v1`); }
     catch (e) { console.error(`i18n load failed for ${lang}`, e); state.i18n[lang] = {}; }
   }
   const saved = localStorage.getItem("ecd.lang");
@@ -206,11 +206,12 @@ function singleChoiceScore(choice) {
 function setJob(status, message, progress = 0, error = null, estimate = null) {
   const names = {
     QUEUED: t("status.QUEUED", "排队中"), RUNNING: t("status.RUNNING", "运行中"),
+    CANCELLING: state.lang === "zh" ? "正在终止" : "Stopping", CANCELLED: state.lang === "zh" ? "已终止" : "Stopped",
     COMPLETE: t("status.COMPLETE", "完成"), WAITING_FOR_AF3_UPLOAD: t("status.WAITING", "等待 AF3"),
     FAILED: t("status.FAILED", "失败"), DEMO: t("status.DEMO", "冻结示例"),
   };
   const cls = {
-    QUEUED: "running", RUNNING: "running", COMPLETE: "complete",
+    QUEUED: "running", RUNNING: "running", CANCELLING: "running", CANCELLED: "failed", COMPLETE: "complete",
     WAITING_FOR_AF3_UPLOAD: "waiting", FAILED: "failed", DEMO: "",
   };
   const badge = $("job-state");
@@ -222,7 +223,7 @@ function setJob(status, message, progress = 0, error = null, estimate = null) {
   $("job-progress").style.width = `${percent}%`;
   $("job-error").hidden = !error;
   $("job-error").textContent = error || "";
-  $("run-button").disabled = status === "RUNNING" || status === "QUEUED";
+  $("run-button").disabled = ["RUNNING", "QUEUED", "CANCELLING"].includes(status);
   $("btn-export-offline").disabled = status !== "COMPLETE";
   const eta = $("job-eta");
   eta.hidden = !["RUNNING", "QUEUED"].includes(status);
@@ -296,7 +297,7 @@ async function loadSavedJob(jobId) {
     setJob(job.status, job.message || "", job.progress || 0, job.error || "", job.time_estimate);
     if (job.status === "COMPLETE" && job.result) {
       adoptResult(job.result, { demo: false, jobId });
-    } else if (job.status === "RUNNING" || job.status === "QUEUED") {
+    } else if (["RUNNING", "QUEUED", "CANCELLING"].includes(job.status)) {
       state.jobId = jobId;
       watchJob(jobId);
     }
@@ -318,7 +319,7 @@ function watchJob(jobId) {
     try {
       const u = JSON.parse(event.data);
       setJob(u.status, u.message, u.progress, u.error, u.time_estimate);
-      if (["COMPLETE", "FAILED", "WAITING_FOR_AF3_UPLOAD"].includes(u.status)) {
+      if (["COMPLETE", "FAILED", "CANCELLED", "WAITING_FOR_AF3_UPLOAD"].includes(u.status)) {
         source.close();
         const job = await api(`/api/jobs/${jobId}?view=display`);
         if (state.eventSource !== source) return;
@@ -342,8 +343,8 @@ function watchJob(jobId) {
 function panelBudgetInput() {
   const minimum = Number($("budget-minimum")?.value || 4);
   const target = Number($("budget-target")?.value || 7);
-  const maximum = Number($("budget-maximum")?.value || 8);
-  const ceiling = 8;
+  const maximum = Number($("budget-maximum")?.value || 12);
+  const ceiling = 12;
   if (![minimum, target, maximum].every(Number.isInteger) || minimum < 1 || minimum > target || target > maximum || maximum > ceiling) {
     throw new Error(`构建体预算需要满足 1 ≤ 最少目标 ≤ 常见目标 ≤ 硬上限 ≤ ${ceiling}`);
   }
@@ -380,6 +381,9 @@ async function submitRun(event) {
         allow_partial: false,
         design_engine: designEngine,
         ml_mode: $("ml-mode").value,
+        execution_protocol: $("execution-protocol").value || null,
+        surface_strategy: "legacy",
+        optimization_profile: "legacy",
         max_sectors: 12,
         ...displayPartitionInput(),
         ...panelBudgetInput(),
@@ -420,6 +424,9 @@ async function submitUpload(event) {
   }
   form.append("design_engine", "joint_v4_ml");
   form.append("ml_mode", $("upload-ml-mode").value);
+  if ($("upload-execution-protocol").value) form.append("execution_protocol", $("upload-execution-protocol").value);
+  form.append("surface_strategy", "legacy");
+  form.append("optimization_profile", "legacy");
   form.append("max_sectors", "12");
   try {
     Object.entries(displayPartitionInput()).forEach(([key, value]) => form.append(key, String(value)));
@@ -1433,6 +1440,33 @@ function renderStep5() {
     : t("design.note", "选择推荐组合以查看结构位置、序列及评分证据。");
   const minimumNote = coveragePolicy ? "；可用合格候选不足，未达到最少目标" : "；合格候选或信息增益不足，未达到最少目标";
   const budgetText = budget ? `入选 ${budget.selected_constructs} 个；目标 ${budget.minimum_constructs}–${budget.maximum_constructs}，常见目标 ${budget.target_constructs}。${budgetReasons[budget.stop_reason] || budget.stop_reason}${budget.minimum_target_met ? "" : minimumNote}` : "";
+  const selectorActive = Boolean(budget?.selection_priority?.includes("epitope_weighted_perturbation"));
+  const fieldValue = (value) => value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "—" : Number(value).toFixed(3);
+  const selectorRows = selectorActive ? (budget.budget_curve || []).map((row) => `<tr>
+    <td>${h(row.construct_count ?? "—")}</td>
+    <td>${h(row.candidate_id ?? "—")}</td>
+    <td>${h(row.sector_first ? recommendationLabel("是", "Yes") : recommendationLabel("否", "No"))}</td>
+    <td>${h(fieldValue(row.physical_field_gain_area_a2))}</td>
+    <td>${h(fieldValue(row.epitope_weighted_field_gain_area_a2))}</td>
+    <td>${h(fieldValue(row.triple_enhancement_delta))}</td>
+    <td>${h(fieldValue(row.perturbation_utility))}</td>
+    <td>${h(row.triple_role || "—")}</td>
+    <td>${h(row.surface_field_epitope_status || "—")}</td>
+  </tr>`).join("") : "";
+  const selectorHtml = selectorActive ? `<details><summary>${h(recommendationLabel("选择依据与逐构建体场增益", "Selection rationale and per-construct field gains"))}</summary>
+    <p>${h(recommendationLabel(
+      "排序顺序：分区优先 → 表位加权扰动场新增量 → 物理扰动场新增量 → 三点相对最强双点父本的边际 → 扰动效用 → 设计面积 → 信息量 → 风险。扰动值和表位权重均为排序代理，不是结合损失或实验效应。",
+      "Order: sector-first → epitope-weighted field gain → physical field gain → triple margin over its strongest double parent → perturbation utility → designable area → information → risk. Perturbation and epitope weights are ranking proxies, not binding loss or measured effects."
+    ))}</p>
+    <div class="table-wrap"><table class="audit"><thead><tr>
+      <th>${h(recommendationLabel("序号", "Index"))}</th><th>${h(recommendationLabel("候选", "Candidate"))}</th>
+      <th>${h(recommendationLabel("新分区", "New region"))}</th><th>${h(recommendationLabel("物理场增益 Å²", "Physical gain Å²"))}</th>
+      <th>${h(recommendationLabel("表位加权场增益 Å²", "Epitope-weighted gain Å²"))}</th>
+      <th>${h(recommendationLabel("三点边际", "Triple margin"))}</th><th>${h(recommendationLabel("扰动效用", "Perturbation utility"))}</th>
+      <th>${h(recommendationLabel("三点角色", "Triple role"))}</th>
+      <th>${h(recommendationLabel("表位来源", "Epitope source"))}</th>
+    </tr></thead><tbody>${selectorRows}</tbody></table></div></details>` : "";
   const designs = [...state.result.designs].sort((left, right) =>
     (left.region_id ?? 999) - (right.region_id ?? 999) || left.id.localeCompare(right.id));
   const renderCard = (design, patch) => {
@@ -1489,8 +1523,8 @@ function renderStep5() {
       ${series.map((design) => renderCard(design, patch)).join("")}
     </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`);
   const budgetHtml = budgetText ? coveragePolicy
-    ? `<details class="compact-panel-budget"><summary>${h(recommendationLabel("附加全局精简面板（不限制逐区推荐）", "Additional compact panel (does not limit regional recommendations)"))}</summary><p>${h(budgetText)}</p></details>`
-    : `<div class="note">${h(budgetText)}</div>` : "";
+    ? `<details class="compact-panel-budget"><summary>${h(recommendationLabel("附加全局精简面板（不限制逐区推荐）", "Additional compact panel (does not limit regional recommendations)"))}</summary><p>${h(budgetText)}</p>${selectorHtml}</details>`
+    : `<div class="note">${h(budgetText)}${selectorHtml}</div>` : "";
   $("design-list").innerHTML = sectorHtml + legacySeries + budgetHtml + renderRunDiagnostics();
   document.querySelectorAll("[data-copy-candidate]").forEach((el) => {
     el.addEventListener("click", async () => {
@@ -1575,6 +1609,7 @@ function renderStep7() {
   const partition = result.partitioning || {};
   const request = result.request || {};
   const v4 = result.joint_v4_ml || {};
+  const physical = result.design_summary?.surface_perturbation || v4.surface_perturbation;
   const rangeLabel = request.analysis_target === "binder"
     ? t("overview.analysisChainRange", "分析链范围") : t("overview.ecd", "ECD 范围");
   const files = Object.keys(result.files || {});
@@ -1594,11 +1629,35 @@ function renderStep7() {
     ${row(t("overview.structureFile", "结构文件名"), source.identifier || selection.selected_identifier || "—")}
     ${row(t("overview.summary", "结果摘要"), `${summary.mapped_ecd_residues ?? "—"} ECD residues · ${partition.actual_regions ?? result.regions.length} patches · ${result.designs.length} ${state.lang === "zh" ? "设计记录（含控制与逐区建议）" : "design records (including controls and sector suggestions)"}`)}
     ${v4.recommendation_status ? row("Joint V4-ML 状态", v4.recommendation_status) : ""}
+    ${physical ? row("真实表面扰动预览", `${physical.status} · ${physical.actual_constructs} verified constructs`) : ""}
+    ${physical?.panel_contract ? row("组合面板目标 / 搜索状态", `${physical.goal_status} / ${physical.search_status}；每项2–3点，hard/all目标80%`) : ""}
     ${v4.sectors ? row("V4 补丁 / 主面板组合", `${v4.sectors.length} / ${(v4.selected_panel?.selected_candidate_ids || []).length}`) : ""}
     ${v4.selected_panel?.sector_recommendations?.length ? row(state.lang === "zh" ? "逐区建议（通过 / 待审查 / 无组合）" : "Sector suggestions (passed / review / no combination)", ["PASSED", "NEAR_THRESHOLD", "NO_COMBINATION"].map((status) => v4.selected_panel.sector_recommendations.filter((item) => item.status === status).length).join(" / ")) : ""}
     ${row(t("overview.coverage", "表面覆盖率"), partition.coverage != null ? fmtPct(partition.coverage) : "—")}
     ${row(t("overview.files", "导出文件"), files.length ? `${files.length} files: ${files.join(", ")}` : "—")}
-    </dl></div>`;
+    </dl>${physical ? physicalCoverageTable(physical) : ""}</div>`;
+}
+
+function physicalCoverageTable(physical) {
+  const local = physical.verified_local_constructs || [];
+  const localTable = local.length ? `<p>已核查的局部构建体：${h(local.length)} 个。局部计算资格与完整面板收敛分别报告；突变按 UniProt 编号显示。</p>
+    <div class="table-wrap"><table><thead><tr><th>突变 / 面板</th><th>配对模型重复</th><th>SPURS ΔΔG</th><th>FoldX ΔΔG</th><th>直接改变面积 Å²</th><th>逐位直接变化 Å²（同组4/5）</th><th>扫描中心面积 Å²</th></tr></thead><tbody>
+    ${local.map((c) => `<tr><td>${h((c.mutation_notations || []).join(" + "))}${(physical.selected_candidate_ids || []).includes(c.candidate_id) ? " · 目标面板" : " · 局部候选"}</td><td>${h(c.model_repeats)}</td>
+      <td>${h(fmt(c.spurs_ddg_kcal_mol))}</td><td>${h(fmt(c.foldx_ddg_kcal_mol))}</td>
+      <td>${h(fmt(c.actual_changed_area_a2))}</td><td>${c.site_evidence?.sites?.length ? c.site_evidence.sites.map((s) => `${h(s.notation)}: ${h(fmt(s.verified_direct_area_a2))}`).join("; ") : "未知"}</td><td>${h(fmt(c.hard_scan_center_area_a2))}</td></tr>`).join("")}
+    </tbody></table></div>` : "";
+  const rows = physical.coverage_curve || [];
+  const info = physical.panel_information;
+  const information = info ? `<p>直接物理改变：${h(fmtPct(info.C_physical_lower_bound))}；12 Å 表面测地扫描机会：${h(fmtPct(info.C_screen_lower_bound))}；二重覆盖：${h(fmtPct(info.double_covered_fraction))}；删除任一构建体后的最差覆盖：${h(fmtPct(info.worst_single_construct_loss_coverage))}。</p><p>几何可区分位置对（至少1个明确相反位）：${h(fmtPct(info.geometric_pair_distinction?.["1"]))}。未知保持未知；几何码不代表实测抗体响应码。</p>` : "";
+  if (!rows.length) return localTable + "<p>真实组合覆盖曲线尚不可用。</p>";
+  const percent = (value) => value == null ? "未知" : fmtPct(value);
+  return information + localTable + `<p>同一真实验证集合的嵌套前缀；扫描机会不等同于抗体检出率。电势未知不会填成零。</p>
+    <div class="table-wrap"><table><thead><tr><th>K / 实际构建数</th><th>Hard / All</th><th>Hard / Designable</th><th>Extended / All</th><th>Extended / Designable</th><th>最大连通盲区 Å²</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${h(r.K)} / ${h(r.actual_constructs)}</td>
+      <td>${h(percent(r.C_hard_all))}</td><td>${h(percent(r.C_hard_designable))}</td>
+      <td>${h(percent(r.C_extended_all))}</td><td>${h(percent(r.C_extended_designable))}</td>
+      <td>${h(r.largest_blind_patch_a2 == null ? "未知" : Number(r.largest_blind_patch_a2).toFixed(1))}</td></tr>`).join("")}
+    </tbody></table></div>`;
 }
 
 /* ---------------- residues ---------------- */
@@ -2179,7 +2238,7 @@ function handleMolstarPick(event) {
   }
   const savedJobId = new URLSearchParams(window.location.search).get("job");
   if (savedJobId) loadSavedJob(savedJobId);
-  else setJob("READY", "", 0);
+  else loadDemo();
 
   /* keep the 3D canvas in sync when the viewport box changes without a
      window resize (sequence dock expanding, panel resize) — otherwise the

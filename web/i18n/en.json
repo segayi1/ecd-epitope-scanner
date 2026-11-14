@@ -28,7 +28,7 @@
   "form.partitionSizeHint": "Prefer 4–12 regions. Analyzed chain length sets surface residues per region: <120 aa targets 7; 120–150 aa targets 8; >150 aa targets 12. Each region has independent recommendations; connectivity and diameter limits still apply.",
   "form.panelBudget": "Optional global compact panel",
   "form.panelBudgetHint": "This budget controls only the additional global panel; qualified recommendations for each region and design principle are retained independently.",
-  "form.panelAdaptive": "Automatically select 4–8 for the compact panel",
+  "form.panelAdaptive": "Automatically select 4–12 for the compact panel",
   "form.partitionSurface": "Maximum surface diameter Å",
   "form.partitionCa": "Maximum Cα diameter Å",
   "form.partitionInvalid": "Leave the region target blank for automatic sizing, or enter an integer from 7 to 15; both diameter limits must be positive.",

@@ -42,12 +42,13 @@
     <details class="run-advanced"><summary data-i18n="workspace.advanced">高级设置与计算预算</summary><div class="run-settings">
     <label class="fld fld-sm"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
+    <label class="fld fld-sm"><span>设计协议 / Design protocol</span><select id="execution-protocol"><option value="">v2 (default)</option><option value="ordinary_site_first_perturbation_v1">Surface perturbation v1</option></select></label>
     <details><summary data-i18n="form.panelBudget">可选全局精简面板</summary>
       <p class="hint" data-i18n="form.panelBudgetHint">以下预算仅控制附加全局面板；各分区按设计原则给出的合格推荐独立保留。</p>
-      <label><input id="adaptive-budget" type="checkbox" checked><span data-i18n="form.panelAdaptive">精简面板自动选4–8个</span></label>
-      <label>最少目标<input id="budget-minimum" type="number" min="1" max="8" value="4" style="width:45px"></label>
-      <label>常见目标<input id="budget-target" type="number" min="1" max="8" value="7" style="width:45px"></label>
-      <label>硬上限<input id="budget-maximum" type="number" min="1" max="8" value="8" style="width:45px"></label>
+      <label><input id="adaptive-budget" type="checkbox" checked><span data-i18n="form.panelAdaptive">精简面板自动选4–12个</span></label>
+      <label>最少目标<input id="budget-minimum" type="number" min="1" max="12" value="4" style="width:45px"></label>
+      <label>常见目标<input id="budget-target" type="number" min="1" max="12" value="7" style="width:45px"></label>
+      <label>硬上限<input id="budget-maximum" type="number" min="1" max="12" value="12" style="width:45px"></label>
     </details>
     <details><summary data-i18n="form.partitionSettings">显示分区设置</summary>
       <label><span data-i18n="form.partitionTarget">每区目标残基数（留空自动）</span><input id="sector-target" type="number" min="7" max="15" step="1" data-i18n-placeholder="form.partitionAuto" placeholder="自动" style="width:70px"></label>
@@ -164,6 +165,7 @@
     </div>
     <label class="fld"><span data-i18n="form.designEngine">设计引擎</span><span>Joint V4-ML</span></label>
     <label class="fld fld-sm"><span>V4 模式</span><select id="upload-ml-mode"><option value="strict">Strict</option><option value="preview">Preview</option></select></label>
+    <label class="fld fld-sm"><span>设计协议 / Design protocol</span><select id="upload-execution-protocol"><option value="">v2 (default)</option><option value="ordinary_site_first_perturbation_v1">Surface perturbation v1</option></select></label>
     <details id="upload-antigen-advanced">
       <summary data-i18n="upload.manual">高级可选：指定链、规范序列或 ECD 边界</summary>
       <div>
@@ -206,6 +208,7 @@
 <script src="/assets/vendor/3Dmol-min.js"></script>
 <script src="/assets/vendor/pdbe-molstar-plugin-3.10.1.js"></script>
 <script src="/assets/renderer.js?v=unified-target-20261025-v1"></script>
-<script type="module" src="/assets/app.js?v=job-eta-20261026-v1"></script>
+<script src="/assets/job_center.js?v=stop-task-20261113-v1" defer></script>
+<script type="module" src="/assets/app.js?v=discotope-20261113-v1"></script>
 </body>
 </html>

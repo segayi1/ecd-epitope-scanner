@@ -380,9 +380,22 @@ def _ordinary_adaptive_sector_recommendation(sector, rows, ledger, surface_areas
 
 def build_sector_recommendations(candidates, sectors, surface_areas, parameters, selected=(), *,
                                  graph=None, records=None, source_provenance=None, epitope_evidence=(),
-                                 confirmation_planning=False):
+                                 confirmation_planning=False, shared_provenance_artifacts=False):
     """Exclusive sector primary plus independently qualified alternatives."""
     candidates = [candidate for candidate in candidates if getattr(candidate, "display_eligible", True)]
+    card_source = source_provenance or {}
+    card_models = card_source.get("models", {})
+    if shared_provenance_artifacts:
+        card_source = {key: value for key, value in card_source.items()
+                       if key not in {"models", "ordinary_adaptive_ledger"}}
+        if "ordinary_adaptive_ledger" in (source_provenance or {}):
+            card_source["ordinary_adaptive_ledger_ref"] = "ordinary_candidate_ledger.json"
+        card_models = {
+            name: {**model, "provenance": {key: value for key, value in model.get("provenance", {}).items()
+                                           if key != "adaptive_ledger"},
+                   "full_provenance_ref": f"v4_manifest.json#/worker_runs/{name}"}
+            for name, model in card_models.items()
+        }
     if parameters.get("optimization_profile") in {"coverage_scan_v2_preview", "coverage_scan_v3_preview"}:
         return _legacy_sector_recommendations(candidates, sectors, surface_areas, parameters, selected)
     from dataclasses import replace
@@ -491,6 +504,9 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                     "coordinate_confidence": confidence, "risk_assessment": risk,
                     "accessibility_score": option.accessibility_score,
                     "single_spurs_ddg_kcal_mol": option.spurs_ddg_kcal_mol,
+                    "discotope_raw_score": epitope.raw_score if epitope else None,
+                    "discotope_calibrated_score": epitope.calibrated_score if epitope else None,
+                    "discotope_status": epitope.status if epitope else "NOT_PROVIDED",
                     "epitope_supported": option.epitope_supported if epitope_evidence and epitope else None,
                     "epitope_prior": option.epitope_prior if epitope_known else None, "epitope_assessment": epitope_summary,
                     "hard_exclusions": option.hard_exclusions, "warnings": option.warnings,
@@ -536,10 +552,10 @@ def build_sector_recommendations(candidates, sectors, surface_areas, parameters,
                 if repeat_diagnostic.get("sampling_decision_diagnostic_status") != "COMPLETE" else
                 "本批FoldX重复值未跨越配置门限；请结合门限两侧槽数与中位数查看。"
             )
-            row["provenance"] = {"source": source_provenance or {}, "generation_anchor": candidate.sector_id,
+            row["provenance"] = {"source": card_source, "generation_anchor": candidate.sector_id,
                                   "targeted_hypotheses": candidate.targeted_hypotheses,
                                   "residue_numbering": "UniProt positions; author chain/residue mapping retained"}
-            row["provenance"]["models"] = (source_provenance or {}).get("models", {})
+            row["provenance"]["models"] = card_models
             row["provenance"]["combination_models"] = evidence.provenance if evidence else {}
             row["provenance"]["structure_evidence"] = (source_provenance or {}).get("structure_evidence", {})
             audits = (source_provenance or {}).get("resource_audits", {})

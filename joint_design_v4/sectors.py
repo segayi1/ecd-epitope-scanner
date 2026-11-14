@@ -63,7 +63,7 @@ def _build_legacy_sectors(
     epitope: list[EpitopeEvidence],
     graph: dict[int, dict[int, float]],
     records: dict[int, Any],
-    max_sectors: int = 7,
+    max_sectors: int = 12,
     parameters: dict[str, Any] | None = None,
     diagnostics: dict[str, Any] | None = None,
     _budget: dict[str, int] | None = None,
@@ -192,8 +192,14 @@ def _build_legacy_sectors(
         for p in graph if p in records and records[p].ca is not None
     }
 
+    strict_diameter = bool(params.get('_induced_diameter', False))
+    bounded_cache = {}
+
     def bounded(group: set[int]) -> bool:
-        return all(
+        key = frozenset(group)
+        if key in bounded_cache:
+            return bounded_cache[key]
+        pairwise = all(
             distances[left].get(right, float("inf")) <= max_geodesic
             and (
                 left not in coordinates_by_position or right not in coordinates_by_position
@@ -201,6 +207,14 @@ def _build_legacy_sectors(
             )
             for left in group for right in group if left < right
         )
+        if pairwise and strict_diameter:
+            pairwise = all(
+                len(paths := _distance(graph, left, group)) == len(group)
+                and max(paths.values(), default=0.0) <= max_geodesic
+                for left in sorted(group)
+            )
+        bounded_cache[key] = pairwise
+        return pairwise
 
     # The requested count is a display target. Connectivity and physical extent
     # are invariants: never join a tail and core merely to keep seven colors.
@@ -436,11 +450,13 @@ def _build_legacy_sectors(
         fail("UNSATISFIED_PARTITION_CONSTRAINTS")
     audit.update({"status": "COMPLETE", "realized_region_count": len(groups)})
     return _sector_outputs(groups, by_position, epi, graph, records, distances,
-                           max_sectors, min_residues, min_area, max_geodesic, max_euclidean)
+                           max_sectors, min_residues, min_area, max_geodesic, max_euclidean,
+                           strict_diameter)
 
 
 def _sector_outputs(groups, by_position, epi, graph, records, distances,
-                    max_sectors, min_residues, min_area, max_geodesic, max_euclidean):
+                    max_sectors, min_residues, min_area, max_geodesic, max_euclidean,
+                    strict_diameter=False):
     components = _components(graph)
     output = []
     for index, group in enumerate(sorted(groups, key=lambda value: min(value)), start=1):
@@ -463,9 +479,8 @@ def _sector_outputs(groups, by_position, epi, graph, records, distances,
             flags.append("SMALL_DISPLAY_REGION")
         if len(groups) > max(1, max_sectors):
             flags.append("DISPLAY_COUNT_EXPANDED_FOR_GEOMETRY")
-        # Diameter is a molecular-surface geodesic and therefore uses the full
-        # surface graph; artificial sector boundaries must not lengthen it.
-        group_distances = {position: distances[position] for position in group}
+        group_distances = {position: (_distance(graph, position, group) if strict_diameter
+                                      else distances[position]) for position in group}
         induced_reachable = _distance(graph, min(group), group)
         geodesic_diameter = max(
             (
@@ -536,7 +551,7 @@ def build_epitope_sectors(
     epitope: list[EpitopeEvidence],
     graph: dict[int, dict[int, float]],
     records: dict[int, Any],
-    max_sectors: int = 7,
+    max_sectors: int = 12,
     parameters: dict[str, Any] | None = None,
     diagnostics: dict[str, Any] | None = None,
 ) -> list[V4Sector]:
@@ -571,7 +586,8 @@ def build_epitope_sectors(
         'maximum_geodesic_diameter_a': maximum_geo, 'maximum_euclidean_diameter_a': maximum_ca,
         'target_sector_residues': target, 'preferred_minimum_sector_residues': preferred_min,
         'preferred_maximum_sector_residues': preferred_max, 'size_is_soft_target': True,
-        'diameter_basis': 'full_eligible_residue_graph_shortest_paths',
+        'diameter_basis': ('full_eligible_residue_graph_shortest_paths' if legacy else
+                           'induced_eligible_residue_graph_shortest_paths'),
         'connectivity_basis': 'induced_eligible_residue_graph_with_contracted_surface_transit',
         'search_limit': PARTITION_SEARCH_LIMIT, 'search_states': 0, 'repairs': []})
     if has_count_range:
@@ -635,18 +651,21 @@ def build_epitope_sectors(
                 valid_cache[key] = (len(group) >= minimum_size
                     and sum(by_position[p].mapped_surface_area_a2 for p in sorted(group)) >= minimum_area
                     and all(group <= compatible[p] for p in group)
-                    and set(_distance(graph, min(group), group)) == group)
+                    and all(len(paths := _distance(graph, p, group)) == len(group)
+                            and max(paths.values(), default=0.0) <= maximum_geo
+                            for p in sorted(group)))
             return valid_cache[key]
 
         def quality(groups):
             sizes = [len(g) for g in groups]
             size_penalty = sum(max(preferred_min - n, 0) ** 2 + max(n - preferred_max, 0) ** 2
                                for n in sizes)
+            requested_penalty = (len(groups) - max(1, max_sectors)) ** 2
             if has_count_range:
                 count_penalty = (max(preferred_count_min - len(groups), 0) ** 2
                                  + max(len(groups) - preferred_count_max, 0) ** 2)
-                return (size_penalty, count_penalty, len(groups), sum((n - target) ** 2 for n in sizes))
-            return (size_penalty, len(groups), sum((n - target) ** 2 for n in sizes))
+                return (count_penalty, requested_penalty, size_penalty, sum((n - target) ** 2 for n in sizes))
+            return (requested_penalty, size_penalty, sum((n - target) ** 2 for n in sizes))
 
         def adjacent(left, right):
             return any(q in right for p in left for q in graph[p])
@@ -662,7 +681,8 @@ def build_epitope_sectors(
         for count in starts:
             attempt = {}
             try:
-                candidate = _build_legacy_sectors(surface, epitope, graph, records, count, params, attempt, budget)
+                candidate = _build_legacy_sectors(surface, epitope, graph, records, count,
+                                                  params | {'_induced_diameter': True}, attempt, budget)
                 groups = [set(row.residue_positions) for row in candidate]
                 attempt['initial_sizes'] = [len(g) for g in groups]
                 candidates.append((groups, attempt['repairs'], count))
@@ -782,12 +802,13 @@ def build_epitope_sectors(
             raise PartitionConstraintError('UNSATISFIED_PARTITION_CONSTRAINTS: 最终显示分区未通过硬验收', audit)
         audit.update(status='COMPLETE', realized_region_count=len(groups), search_states=budget['states'],
             chosen_initial_region_count=chosen_count, repairs=repairs, objective=list(objective),
-            objective_order=(['squared_preferred_size_range_deviation', 'squared_preferred_count_range_deviation',
-                              'region_count', 'squared_target_size_deviation'] if has_count_range else
-                             ['squared_preferred_range_deviation', 'region_count', 'squared_target_size_deviation']),
+            objective_order=(['squared_preferred_count_range_deviation', 'squared_requested_count_deviation',
+                              'squared_preferred_size_range_deviation', 'squared_target_size_deviation'] if has_count_range else
+                             ['squared_requested_count_deviation', 'squared_preferred_range_deviation',
+                              'squared_target_size_deviation']),
             optimization_status='SEARCH_BUDGET_EXHAUSTED' if exhausted else 'LOCAL_SEARCH_COMPLETE')
         result = _sector_outputs(groups, by_position, {r.residue.uniprot_pos: r for r in epitope},
-            graph, records, distances, max_sectors, minimum_size, minimum_area, maximum_geo, maximum_ca)
+            graph, records, distances, max_sectors, minimum_size, minimum_area, maximum_geo, maximum_ca, True)
 
     distances = {p: _distance(graph, p, component) for component in _components(graph) for p in component}
     audit['region_metrics'] = []

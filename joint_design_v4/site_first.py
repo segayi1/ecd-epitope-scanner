@@ -11,11 +11,14 @@ from dataclasses import replace
 
 from .models import V4Candidate
 from .candidate_search import _coverage_from_distances, _distances
-from .regional_perturbation import (_candidate, _option, _position, _span_ok, candidate_impact,
-                                    complete_candidate_impact, dominates, rank_impacts)
+from .regional_perturbation import (PERTURBATION_SELECTOR_POLICY, _candidate, _option, _position,
+                                    _span_ok, candidate_impact, complete_candidate_impact, dominates,
+                                    exact_double_parent_completeness, perturbation_margin,
+                                    perturbation_utility, rank_impacts)
 from .spatial_support import annotate_spatial_support, spatial_priority
 
 POLICY = "ordinary_site_first_v2"
+PERTURBATION_POLICY = "ordinary_site_first_perturbation_v1"
 PRINCIPLES = ("epitope_support", "mechanism_pareto", "sector_coverage")
 
 
@@ -119,9 +122,36 @@ def _geometry_key(geometry):
     return (-float(values[0]), -float(values[1]), float(values[2]), -float(values[3]))
 
 
-def _triple_precedes_parents(triple, parents, principle, gain):
+def _triple_precedes_parents(triple, parents, principle, gain, *, protocol=POLICY):
     """Use the strongest comparable exact double parent, never a weak surrogate."""
-    if gain is None or gain < .05 or not parents:
+    if protocol == POLICY:
+        if gain is None or gain < .05 or not parents:
+            return False
+        if principle == "mechanism_pareto":
+            best_parent = rank_impacts(parents, assess_sensitivity=False)[0]
+            return dominates(candidate_impact(triple), candidate_impact(best_parent))
+        if principle == "sector_coverage":
+            return float(triple.geometry_support.get("target_mean_coverage_fraction") or 0.0) >= max(
+                float(parent.geometry_support.get("target_mean_coverage_fraction") or 0.0) for parent in parents) + .05
+        if any(option.epitope_evidence_status != "SCORED" or option.epitope_prior is None
+               for option in triple.mutations):
+            return False
+        if any(option.epitope_evidence_status != "SCORED" or option.epitope_prior is None
+               for parent in parents for option in parent.mutations):
+            return False
+        return _principle_key(triple, principle) < min(_principle_key(parent, principle) for parent in parents)
+    if not parents:
+        return False
+    if not exact_double_parent_completeness(triple, parents):
+        return False
+    if principle == "epitope_support" and any(
+        option.epitope_evidence_status != "SCORED" or option.epitope_prior is None
+        for candidate in [triple, *parents] for option in candidate.mutations
+    ):
+        return False
+    if (perturbation_margin(triple, parents, require_exact_parents=True) or 0.0) > 1e-12:
+        return True
+    if gain is None or gain < .05:
         return False
     if principle == "mechanism_pareto":
         best_parent = rank_impacts(parents, assess_sensitivity=False)[0]
@@ -129,12 +159,6 @@ def _triple_precedes_parents(triple, parents, principle, gain):
     if principle == "sector_coverage":
         return float(triple.geometry_support.get("target_mean_coverage_fraction") or 0.0) >= max(
             float(parent.geometry_support.get("target_mean_coverage_fraction") or 0.0) for parent in parents) + .05
-    if any(option.epitope_evidence_status != "SCORED" or option.epitope_prior is None
-           for option in triple.mutations):
-        return False
-    if any(option.epitope_evidence_status != "SCORED" or option.epitope_prior is None
-           for parent in parents for option in parent.mutations):
-        return False
     return _principle_key(triple, principle) < min(_principle_key(parent, principle) for parent in parents)
 
 
@@ -145,7 +169,10 @@ def _exact_parent_mutations(triple):
 
 
 class SiteFirstQueue:
-    def __init__(self):
+    def __init__(self, protocol=POLICY):
+        if protocol not in {POLICY, PERTURBATION_POLICY}:
+            raise ValueError(f"Unknown site-first protocol: {protocol}")
+        self._protocol = protocol
         self._options = {}
         self._sectors = {}
         self._lanes = {}
@@ -154,13 +181,15 @@ class SiteFirstQueue:
         self._geometry = {}
         self._sequence = None
         self._closed = False
-        self._ledger = {"schema_version": "ordinary_site_first_ledger_v3", "policy": POLICY,
+        self._ledger = {"schema_version": "ordinary_site_first_ledger_v3", "policy": protocol,
                         "representative_policy": "role_ladder_3_6_7_v1",
                         "site_set_count": 0, "geometry_evaluations": 0,
                         "expanded_candidate_count": 0, "deep_candidate_count": 0,
                         "initial_candidate_count": 0,
                         "site_preparation_seconds": 0.0, "representative_expansion_seconds": 0.0,
                         "uncompleted_gaps": []}
+        if protocol == PERTURBATION_POLICY:
+            self._ledger["selector_policy"] = PERTURBATION_SELECTOR_POLICY
 
     def close(self):
         self._closed = True
@@ -173,6 +202,11 @@ class SiteFirstQueue:
             return self._lanes[(str(sector), principle)]
         except KeyError:
             raise KeyError(f"Unknown site-first lane: {sector}/{principle}") from None
+
+    def _triple_admitted(self, group):
+        return (group.get("triple_admitted", False)
+                if self._protocol == PERTURBATION_POLICY
+                else group.get("triple_gain_gate_passed", False))
 
     def status(self, sector, principle):
         lane = self._lane(sector, principle)
@@ -227,7 +261,7 @@ class SiteFirstQueue:
         for index in range(lane["group_index"], len(lane["groups"])):
             group = lane["groups"][index]
             if ((principle == "epitope_support" and group["site_priority"] is None)
-                    or (group["order"] == 3 and not group["triple_gain_gate_passed"])):
+                    or (group["order"] == 3 and not shadow._triple_admitted(group))):
                 continue
             if index == lane["group_index"] and group["items"] is not None:
                 rows = [deepcopy(self._candidate[row["id"]]) for row in group["items"]
@@ -245,13 +279,13 @@ class SiteFirstQueue:
         while lane["group_index"] < len(lane["groups"]):
             group = lane["groups"][lane["group_index"]]
             missing_epitope = principle == "epitope_support" and group["site_priority"] is None
-            failed_gain = group["order"] == 3 and not group["triple_gain_gate_passed"]
+            failed_gain = group["order"] == 3 and not self._triple_admitted(group)
             if not missing_epitope and not failed_gain:
                 break
             if not group.get("preblocked_recorded"):
                 self._ledger["uncompleted_gaps"].append({"sector_id": str(sector), "principle": principle,
                     "site_set_id": group["site_set_id"], "status": "epitope_prior_missing" if missing_epitope
-                    else "regional_gain_below_or_unknown_threshold",
+                    else "triple_margin_not_positive",
                     "measured_gain": group["gain"], "required_gain": .05})
                 group["preblocked_recorded"] = True
             if missing_epitope:
@@ -279,7 +313,7 @@ class SiteFirstQueue:
             for later in range(index + 1, len(groups)):
                 group = groups[later]
                 if (set(group["positions"]).issubset(covered_positions)
-                        or (group["order"] == 3 and not group["triple_gain_gate_passed"])
+                        or (group["order"] == 3 and not self._triple_admitted(group))
                         or (principle == "epitope_support" and group["site_priority"] is None)):
                     continue
                 # Suspended pending rows are regenerated from evidence when resumed.
@@ -293,7 +327,7 @@ class SiteFirstQueue:
     def needs_exploration(self, covered_positions):
         return any(
             not set(group["positions"]).issubset(covered_positions)
-            and (group["order"] != 3 or group["triple_gain_gate_passed"])
+            and (group["order"] != 3 or self._triple_admitted(group))
             and (principle != "epitope_support" or group["site_priority"] is not None)
             for (_, principle), lane in self._lanes.items() if lane["state"] == "ready"
             for group in lane["groups"][lane["group_index"]:]
@@ -394,10 +428,36 @@ class SiteFirstQueue:
                 candidate.parent_candidate_ids = sorted(_identity([o for o in selected if o is not omitted],
                                                                     group["sector_id"])
                                                         for omitted in selected)
-            candidate.impact_evidence.update({"protocol": POLICY, "site_set_id": group["site_set_id"],
-                "source_site_set_id": group["site_set_id"], "representative_tier": tier,
-                "approximate_pre_ranking": {"regional_gain": group["gain"], "geometry": group["geometry"]},
-                "representative_roles": [row[0] for row in combo]})
+                if self._protocol == PERTURBATION_POLICY:
+                    parents = [_candidate(self._sectors[group["sector_id"]], list(mutations), 2)
+                               for mutations in _exact_parent_mutations(candidate)
+                               if not sequence_reasons(self._sequence, [
+                                   (_position(o), o.residue.one_letter, o.mutant_aa) for o in mutations])]
+                    parent_complete = exact_double_parent_completeness(candidate, parents)
+                    delta = perturbation_margin(candidate, parents, require_exact_parents=True)
+                    coverage_gain = group.get("gain")
+                    coverage_admitted = coverage_gain is not None and coverage_gain >= .05
+                    candidate.triple_role = "ENHANCEMENT" if delta is not None and delta > 1e-12 else (
+                        "COVERAGE" if coverage_admitted else "CONTROL")
+                    candidate.risk_components.update({
+                        "regional_higher_order_gain": coverage_gain,
+                        "triple_enhancement_delta": delta,
+                        "triple_exact_parent_count": len(parents),
+                        "triple_exact_parents_complete": parent_complete,
+                        "triple_coverage_gate_passed": coverage_admitted,
+                        "triple_enhancement_gate_passed": parent_complete and delta is not None and delta > 1e-12,
+                        "triple_gate_passed": parent_complete and (
+                            coverage_admitted or (delta is not None and delta > 1e-12)),
+                    })
+                    if not candidate.risk_components["triple_gate_passed"]:
+                        continue
+            provenance = {"protocol": self._protocol, "site_set_id": group["site_set_id"],
+                          "source_site_set_id": group["site_set_id"], "representative_tier": tier,
+                          "approximate_pre_ranking": {"regional_gain": group["gain"], "geometry": group["geometry"]},
+                          "representative_roles": [row[0] for row in combo]}
+            if self._protocol == PERTURBATION_POLICY:
+                provenance["selector_policy"] = PERTURBATION_SELECTOR_POLICY
+            candidate.impact_evidence.update(provenance)
             candidate.epitope_score = sum(float(getattr(o, "epitope_prior", 0.0) or 0.0) for o in selected)
             candidate.epitope_supported_sites = sum(bool(getattr(o, "epitope_supported", False)) for o in selected)
             candidate.impact_evidence["epitope_evidence_status"] = (
@@ -521,10 +581,10 @@ class SiteFirstQueue:
 
 
 def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *, maximum_span=24.0,
-                            records=None, epitope_applicable=True):
+                            records=None, epitope_applicable=True, protocol=POLICY):
     """Build all legal local site sets and only their initial representative layer."""
     from .coverage_profile import sequence_reasons
-    store = SiteFirstQueue()
+    store = SiteFirstQueue(protocol=protocol)
     store._sequence = canonical_sequence
     store._graph = graph
     prepare_start = time.perf_counter()
@@ -607,10 +667,13 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
                     candidate = _candidate(sector, selected, len(selected))
                     candidate.candidate_id = _identity(selected, sector.sector_id)
                     candidate.geometry_support = deepcopy(definition["geometry"])
-                    candidate.impact_evidence.update({"protocol": POLICY, "site_set_id": definition["site_set_id"],
+                    provenance = {"protocol": protocol, "site_set_id": definition["site_set_id"],
                         "source_site_set_id": definition["site_set_id"], "representative_tier": "site_witness",
                         "approximate_pre_ranking": {"regional_gain": definition["gain"], "geometry": definition["geometry"]},
-                        "representative_roles": [role] * len(selected)})
+                        "representative_roles": [role] * len(selected)}
+                    if protocol == PERTURBATION_POLICY:
+                        provenance["selector_policy"] = PERTURBATION_SELECTOR_POLICY
+                    candidate.impact_evidence.update(provenance)
                     candidate.epitope_score = sum(float(getattr(o, "epitope_prior", 0.0) or 0.0) for o in selected)
                     candidate.epitope_supported_sites = sum(bool(getattr(o, "epitope_supported", False)) for o in selected)
                     candidate.impact_evidence["epitope_evidence_status"] = (
@@ -635,6 +698,8 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
                 definition["witness_count"] = len(witnesses)
                 group = {**definition, "sector_id": str(sector.sector_id), "items": None,
                          "history": [], "expansion": True, "expanded": 0, "tier": "initial"}
+                if protocol == PERTURBATION_POLICY:
+                    group["triple_admitted"] = definition["order"] == 2
                 groups.append(group)
                 groups_by_positions[positions] = group
             if principle == "mechanism_pareto" and all_mechanism_witnesses:
@@ -647,7 +712,7 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
             by_positions = {tuple(g["positions"]): g for g in groups}
             for group in groups:
                 group["promoted"] = False
-                if group["order"] != 3 or not group["triple_gain_gate_passed"] or not group["witness_count"]:
+                if group["order"] != 3 or (protocol == POLICY and not group["triple_gain_gate_passed"]):
                     continue
                 parents = [by_positions.get(pair) for pair in itertools.combinations(group["positions"], 2)]
                 parents = [parent for parent in parents if parent]
@@ -670,8 +735,20 @@ def build_site_first_queues(single, sectors, graph, areas, canonical_sequence, *
                         parent_candidates.append(parent)
                     if not parent_candidates:
                         continue
+                    if protocol == PERTURBATION_POLICY:
+                        parent_complete = exact_double_parent_completeness(triple, parent_candidates)
+                        enhancement_delta = perturbation_margin(
+                            triple, parent_candidates, require_exact_parents=True)
+                        group["triple_enhancement_delta"] = enhancement_delta
+                        group["triple_exact_parent_count"] = len(parent_candidates)
+                        group["triple_exact_parents_complete"] = parent_complete
+                        group["triple_enhancement_gate_passed"] = (
+                            parent_complete and enhancement_delta is not None and enhancement_delta > 1e-12)
+                        group["triple_admitted"] = bool(
+                            parent_complete and (
+                                group["triple_gain_gate_passed"] or group["triple_enhancement_gate_passed"]))
                     group["promoted"] = _triple_precedes_parents(
-                        triple, parent_candidates, principle, group["gain"])
+                        triple, parent_candidates, principle, group["gain"], protocol=protocol)
             groups.sort(key=lambda g: (not g["promoted"], g["order"], g["site_priority"] is None,
                                        g["site_priority"] or (),
                                        -(g["gain"] or 0), g["site_set_id"]))

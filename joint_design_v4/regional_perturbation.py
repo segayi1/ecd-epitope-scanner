@@ -25,6 +25,16 @@ GROUP_NAMES = tuple(GROUPS)
 DOUBLE_CAP = 20
 TRIPLE_CAP = 10
 DOUBLE_PARENT_CAP = 12
+EXACT_DOUBLE_PARENT_COUNT = 3
+PERTURBATION_SELECTOR_POLICY = "epitope_weighted_surface_perturbation_v1"
+PERTURBATION_AXIS_SCALES = {
+    "charge_delta": 1.0,
+    "volume_delta_a3": 100.0,
+    "hydropathy_delta": 4.5,
+    "donor_delta": 2.0,
+    "acceptor_delta": 2.0,
+    "aromatic_delta": 1.0,
+}
 
 
 def _finite(value):
@@ -114,10 +124,84 @@ def candidate_impact(candidate) -> dict[str, Any]:
         "missing_axes": sorted(missing),
         "complete": not missing and bool(mutations),
         "signed_change_summary": signed,
-        "aromatic_mutant_count": sum(row["mutant"] in "FWY" for row in raw_mutations),
-        "introduced_aromatic_count": sum(row["mutant"] in "FWY" and row["wt"] not in "FWY" for row in raw_mutations),
+        "aromatic_mutant_count": sum((row["mutant"] or "") in "FWY" for row in raw_mutations),
+        "introduced_aromatic_count": sum((row["mutant"] or "") in "FWY"
+                                         and (row["wt"] or "") not in "FWY" for row in raw_mutations),
         "mutations": raw_mutations,
     }
+
+
+def perturbation_utility(candidate) -> float | None:
+    """Return a deterministic surface-perturbation proxy on a common scale.
+
+    The score sums mutation-level nominal chemical changes, scales exposure
+    monotonically, and gives observed epitope prior a monotonic multiplier.
+    Missing epitope evidence keeps the neutral multiplier 1.0.
+    """
+    impact = candidate_impact(candidate)
+    if not impact.get("complete"):
+        return None
+    strength = 0.0
+    for axis, scale in PERTURBATION_AXIS_SCALES.items():
+        value = _finite(impact.get("mean_absolute_delta", {}).get(axis))
+        if value is None:
+            return None
+        strength += value / scale
+    strength *= max(1, int(impact.get("order", 0))) / len(PERTURBATION_AXIS_SCALES)
+    exposure = _finite(impact.get("exposure_mean"))
+    if exposure is None:
+        return None
+    exposure_multiplier = .5 + .5 * min(1.0, max(0.0, exposure))
+    mutations = _mutations(candidate)
+    if mutations and all(
+        getattr(option, "epitope_evidence_status", "MISSING") == "SCORED"
+        and _finite(getattr(option, "epitope_prior", None)) is not None
+        for option in mutations
+    ):
+        prior = sum(min(1.0, max(0.0, float(option.epitope_prior))) for option in mutations) / len(mutations)
+    else:
+        prior = .5
+    return strength * exposure_multiplier * (.5 + prior)
+
+
+def exact_double_parent_completeness(candidate, parents) -> bool:
+    """Require all three exact AA-preserving double parents with complete evidence."""
+    mutations = _mutations(candidate)
+    if len(mutations) != 3 or len(parents) != EXACT_DOUBLE_PARENT_COUNT:
+        return False
+    expected = {
+        tuple(sorted((_position(option), getattr(option, "mutant_aa", None))
+                     for index, option in enumerate(mutations) if index != omitted))
+        for omitted in range(len(mutations))
+    }
+    observed = set()
+    for parent in parents:
+        parent_mutations = _mutations(parent)
+        if len(parent_mutations) != 2:
+            return False
+        signature = tuple(sorted((_position(option), getattr(option, "mutant_aa", None))
+                                 for option in parent_mutations))
+        if signature not in expected or signature in observed:
+            return False
+        impact = candidate_impact(parent)
+        if not impact.get("complete") or perturbation_utility(parent) is None:
+            return False
+        observed.add(signature)
+    return observed == expected
+
+
+def perturbation_margin(candidate, parents, *, require_exact_parents=False) -> float | None:
+    """Return candidate utility minus its strongest exact parent utility."""
+    if getattr(candidate, "order", len(_mutations(candidate))) <= 2 or not parents:
+        return None
+    if require_exact_parents and not exact_double_parent_completeness(candidate, parents):
+        return None
+    utilities = [perturbation_utility(parent) for parent in parents]
+    utilities = [value for value in utilities if value is not None]
+    if not utilities:
+        return None
+    value = perturbation_utility(candidate)
+    return value - max(utilities) if value is not None else None
 
 
 def _record(candidate):

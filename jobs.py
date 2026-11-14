@@ -116,7 +116,7 @@ class JobStore:
             # Jobs left QUEUED/RUNNING by a previous process can never finish:
             # the single worker thread died with the old interpreter.  Mark them
             # failed so SSE streams terminate and the UI does not spin forever.
-            for row in connection.execute("SELECT id,owner_pid FROM jobs WHERE status IN ('QUEUED', 'RUNNING')"):
+            for row in connection.execute("SELECT id,owner_pid FROM jobs WHERE status IN ('QUEUED', 'RUNNING', 'CANCELLING')"):
                 if row["owner_pid"] is not None and _process_alive(row["owner_pid"]):
                     continue
                 connection.execute(
@@ -257,7 +257,8 @@ class JobStore:
         """Return list-page fields without parsing request or result JSON."""
         with self._connect() as connection:
             rows = connection.execute(
-                """SELECT id,status,stage,progress,message,summary_json,error,created_at,updated_at
+                """SELECT id,status,stage,progress,message,summary_json,error,created_at,updated_at,
+                          json_extract(request_json, '$.identifier') AS identifier
                    FROM jobs WHERE owner_id=? ORDER BY created_at DESC LIMIT ?""",
                 (owner_id, limit),
             ).fetchall()
@@ -334,6 +335,10 @@ class JobStore:
         return removed
 
 
+class JobCancelled(BaseException):
+    pass
+
+
 class JobRunner:
     def __init__(self, store: JobStore):
         self.store = store
@@ -348,10 +353,28 @@ class JobRunner:
             self._active.add(job_id)
         self.executor.submit(self._run, job_id)
 
+    def cancel(self, job_id: str) -> dict[str, Any]:
+        with self._lock:
+            job = self.store.get(job_id)
+            status = job["status"]
+            if status in {"CANCELLED", "CANCELLING"}:
+                return job
+            if status not in {"QUEUED", "RUNNING", "WAITING_FOR_AF3_UPLOAD"}:
+                raise ValueError("Job is already finished")
+            if status == "RUNNING":
+                return self.store.update(job_id, status="CANCELLING", message="Cancellation requested; waiting for the current pipeline step to finish")
+            return self.store.update(job_id, status="CANCELLED", stage="CANCELLED", message="Job cancelled")
+
+    def _update_running(self, job_id: str, **values: Any) -> None:
+        with self._lock:
+            if self.store.get(job_id)["status"] in {"CANCELLING", "CANCELLED"}:
+                raise JobCancelled()
+            self.store.update(job_id, **values)
+
     def _run(self, job_id: str) -> None:
         try:
             request = self.store.request_for(job_id)
-            self.store.update(
+            self._update_running(
                 job_id,
                 status="RUNNING",
                 stage="FETCHING",
@@ -381,7 +404,7 @@ class JobRunner:
             def progress(stage: str, value: float, message: str) -> None:
                 # Publish terminal state only with the result below.
                 status = "RUNNING"
-                self.store.update(
+                self._update_running(
                     job_id,
                     status=status,
                     stage=stage,
@@ -398,7 +421,9 @@ class JobRunner:
                     "outcome", "FORMAL_RECOMMENDATIONS_BLOCKED"
                 )
                 completion_message = f"Analysis complete; no formal panel: {outcome}. See recommendation diagnostics."
-            self.store.update(
+            from .joint_design_v4.reporting import project_display_analysis
+            result = project_display_analysis(result, compact_bulk_identity=False)
+            self._update_running(
                 job_id,
                 status="COMPLETE",
                 stage="COMPLETE",
@@ -408,7 +433,8 @@ class JobRunner:
                 error=None,
             )
         except WaitingForAF3 as exc:
-            self.store.update(
+            try:
+                self._update_running(
                 job_id,
                 status="WAITING_FOR_AF3_UPLOAD",
                 stage="WAITING_FOR_AF3_UPLOAD",
@@ -416,15 +442,17 @@ class JobRunner:
                 message=str(exc),
                 result_json={"candidates": exc.candidates},
                 error=None,
-            )
+                )
+            except JobCancelled:
+                self.store.update(job_id, status="CANCELLED", stage="CANCELLED", message="Job cancelled")
+        except JobCancelled:
+            self.store.update(job_id, status="CANCELLED", stage="CANCELLED", message="Job cancelled")
         except Exception as exc:
-            self.store.update(
-                job_id,
-                status="FAILED",
-                stage="FAILED",
-                message="Pipeline failed",
-                error=f"{type(exc).__name__}: {exc}",
-            )
+            try:
+                self._update_running(job_id, status="FAILED", stage="FAILED", message="Pipeline failed",
+                                     error=f"{type(exc).__name__}: {exc}")
+            except JobCancelled:
+                self.store.update(job_id, status="CANCELLED", stage="CANCELLED", message="Job cancelled")
         finally:
             with self._lock:
                 self._active.discard(job_id)

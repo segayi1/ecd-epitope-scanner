@@ -10,7 +10,7 @@ function recommendationRepeatCount(item) {
   const protocol = item?.execution_protocol || audit?.execution_protocol || state.result?.execution_protocol
     || state.result?.joint_v4_ml?.execution_protocol || state.result?.request?.execution_protocol;
   const name = typeof protocol === "string" ? protocol : protocol?.name;
-  if (["ordinary_three_principle_adaptive_v1", "ordinary_adaptive_v1", "ordinary_site_first_v2"].includes(name)) {
+  if (["ordinary_three_principle_adaptive_v1", "ordinary_adaptive_v1", "ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"].includes(name)) {
     const declared = Number(typeof protocol === "object" ? protocol.foldx_repeat_count : NaN);
     const actual = Number(audit?.foldx_repeat_count ?? audit?.foldx_repeat_slots?.length);
     return [3, 10].includes(declared) ? declared : [3, 10].includes(actual) ? actual : 3;
@@ -85,7 +85,7 @@ function recommendationQualified(item) {
   const protocol = item?.execution_protocol || state.result?.execution_protocol
     || state.result?.joint_v4_ml?.execution_protocol || state.result?.request?.execution_protocol;
   const protocolName = typeof protocol === "string" ? protocol : protocol?.name;
-  const siteFirst = protocolName === "ordinary_site_first_v2";
+  const siteFirst = ["ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"].includes(protocolName);
   const audit = recommendationRepeatAudit(item, design);
   const confirmedTenSlot = recommendationTenSlotConfirmation(item, design);
   return (!siteFirst || (item?.formal_eligible === true
@@ -246,6 +246,7 @@ function recommendationRegion(id) {
 function recommendationCode(code) {
   const labels = {
     mechanism_pareto: ["机制扰动代表", "Mechanism perturbation representative"],
+    budget_limited: ["模型评分预算已用尽，该原则尚无已验证推荐", "Model scoring budget exhausted; no validated recommendation for this principle"],
     charge_extreme: ["电荷变化较大", "Larger charge change"],
     volume_extreme: ["体积变化较大", "Larger volume change"],
     hydropathy_extreme: ["疏水性变化较大", "Larger hydropathy change"],
@@ -620,6 +621,8 @@ function recommendationDetails(item, design) {
     }
   }
   const siteEvidence = sites.map((site) => {
+    const discotope = (state.result.joint_v4_ml?.epitope_evidence || []).find(
+      (row) => row.residue?.uniprot_pos === (site.position ?? site.uniprot_pos)) || {};
     const confidence = site.coordinate_confidence || structure;
     const confidenceText = confidence.coordinate_available === false ? recommendationLabel("坐标不可用，需要审查", "Coordinates unavailable; review required")
       : confidence.mapping_matches === false ? recommendationLabel("残基映射未匹配，需要审查", "Residue mapping mismatch; review required")
@@ -637,6 +640,8 @@ function recommendationDetails(item, design) {
     confidenceText,
     site.epitope_assessment?.conclusion || (site.epitope_supported == null ? recommendationLabel("支持标记未知", "Support flag unknown") : site.epitope_supported ? recommendationLabel("达到表位先验支持标记条件", "Epitope prior support flag satisfied") : typeof site.epitope_prior === "number" ? recommendationLabel("有先验评分，未达支持标记条件", "Prior score present; support flag condition not met") : recommendationLabel("未标记支持，先验评分缺失", "Not flagged as supported; prior score missing")),
     recommendationNumber(site.epitope_prior),
+    recommendationNumber(site.discotope_raw_score ?? discotope.raw_score),
+    recommendationNumber(site.discotope_calibrated_score ?? discotope.calibrated_score),
     ...(showSiteImpact ? [`${recommendationNumber(exposure.value, "", true)} · ${recommendationNumber(exposure.numerator_a2, "Å²")} / ${recommendationNumber(exposure.denominator_a2, "Å²")} · ${exposure.status || recommendationLabel("状态未知", "status unknown")} · ${exposure.method || recommendationLabel("方法未知", "method unknown")}`, signedText] : [])];
   });
   const comparison = item.primary_comparison;
@@ -657,7 +662,8 @@ function recommendationDetails(item, design) {
     ${showImpact ? regionalInteractionEvidence(item) : ""}
     <h4>${recommendationLabel("突变位点与单点预测", "Mutation sites and single-site predictions")}</h4>
     ${recommendationTable([recommendationLabel("突变", "Mutation"), recommendationLabel("归属", "Membership"), recommendationLabel("相对溶剂暴露度（RSASA）", "Relative solvent exposure (RSASA)"), "SPURS ΔΔG", recommendationLabel("保护／风险结论", "Protection / risk conclusion")], rows)}
-    ${recommendationTable([recommendationLabel("突变", "Mutation"), recommendationLabel("作者链与残基编号", "Author chain / residue identifier"), recommendationLabel("总表面积", "Total surface area"), recommendationLabel("侧链表面积", "Side-chain surface area"), recommendationLabel("坐标可靠性证据", "Coordinate reliability evidence"), recommendationLabel("表位先验标记", "Epitope prior flag"), recommendationLabel("先验评分", "Prior score"), ...(showSiteImpact ? [recommendationLabel("相对侧链暴露度与计算来源", "Relative side-chain exposure and calculation provenance"), recommendationLabel("逐位带符号化学变化", "Per-site signed chemical changes")] : [])], siteEvidence)}
+    ${recommendationTable([recommendationLabel("突变", "Mutation"), recommendationLabel("作者链与残基编号", "Author chain / residue identifier"), recommendationLabel("总表面积", "Total surface area"), recommendationLabel("侧链表面积", "Side-chain surface area"), recommendationLabel("坐标可靠性证据", "Coordinate reliability evidence"), recommendationLabel("表位先验标记", "Epitope prior flag"), recommendationLabel("先验评分", "Prior score"), recommendationLabel("DiscoTope 原始分数", "DiscoTope raw score"), recommendationLabel("DiscoTope 校准分数", "DiscoTope calibrated score"), ...(showSiteImpact ? [recommendationLabel("相对侧链暴露度与计算来源", "Relative side-chain exposure and calculation provenance"), recommendationLabel("逐位带符号化学变化", "Per-site signed chemical changes")] : [])], siteEvidence)}
+    <p class="note">${recommendationLabel("DiscoTope 分数来自输入结构的各原始残基；并非突变后组合的预测分数或结合概率。", "DiscoTope scores describe each native residue in the input structure, not the mutant combination or binding probability.")}</p>
     <p class="note">${recommendationLabel("表位先验是计算表面排序与局部峰值证据，不是抗体结合概率；先验评分存在不等于达到支持标记条件。", "Epitope priors describe computed surface ranking and local peaks, not antibody binding probability; a prior score can exist without satisfying the support flag.")}</p>
     <h4>${recommendationLabel("覆盖范围与完整未覆盖列表", "Coverage and complete uncovered list")}</h4>${recommendationCoverage(item, true)}
     <p>${recommendationLabel("直接突变位点表面积", "Direct mutated-site surface area")}: ${recommendationNumber(item.coverage_gain_area_a2, "Å²")} (${recommendationNumber(item.coverage_gain, "", true)})</p>
@@ -687,7 +693,7 @@ function renderRecommendationCard(item, isPrimary = false, formalLocalCandidate 
   const title = formalLocalCandidate ? recommendationLabel("正式合格本区组合", "Formally qualified local combination") : isPrimary ? (mechanism ? hasCandidateMutations
     ? recommendationLabel("本区强扰动工程代表", "Regional strong-perturbation engineering representative")
     : recommendationLabel("本区扰动建议缺口", "Regional perturbation recommendation gap")
-    : item.ownership || !item.candidate_id ? recommendationLabel("本区专属首选", "Exclusive region primary") : recommendationLabel("本区历史建议", "Historical region suggestion")) : principles.map(recommendationCode).join(" · ");
+    : item.ownership || !item.candidate_id ? `${recommendationLabel("本区专属", "Exclusive region")} · ${principles.map(recommendationCode).join(" · ")}` : recommendationLabel("本区历史建议", "Historical region suggestion")) : principles.map(recommendationCode).join(" · ");
   const mutations = item.mutation_notations || design?.mutations?.map(notation) || [];
   const hasMechanismRepresentative = mechanism && isPrimary && Boolean(item.candidate_id) && mutations.length > 0;
   const mechanismGap = mechanism && isPrimary && !hasMechanismRepresentative;
@@ -766,7 +772,7 @@ function renderSectorRecommendations(recommendations) {
         ${alternatives.map((alternative) => renderRecommendationCard({ ...alternative, sector_id: item.sector_id })).join("") || `<p class="muted">${recommendationLabel("没有不同的合格备选；同一合格组合的原则合并显示。", "No distinct qualified alternative; matching principles share one qualified combination.")}</p>`}
         ${primaryReview || reviewAlternatives.length || reviewLocalCandidates.length ? `<details class="regional-review-candidates"><summary>${recommendationLabel("未通过正式展示条件／待复核的审查详情", "Review details: not qualified for formal display or review required")}</summary>${primaryReview ? renderRecommendationCard(item, true) : ""}${reviewAlternatives.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id })).join("")}${reviewLocalCandidates.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id }, false, true)).join("")}</details>` : ""}
         ${Array.isArray(localCandidates) ? `<details class="formal-local-candidates"><summary>${recommendationLabel("全部正式展示合格本区候选（含主代表）", "All qualified local candidates for formal display (including the primary)")} · ${qualifiedLocalCandidates.length}</summary>${qualifiedLocalCandidates.map((candidate) => renderRecommendationCard({ ...candidate, sector_id: item.sector_id }, false, true)).join("") || `<p class="muted">${recommendationLabel("当前没有可正式展示的本区组合。", "No local combinations qualify for formal display.")}</p>`}</details>` : ""}
-        ${(item.unavailable_principles || []).map((value) => `<p class="note">${h(recommendationCode(value.principle))}: ${h(cleanRecommendationCopy(/[\u4e00-\u9fff]/.test(value.reason || "") ? value.reason : recommendationCode(value.reason)))}</p>${value.gate_details?.length ? `<details class="principle-review-details"><summary>${recommendationLabel("未通过门槛／待补证据", "Failed gates / missing evidence")}</summary><code>${h(value.candidate_id)}</code><ul>${value.gate_details.map((gate) => `<li>${h(gateExplanation(gate))}</li>`).join("")}</ul></details>` : ""}`).join("")}
+        ${(item.unavailable_principles || []).map((value) => `<p class="note">${h(recommendationCode(value.principle))}: ${h(cleanRecommendationCopy(/[\u4e00-\u9fff]/.test(value.reason || "") ? value.reason : recommendationCode(value.reason || value.state)))}</p>${value.gate_details?.length ? `<details class="principle-review-details"><summary>${recommendationLabel("未通过门槛／待补证据", "Failed gates / missing evidence")}</summary><code>${h(value.candidate_id)}</code><ul>${value.gate_details.map((gate) => `<li>${h(gateExplanation(gate))}</li>`).join("")}</ul></details>` : ""}`).join("")}
         ${audit ? `<details><summary>${recommendationLabel("搜索与验证情况", "Search and validation resources")}</summary>${recommendationResourceAudit(audit)}</details>` : `<p class="note">${recommendationLabel("此历史任务未记录新的分区资源审计。", "This historical job has no new region resource audit.")}</p>`}
       </section>`;
     }).join("")}${selectionPanel()}</section>`;

@@ -240,7 +240,11 @@ def write_v4_outputs(
     write_json(output_dir / extension_names[3], _rows([c for c in result.candidates if c.qualification == "REVIEW_REQUIRED"]))
     write_json(output_dir / extension_names[4], _rows(result.panel.budget_decision))
     _write_csv(output_dir / extension_names[5], result.panel.budget_decision.budget_curve if result.panel.budget_decision else [],
-               ["construct_count", "candidate_id", "objective", "net_gain", "information_gain", "relative_information_gain", "coverage_gain", "mean_separation_gain", "minimum_separation_gain", "unresolved_pair_reduction", "risk_delta", "redundancy_delta"])
+               ["construct_count", "candidate_id", "objective", "net_gain", "information_gain", "relative_information_gain",
+                "coverage_gain", "coverage_gain_area_a2", "physical_field_gain_area_a2", "epitope_weighted_field_gain_area_a2",
+                "surface_field_status", "surface_field_epitope_status", "perturbation_utility", "sector_first",
+                "triple_enhancement_delta", "triple_role", "mean_separation_gain", "minimum_separation_gain",
+                "unresolved_pair_reduction", "risk_delta", "redundancy_delta"])
     write_json(output_dir / extension_names[6], _rows(result.raw_hypotheses))
     write_json(output_dir / extension_names[7], _rows(result.footprint_families))
     write_json(output_dir / extension_names[8], _rows(result.surface_hypotheses))
@@ -853,7 +857,8 @@ def project_display_analysis(
             container[field + "_reference"] = {"display_json_path": path, "file": "analysis.json"}
 
     # Per-file hashes are audit data; keep the aggregate fingerprint and model identity visible.
-    bulk_identity_fields = {"source_files_sha256", "model_files_sha256", "git_tracked_modifications"}
+    bulk_identity_fields = {"source_files_sha256", "model_files_sha256", "git_tracked_modifications",
+                            "ordinary_adaptive_ledger", "adaptive_ledger"}
 
     def compact_identity(value, path=()):
         if isinstance(value, list):
