@@ -40,7 +40,7 @@ Clone the repository and open PowerShell in its root directory:
 ```powershell
 git clone https://github.com/segayi1/ecd-epitope-scanner.git
 cd ecd-epitope-scanner
-git checkout v1.1.0
+git checkout v1.1.1
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -197,12 +197,12 @@ python scripts\check_export_privacy.py .\workspace_data\pdl1_preview\ecd_epitope
 Cite the software release or exact commit used in an analysis, together with the external methods and structural data sources. Machine-readable software metadata is provided in [CITATION.cff](CITATION.cff). The associated manuscript citation can be added when its bibliographic record is available.
 
 ```bibtex
-@software{ecd_epitope_scanner_1_1_0,
+@software{ecd_epitope_scanner_1_1_1,
   author  = {segayi1},
   title   = {ECD Epitope Scanner},
-  version = {1.1.0},
+  version = {1.1.1},
   year    = {2026},
-  url     = {https://github.com/segayi1/ecd-epitope-scanner/tree/v1.1.0}
+  url     = {https://github.com/segayi1/ecd-epitope-scanner/tree/v1.1.1}
 }
 ```
 
