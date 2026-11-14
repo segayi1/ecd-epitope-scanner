@@ -77,6 +77,7 @@ def support_metrics(positions, distances, areas, target_positions=None, scope_id
         }
     return {
         "basis": "surface_geodesic_neighborhood_proxy", "area_basis": "eligible_surface_area_a2",
+        "target_positions": sorted(target),
         "scenarios": scenarios,
         "mean_marginal_area_a2": sum(row["marginal_area_a2"] for row in scenarios.values()) / 3,
         "mean_overlap_fraction": sum(row["mean_pair_overlap_fraction"] for row in scenarios.values()) / 3,
@@ -101,6 +102,65 @@ def annotate_spatial_support(candidates, graph, areas, distances=None, target_po
         if signature not in cache:
             cache[signature] = support_metrics(signature, distances, areas, target_positions, scope_id)
         candidate.geometry_support = cache[signature]
+
+
+def pointwise_perturbation_field(candidate, areas, epitope_priors=None):
+    """Build an auditable per-surface-point perturbation proxy.
+
+    The physical channel is mutation utility carried over the candidate's
+    geodesic-12 support. It is a surface support proxy, not a measured field.
+    The epitope channel uses the target surface residue's score; missing
+    scores retain the neutral value 0.5.
+    """
+    from .regional_perturbation import PERTURBATION_AXIS_SCALES, candidate_impact
+
+    areas = {int(position): float(area) for position, area in (areas or {}).items()}
+    if any(not math.isfinite(area) or area < 0 for area in areas.values()):
+        raise ValueError("Perturbation fields require finite nonnegative surface areas")
+    geometry = getattr(candidate, "geometry_support", None) or {}
+    scenario = (geometry.get("scenarios") or {}).get("geodesic_12", {})
+    support = set(scenario.get("covered_positions") or
+                  (getattr(candidate, "covered_positions_by_scenario", None) or {}).get("geodesic_12", ()))
+    target_positions = geometry.get("target_positions")
+    if target_positions is not None:
+        support &= set(target_positions)
+    impact = candidate_impact(candidate)
+    utility = None
+    if impact.get("complete"):
+        strength = sum(float(impact["mean_absolute_delta"][axis]) / scale
+                       for axis, scale in PERTURBATION_AXIS_SCALES.items())
+        exposure = float(impact["exposure_mean"])
+        utility = (strength * max(1, int(impact["order"])) /
+                   len(PERTURBATION_AXIS_SCALES) * (.5 + .5 * min(1., max(0., exposure))))
+    priors = {int(position): float(value) for position, value in (epitope_priors or {}).items()
+              if value is not None and math.isfinite(float(value))}
+    supported = support & set(areas)
+    scored = supported & set(priors)
+    epitope_status = ("SCORED" if scored and scored == supported else
+                      "PARTIAL" if scored else "NEUTRAL_MISSING")
+    physical = {str(position): (float(utility) if utility is not None and position in support else 0.0)
+                for position in sorted(areas)}
+    weighted = {position: value * (.5 + priors.get(int(position), .5))
+                for position, value in physical.items()}
+    return {
+        "schema_version": "surface_perturbation_field_v2",
+        "basis": "geodesic_12_surface_support_proxy",
+        "status": "SCORED" if utility is not None else "INCOMPLETE",
+        "epitope_status": epitope_status,
+        "epitope_mapping_basis": "target_surface_residue_prior",
+        "physical_field": physical,
+        "epitope_weighted_field": weighted,
+        "surface_area_a2": {str(position): areas[position] for position in sorted(areas)},
+        "supported_positions": sorted(support & set(areas)),
+    }
+
+
+def annotate_pointwise_perturbation_fields(candidates, areas, epitope_priors=None):
+    """Attach point fields without changing eligibility or scientific gates."""
+    for candidate in candidates:
+        candidate.impact_evidence = dict(getattr(candidate, "impact_evidence", None) or {})
+        candidate.impact_evidence["surface_perturbation_field"] = pointwise_perturbation_field(candidate, areas, epitope_priors)
+    return candidates
 
 
 def annotate_higher_order_regional_gain(candidates, sectors, areas):

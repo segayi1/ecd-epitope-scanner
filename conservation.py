@@ -139,7 +139,7 @@ def fetch_conservation(
         )
         return None
     scores = {
-        position: round(counts[position] / totals[position], 4)
+        position: round(counts.get(position, 0) / totals[position], 4)
         for position in totals
         if totals[position] >= max(config.CONSERVATION_MIN_ORTHOLOGS, used // 2)
     }

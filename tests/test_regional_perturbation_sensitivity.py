@@ -43,6 +43,44 @@ def test_complete_and_missing_mask_strata_precede_incomparable_group_vectors():
     assert ranked[0].impact_evidence["sensitivity"]["status"] == "NOT_EVALUATED_GENERATION_STAGE"
 
 
+def test_epitope_weighted_perturbation_uses_neutral_missing_prior_and_exact_parent_margin():
+    pair = _candidate("pair", [.8, .8])
+    triple = _candidate("triple", [.8, .8, .8])
+    for candidate in (pair, triple):
+        for option in candidate.mutations:
+            option.epitope_evidence_status = "MISSING"
+            option.epitope_prior = None
+    missing = regional.perturbation_utility(triple)
+    for option in triple.mutations:
+        option.epitope_evidence_status = "SCORED"
+        option.epitope_prior = .5
+    assert regional.perturbation_utility(triple) == missing
+    assert regional.perturbation_margin(triple, [pair]) > 0
+
+    for option in triple.mutations:
+        option.epitope_prior = 1.
+    for option in pair.mutations:
+        option.epitope_evidence_status = "SCORED"
+        option.epitope_prior = .5
+    assert regional.perturbation_utility(triple) > missing
+
+
+def test_enhancement_margin_requires_three_exact_complete_double_parents():
+    triple = _candidate("triple", [.8, .8, .8])
+    parents = [_candidate("p12", [.8, .8]), _candidate("p13", [.8, .8]),
+               _candidate("p23", [.8, .8])]
+    for parent, positions in zip(parents, ((1, 2), (1, 3), (2, 3))):
+        for option, position in zip(parent.mutations, positions):
+            option.residue = ResidueKey("m", "A", position, uniprot_pos=position, one_letter="A")
+    assert regional.exact_double_parent_completeness(triple, parents) is True
+    assert regional.perturbation_margin(triple, parents, require_exact_parents=True) > 0
+    assert regional.perturbation_margin(triple, parents[:2], require_exact_parents=True) is None
+
+    parents[2].mutations[0].chemical_descriptors["charge_delta"] = None
+    assert regional.exact_double_parent_completeness(triple, parents) is False
+    assert regional.perturbation_margin(triple, parents, require_exact_parents=True) is None
+
+
 def test_mean_exposure_sensitivity_recomputes_its_pareto_front():
     low_min_high_mean = _candidate("A_mean_wins", [0.2, 1.0])
     middle_min_mean = _candidate("B_min_wins", [0.3, 0.3])

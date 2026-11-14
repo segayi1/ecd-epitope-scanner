@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 import platform
 import shutil
 from time import perf_counter
@@ -65,6 +66,42 @@ from .util import (
 ProgressCallback = Callable[[str, float, str], None]
 
 
+def _epitope_prior_used_for_panel_selection(joint_result) -> bool:
+    """Report scored prior use by the actual V4 panel selector provenance."""
+    decision = getattr(getattr(joint_result, "panel", None), "budget_decision", None)
+    priority = getattr(decision, "selection_priority", "") if decision is not None else ""
+    if not priority.startswith("sector_first_epitope_weighted_"):
+        return False
+    for candidate in getattr(joint_result, "candidates", ()) or ():
+        if (not getattr(candidate, "display_eligible", True)
+                or getattr(candidate, "qualification", "FORMAL_POOL") == "REVIEW_REQUIRED"
+                or not getattr(candidate, "connected", False)
+                or getattr(candidate, "order", 0) >= 4
+                or getattr(candidate, "search_role", "PRIMARY_POOL") == "EXPLORATORY"
+                or any(getattr(option, "review_required", False)
+                       for option in (getattr(candidate, "mutations", ()) or ()) )):
+            continue
+        field = (getattr(candidate, "impact_evidence", None) or {}).get("surface_perturbation_field", {})
+        if field.get("status") == "SCORED" and field.get("epitope_status") in {"SCORED", "PARTIAL"}:
+            return True
+        mutations = getattr(candidate, "mutations", ()) or ()
+        if mutations and all(
+            getattr(option, "epitope_evidence_status", "MISSING") == "SCORED"
+            and _finite_number(getattr(option, "epitope_prior", None)) is not None
+            for option in mutations
+        ):
+            return True
+    return False
+
+
+def _finite_number(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 @dataclass(slots=True)
 class PipelineRequest:
     input_type: str
@@ -81,15 +118,16 @@ class PipelineRequest:
     strict_af3: bool = True
     allow_partial: bool = False
     structure_candidate_id: str | None = None
-    minimum_regions: int = 5
-    maximum_regions: int = 8
+    minimum_regions: int = 4
+    maximum_regions: int = 12
     output_dir: str | None = None
     assay_format: str = "cell_surface"   # cell_surface | purified
     assay_profile: str | None = None
     design_engine: str = "joint_v4_ml"
     ml_mode: str = "strict"              # strict | preview (joint_v4_ml only)
     surface_strategy: str = "legacy"
-    max_sectors: int = 7
+    execution_protocol: str | None = None
+    max_sectors: int = 12
     target_sector_residues: int | None = None
     maximum_sector_geodesic_diameter_a: float | None = None
     maximum_sector_ca_diameter_a: float | None = None
@@ -112,6 +150,15 @@ class PipelineRequest:
 
     def __post_init__(self):
         import math
+        if self.execution_protocol is not None:
+            if self.execution_protocol not in {"ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"}:
+                raise ValueError("Unknown execution protocol")
+            if self.ml_mode != "strict" or self.surface_strategy != "legacy" or self.optimization_profile != "legacy":
+                raise ValueError("Site-first protocols require strict mode and the ordinary surface strategy")
+            parameters = dict(self.metadata.get("joint_v4_ml", {}))
+            protocol = dict(parameters.get("execution_protocol") or {}) if isinstance(parameters.get("execution_protocol"), dict) else {}
+            parameters["execution_protocol"] = {**protocol, "name": self.execution_protocol}
+            self.metadata["joint_v4_ml"] = parameters
         if self.af3_manifest_path and self.input_type != "af3_upload":
             raise ValueError("AF3 directory manifests require input_type=af3_upload")
         if self.analysis_target not in {"antigen", "binder"}:
@@ -190,7 +237,7 @@ class PipelineRequest:
         resolve_budget(minimum=self.minimum_constructs, target=self.target_constructs,
                        maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
                        legacy_max=self.max_primary_constructs,
-                       maximum_limit=12 if self.surface_strategy == "surface_perturbation_v1_preview" else 8)
+                       maximum_limit=12)
 
     def as_dict(self) -> dict[str, Any]:
         data = to_dict(self)
@@ -697,7 +744,7 @@ def _run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
     protocol_setting = request.metadata.get("joint_v4_ml", {}).get("execution_protocol")
     protocol_name = protocol_setting.get("name") if isinstance(protocol_setting, dict) else protocol_setting
-    measure_runtime = protocol_name == "ordinary_site_first_v2" or request.metadata.get("measure_pipeline_performance", False)
+    measure_runtime = protocol_name in {"ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"} or request.metadata.get("measure_pipeline_performance", False)
     score_cache = Path(request.metadata.get("joint_v4_ml", {}).get("runtime", {}).get("cache_dir") or output_dir / "cache")
     cache_was_empty = not any(score_cache.rglob('*.json')) if measure_runtime else None
     from .joint_design_v4.run_audit import ExecutionTrace, source_snapshot
@@ -1033,7 +1080,7 @@ def _run_pipeline(
         maximum=request.maximum_constructs, adaptive=request.adaptive_budget,
         legacy_max=request.max_primary_constructs,
         policy=assay_profile["design_policy"] if assay_profile else None,
-        maximum_limit=12 if request.surface_strategy == "surface_perturbation_v1_preview" else 8,
+        maximum_limit=12,
     )
     # Region count is a Stage-1 experimental budget, not a geometry limit.
     # Surface V2 enumerates the complete surface first and the design stage
@@ -1221,7 +1268,7 @@ def _run_pipeline(
             "execution_protocol": (
                 "legacy"
                 if request.surface_strategy == "surface_perturbation_v1_preview"
-                else v4_params.get("execution_protocol", "ordinary_three_principle_adaptive_v1")
+                else v4_params.get("execution_protocol", "ordinary_site_first_v2")
             ),
             "use_surface_hypotheses": (
                 assay_profile is None or int(assay_profile.get("version", 1)) >= 2
@@ -1380,7 +1427,7 @@ def _run_pipeline(
                 "unique_combination_cap": (
                     None
                     if joint_result.execution_protocol.get("name")
-                    in {"ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}
+                    in {"ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"}
                     else v4_params.get("foldx_confirmation", {}).get("max_candidates")
                 ),
                 "pair_slot_cap": joint_result.execution_protocol.get("foldx_slot_limit"),
@@ -1509,7 +1556,9 @@ def _run_pipeline(
         partition_summary["epitope_prior_used_for_candidate_pool"] = bool(
             any(item.recommendation_class == "EPITOPE_PRIORITIZED" for item in joint_result.candidates)
         )
-        partition_summary["epitope_prior_used_for_panel_selection"] = False
+        partition_summary["epitope_prior_used_for_panel_selection"] = (
+            _epitope_prior_used_for_panel_selection(joint_result)
+        )
     else:
         stage1_regions = regions
         if patch_engine == "surface_v2" and len(regions) > effective_max:

@@ -568,10 +568,10 @@ def test_actual_combination_difference_is_not_single_field_union():
     assert ab['shape_sdf_a'][0]==0 and ab['occupancy_gain_a'][0]==0
 
 
-def test_preview_api_accepts_twelve_but_legacy_still_rejects():
+def test_preview_and_ordinary_api_accept_twelve():
     from ecd_epitope_scanner.api import JobCreate
     assert JobCreate(identifier='P16410',surface_strategy='surface_perturbation_v1_preview',maximum_constructs=12).maximum_constructs==12
-    with pytest.raises(ValueError): JobCreate(identifier='P16410',maximum_constructs=12)
+    assert JobCreate(identifier='P16410',maximum_constructs=12).maximum_constructs==12
 
 
 def test_evidence_zip_manifest_matches_every_exported_file(tmp_path):
@@ -1058,6 +1058,19 @@ def test_three_site_proxy_gain_cannot_replace_real_physical_gain_or_stability():
     assert 'CONSENSUS_FAIL' in _formal_candidate_reasons(candidate,physical_coverage_pending=True,**kwargs)
     candidate.stability.foldx_ddg_kcal_mol=None
     assert 'HIGHER_ORDER_REQUIRES_FOLDX' in _formal_candidate_reasons(candidate,physical_coverage_pending=True,**kwargs)
+
+
+def test_stable_enhancement_triple_passes_geometry_gate_but_still_requires_foldx():
+    from types import SimpleNamespace
+    from ecd_epitope_scanner.joint_design_v4.engine import _formal_candidate_reasons
+    candidate=SimpleNamespace(qualification='FORMAL_POOL',mutations=[],connected=True,order=3,
+        coverage_by_scenario={},risk_components={'triple_gate_passed':True,'triple_enhancement_delta':.2},
+        impact_evidence={},
+        stability=SimpleNamespace(consensus_status='CONSENSUS_PASS',spurs_multi_ddg_kcal_mol=.1,foldx_ddg_kcal_mol=.2))
+    kwargs={'allow_spurs_only':False,'minimum_coverage_gain':.05,'lower_order_coverage':0.}
+    assert _formal_candidate_reasons(candidate,**kwargs)==[]
+    candidate.stability.foldx_ddg_kcal_mol=None
+    assert 'HIGHER_ORDER_REQUIRES_FOLDX' in _formal_candidate_reasons(candidate,**kwargs)
 
 
 def test_blindspot_expansion_targets_connected_area_without_discarding_zero_proxy():

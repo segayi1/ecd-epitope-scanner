@@ -1,5 +1,60 @@
 # Lessons
 
+## 2026-10-28 展示复核与结果报告必须独立验收
+
+- 错误模式/触发：把科学门通过直接当成正式展示通过，或把旧运行的数量和验收结论写死在新报告中，导致跨门采样进入正式候选或新运行结果被误报。
+- 预防：原始科学结论保留，展示资格逐候选复核，未知诊断和明确冲突不得进入正式面板；同一物理结果复用时各区域按实际槽值复核并递补。报告从实际产物计算逐区缺口、组合身份及数目，缺失字段标未知；独立核对面板响应、卡片、槽值与导出。
+- 适用条件：不同模型采样、候选复用与区域原则共同决定正式面板或跨版本对照。
+
+## 2026-10-29 启动日志不得抢先创建唯一输出目录
+
+- 错误模式/触发：启动包装器将 stdout/stderr 重定向到验收器独占的输出目录，提前创建该目录，使 `mkdir(exist_ok=False)` 在建任务前失败。
+- 预防：先核对执行器的目录所有权；将启动收据和日志放在独立目录，目标目录由验收器创建。核验首次错误发生在模型调用之前，保留错误收据，使用新路径重新启动。
+
+## 2026-10-29 PowerShell JSON 日期身份核验
+
+- 错误模式/触发：`ConvertFrom-Json` 将 ISO 时间解析为日期对象，用字符串与日期直接比较时即使时间一致也可能误判进程身份。
+- 预防：将双方转换为 UTC 日期后比较，并用真实格式日期自检；为安全等待继续核验 PID 和启动时间，保留首次监听失败记录。
+
+## 2026-10-29 区域原则必须核对备选卡
+
+- 错误模式/触发：只读取 `sector_recommendations_v4.json` 的区域主卡，误以为记录在 `alternatives` 的覆盖原则缺失；又把全局精简面板未选中某一区与该区缺少正式推荐混同。
+- 预防：逐区合并主卡及备选卡，按候选 ID、principles 和正式资格对账；单独报告区域原则完成情况和全局面板选择结果。
+
+## 2026-10-27 自适应候选必须在面板选择前附加响应
+
+- **错误模式/触发**：普通site-first先用空候选列表给hypothesis response赋值，后由调度从队列惰性物化候选；只在选中面板之后补响应，导致真实候选导出响应非零而面板signature/selection metrics全零。
+- **预防**：凡使用惰性队列物化的候选协议，确认覆盖物化、正式资格检查和面板优化三个边界；面板指标必须对最终实际候选非零向量做回归。验证同时检查输入结构位置映射与逐位impact存在，避免把时序遗漏误判为科学证据缺失。
+- **适用条件**：候选对象不是在首次执行hypothesis响应附加时就已完整构造的pipeline。
+
+## 2026-10-27 收据必须绑定最终analysis字节和最终卡片
+
+- **错误模式/触发**：导出前生成完整性收据，随后可移植模型证据补写analysis，令receipt绑定旧字节；仅更新hash还会把之后改变的卡片内容签成有效。
+- **预防**：所有analysis变更完成后、manifest和ZIP哈希固定前，重新执行同一内容检查器；把最终检查状态反馈给完成门，再打包最终receipt及其源文件hash。回归应覆盖PASS→INCOMPLETE卡片变化和归档一致性。
+- **适用条件**：最终导出会在已保存卡片/analysis之后继续添加来源证据或文件登记信息。
+
+## 2026-10-27 FoldX舍入精度与原始配对核验
+
+- **错误模式/触发**：worker把FoldX原始配对能量中位数按1e-6与共享接口聚合值比较，而共享接口按合同舍入至4位；完整合法配对因此被标记技术失败。
+- **预防**：保持共享接口和其他调用的精度合同。下游核验原始记录时，应按上游既定输出精度比较，同时在正式证据保留raw统计量；测试既覆盖真实落盘精度，也要确认超出舍入误差的聚合错配仍失败。
+- **适用条件**：FoldX worker同时消费聚合分数和逐槽原始Dif配对数据。
+
+## 2026-10-27 用户否定算法理解后立即停止
+
+- 错误模式：工程测试通过和技术故障修复被当作算法语义已经对齐，随后持续重算；用户明确指出理解错误。
+- 预防：区分交接文档与用户要求，不把实现假设自动当作确认的算法意图；收到否定后停止运行和监听，不擅自再修再算，后续先对齐含义。不要猜测用户真正想要的替代算法。
+
+
+## 2026-10-26 批次必须在首个失败处停止
+
+- 错误模式：只在整个批次结束时聚合验收，会在首例出现确定技术故障后继续消耗模型；异常finally只释放executor，让state一直RUNNING。
+- 预防：每例写完证据即判断终态和独立验收，失败停止；resume既有失败同样阻断；异常保存INTERRUPTED和原错，报告同步NEEDS_REVIEW。回归证明只创建一例、其余未派发，以及完整成功仍能执行13例。
+
+## 2026-10-26 科学身份不能直接作为Windows目录名
+
+- 错误模式：为避免配对manifest覆盖，将完整候选ID作为目录，忽略`|`在Windows非法；模型mock未实际建目录，单测通过却使真实FoldX启动前失败。
+- 触发：把逻辑身份用于文件系统分量。预防：入口复用util.safe_name，科学ID保持原值；模型边界回归至少实际创建目标目录，覆盖真实平台合法性。重跑保留失败预算与原job，以新job恢复，零输出不得当科学拒绝或完成验收。
+
 ## 2026-10-17 推荐卡片完整性按字段和生成路径验收
 
 - 错误模式：只验证主面板/五槽评分，通用与跨区候选可见卡片的化学六轴、逐位描述和近邻字段仍留空。预防：所有可见primary、alternatives和展开详情统一计算与投影；用绑定当前数据hash的逐字段完整性收据作发布硬门，不能靠删行或填零消除缺项。
@@ -320,3 +375,115 @@
 - 预防：以当前execution_id阶段和同类真实已完成任务耗时估区间；分离排队/等待AF3；去重执行身份并排除携带旧trace的发布副本，历史不足/超范围保留未知。前端与详情/SSE一致，历史查询缓存避免高频读取大库。
 - 科学解释：FoldX批次隔离、采样跨门提示和方差硬门是不同能力，不能把诊断标签称作已拒绝高波动；中位数不是平均值。AF3接入验收完成不能掩盖已记录的sample来源标签边界。
 - 运行：代码已接入与服务已加载分别核验。安全重载要读空活动队列、匹配命令/PID及完整创建时间；显示到秒的时间不能直接与含微秒的进程时间作精确等值比较。
+# 2026-10-26 普通自适应算法审查
+
+- 队列移除当前行后，应重新取当前队首；不能同时推进偏移。接受条件必须覆盖“首项失败、紧邻下一项成功”及跨原则共享结果，防止跳项和越序。
+- 新模型协议必须在卡片、API与导出保留身份；实际已有三槽不能用于判断历史五槽已完成。混合历史/新协议页面以卡片身份优先。
+- 结构规范编号与原序列编号只在明确边界转换，使用有偏移的真实编号做端到端验证；序列从1开始的测试无法发现重复映射。
+- 物化队列必须保存科学门证据，模型通过后先复核科学门，再停止原则队列。持久化完成态不能被待处理行的派生状态覆盖。
+- 每个候选的FoldX输出目录必须独立；仅按槽编号建目录会让前一候选的配对清单被覆盖。ZIP只交付明确登记的执行证据，不交付整个未评估索引。
+- 全枚举的SQLite索引不能被称为恒定内存方案；先验证区域构造过程的峰值内存与数据库体积，按位点集合复用不依赖替换类型的几何计算。
+
+## 2026-10-26 JSON证据等价验收
+- 错误模式：根据pytest截断diff推断字段丢失，实际只是JSON将tuple规范化为list。
+- 触发：比较写入前Python科学证据和SQLite JSON物化对象，特别是共享group_definitions。
+- 预防：先逐字段检查缺键、数值和类型；完整证据按JSON往返格式比较。此次exposure_mean前后均0.5，只有三个机制组定义tuple/list差异；不得将截断展示当作科学证据缺失。
+
+## 2026-10-26 批次启动前清单合同核查
+- 启动前不能只校验文件hash和模拟case；须逐一构造实际13份PipelineRequest，并覆盖manifest运行时访问的字段。初次启动在创建job前发现结构binder缺identifier，后续静态核查又发现PD1/CTLA4缺冗余source_hashes。现identifier回退name/case_id，来源hash直接取已验证structure_sha256/confidence_sha256；12项执行器测试及全部实际请求检查通过。首启动无job/模型调用，日志保留attempt1，验收收据保留修订前版本。
+
+## 2026-10-27 文件事件监控与真实调用数
+- 错误模式：将导出时复制到 source_evidence 的历史执行收据视为新模型调用，造成数量重复。
+- 触发：递归监听工作区中同名 engine_execution.json，而打包过程复制了完整来源目录。
+- 预防：排除派生和复制目录，只按原始执行身份去重；对外优先使用执行账本的实际槽数，不能将文件创建事件或卡片实例数等同于模型调用数。
+
+## site-first展示资格必须独立进入所有正式显示入口
+- 错误模式：后端把展示资格与科学资格分开后，前端仍只读 `formal_eligible`/`status`，可能把需复核项放进空间比较或正式本区列表。
+- 触发条件：候选保持科学PASS，但十槽跨门、结构置信度或机制证据被标为DISPLAY_REVIEW。
+- 预防：正式面板、主方案、备选、本区完整列表和空间比较统一要求 `display_eligible !== false`、无 `DISPLAY_REVIEW` 状态且无展示排除原因；复核详情保留原证据。共享同突变物理结果按突变签名缓存，但回查按candidate_id独立，避免一候选的展示风险误用于另一候选。
+
+- site-first正式展示对重复诊断fail-closed：必须有COMPLETE且sampling_decision_sensitive为false；缺失、无效或跨门全部留在复核状态。确认的跨执行冲突为独立展示排除原因，NOT_ASSESSED/null不伪造成冲突。仅在ordinary_site_first_v2应用，旧协议展示兼容由前端版本边界保护。
+
+## 2026-10-29 批次报告协议与真实推荐数
+- 触发：新协议复用旧输入manifest的批次报告。
+- 规则：报告协议应取实际执行analysis/账本；不能将manifest的批次调度标签当科学执行协议。正式区域卡可同时代表多个原则，卡片数少于原则队列数时先核对principles，不据此判定缺口。
+
+## 2026-10-29 模型批处理必须核对真实调用粒度
+- 触发：候选按队首逐项淘汰、滑动预取且worker每请求重载模型。
+- 规则：批上限64不代表实际大批；用实际批大小分布、模型加载和解码耗时定位。AIB203的123组合产生61调用、53次单项；保持科学顺序时优先减少小批调用或复用模型，不以放宽科学门解决性能。
+
+- SPURS批量递补：补批只在队首缺分时触发，优先各lane队首再轮转尾项；每轮滑动补齐会恢复单项调用。跨批未评分队首在尚有预算时保持pending。预算末端必须测公平性，mock必须返回整批而非仅batch[0]。73项隔离回归通过，运行冻结约束下以补丁交付。
+
+- 运行中经用户授权切换：确认旧模块已加载、源码归档完整；旧例继续，原例间source守卫停止后，以一次性OS退出等待触发新进程接续，精确校验停点/COMPLETE/验收资格，独立状态保留source_transition；不覆盖原冻结收据。git apply可能按core.autocrlf转为CRLF，必须核对实际落盘digest并验证文本与已测源码一致。
+
+- 2026-10-30：追加确认必须与正式展示合同一致。3+7中位数通过不能再被无条件跨门复核推翻；以显式版本/CONFIRMED_PASS和完整十槽证据允许展示，同时保留真实波动。后续回填、区域卡和验收必须传递同一确认诊断。启用确认规则不等于已确认，普通三槽通过不可被NOT_CONFIRMED误挡；结构/机制问题仍独立排除。132项回归通过，保存真实证据局部回放不等于新队列端到端结果。
+
+
+## 2026-11-01 独立评分任务与收尾生命周期
+- 触发：评分进程退出后 manifest 仍为 SCORING，另行等待进程的收尾脚本导出了未完成状态。
+- 规则：有限长任务使用独立进程将评分和收尾串联；接续先核实无活跃评分进程，复用已完成请求/配对，将无完整回执的已派发槽单独计入预算，保留原目录，不将其当作有效分数。
+
+## 2026-11-01 三维突变位点标记
+- 触发：从 Cβ 沿法向固定外移彩点与标签，会使表面图上的标记悬空；强制置顶标签会透过蛋白显示背面位点。
+- 规则：表面视图使用对应残基的真实显示网格顶点锚定彩点；共享位点在同残基网格内区分，标签短线连接并启用深度遮挡。骨架视图锚定真实原子。验收检查位点身份、贴附距离和旋转前后坐标，并查看正反面截图。
+
+## 2026-11-04 论文方法的数值阈值归因
+
+- 触发：为筛选方法补参考文献时，仅引用工具原文或笼统声称全部阈值为工程设定，会遗漏已有数值先例，也会混淆方法来源与阈值验证。
+- 规则：逐项核对数值、归一化、比较方向和研究对象；对直接采用或参考的界限在数值旁引用，对本研究扩展的判定规则单独说明。找不到直接出处的参数保留为研究预设值，不将模型论文或邻近数值当作阈值已验证的证据。
+
+## 2026-11-04 论文正文方法的精简尺度
+
+- 触发：用户要求较短的正文方法时，压缩为纯概念段落，遗漏决定候选准入、排序和通过判定的阈值与算法。
+- 规则：正文精简保留结构与序列保护、几何门、机制及三原则排序、组合稳定性门和改变结论的重复确认规则；优先删除批次、预算、调度与实现标识。简短不等于仅写宏观思路。
+
+- Installed-package tests in a checkout whose name contains hyphens must set pytest rootdir and confcutdir to the tests directory and run from an independent working directory; otherwise ancestor __init__.py collection can fail before executing tests. Validate the documented command in the actual publication checkout.
+
+- Export-path privacy must cover the supported Linux temporary-directory roots as well as Windows/WSL/home paths. Include explicit POSIX fixtures in platform-independent tests; preserve URLs and app routes, and distinguish shared temporary lock filenames from private temporary subdirectories in archive scans.
+
+- Reproduction instructions must compare external source, model checkpoints and runtime dependency versions with the executed run. Model availability alone does not identify a compatible environment; include secondary model caches and ensure worker commands use the intended virtual environment. Clearly distinguish an offline configuration audit from a fresh-machine installation.
+
+## 2026-11-11 跨页面任务入口复用现有摘要
+
+- 触发：任务状态只绑定在结构设计页，切换到实验项目或其他分析页面后，用户失去正在运行和排队任务的入口。
+- 规则：共享页面壳只轮询现有任务摘要接口，将活跃任务置于终态历史之前；打开任务继续使用 `/?job=<id>` 的既定恢复流程。涉及默认执行路径的版本同步应检查配置默认值和管线回退值是否一致，并用协议专项回归验证。
+
+## 2026-11-11 当前默认值必须覆盖全部省略参数入口
+
+- 触发：网页显式提交 12 个显示分区，但 Python API、CLI、上传表单和低层函数的省略参数仍回退到旧值 7。
+- 规则：同步使用者可见的默认设计时，逐层检查配置、请求模型、表单、CLI、管线、引擎和低层构建器；显式旧值仅保留在标注清楚的历史实验或历史实施记录中。默认值变更不得改写构建体预算、连通性、直径、面积或科学证据门槛。
+
+## 2026-11-11 归档运行历史前先检查目录连接点
+
+- 现象：系统 `tar` 在约 96 MB 处反复以退出码 1 结束，没有输出具体错误。
+- 原因：历史工作区内有一个指向同区目标目录的 NTFS junction；部分归档工具会把它当作递归目录。
+- 处理：按绝对路径找出 junction，确认其目标目录已包含在归档范围后排除重复入口；使用流式 tar + zstd 归档，并通过 zstd 校验和完整成员枚举确认文件数与字节数。
+- 预防：清理大型运行目录时，先检查 reparse point，再做清单、归档、完整性验证和删除；只有归档验证通过后才移除活动目录中的唯一副本。
+
+## 2026-11-11 压缩归档与删除权限分离
+
+- 触发：历史验收目录已完成大体积归档和完整性校验，但执行环境的自动审批策略拒绝随后删除原目录及单个未完成下载。
+- 规则：将“归档完成”和“空间已释放”作为两个独立状态记录；归档收据要写明原路径、压缩前后大小、成员数、哈希、恢复方式和仍待删除的原路径，不能在删除失败时宣称清理完成。
+## 2026-11-12 CTLA4 repair lessons
+
+- Error pattern: a long-running validation script launched from a temporary directory imported the project package by name and failed before doing work.
+- Prevention: every temporary project runner must insert the repository parent into `sys.path` before project imports and use an explicit repository working directory; verify the first stderr/output line before treating a run as live.
+- Scope: applies to saved-input replays and real-model validation launched outside the repository.
+
+## 2026-11-12 Adaptive queue gaps across exports and UI
+
+- Pattern: scheduler lane states, recommendation cards and the shared renderer used different fields for the same missing-principle reason; `budget_limited` was present in `state` but the UI read only `reason`, so a correctly recorded resource gap was not explained to users.
+- Trigger: FoldX or SPURS scheduling exhausts its budget before a region/principle queue has a qualified winner.
+- Prevention: verify the full path from scheduler terminal state to ledger, `unavailable_principles`, online rendering and offline rendering; preserve the explicit state and test the visible explanation alongside the absence of a fabricated recommendation.
+
+## 2026-11-12 API and native form constraints
+
+- Pattern: API and JavaScript accepted a construct maximum of 12 while native minimum and target inputs still rejected values above 8; older tests also asserted the obsolete API limit.
+- Trigger: a budget range change crosses request validation, HTML constraints and browser submission.
+- Prevention: compare actual project contract and all request entry points before changing either implementation or tests; exercise the browser with minimum, target and maximum all set to the new limit.
+
+## 2026-11-12 Package tests with removed historical fixtures
+
+- Pattern: a package-wide pytest run stops during collection because several historical tests still import ignored `workspace_data` scripts or optional tooling that is not part of the checkout.
+- Trigger: running every file under `tests/` after historical run directories and helper scripts have been intentionally removed from the active tree.
+- Prevention: separate unavailable historical-fixture tests from current production regressions, run the documented core and modified-file suites from the repository parent, and report the exact missing files rather than calling the current algorithm broken or the broad suite green.

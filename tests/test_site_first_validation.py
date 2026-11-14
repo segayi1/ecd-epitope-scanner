@@ -129,6 +129,19 @@ class CopyingStore(Store):
         return deepcopy(self.queues[tuple(lane)][:limit])
 
 
+def test_foldx_budget_marks_lanes_that_advanced_after_spurs_review():
+    passing = candidate("passing", "A1D")
+    review = candidate("review", "A2D")
+    next_candidate = candidate("next", "A3D")
+    store = Store({("a", "coverage"): [passing], ("b", "coverage"): [review, next_candidate]})
+    result = SiteFirstValidation().run_indexed(
+        store, lambda batch: spurs(batch, {"review": 1.5}), lambda *args, **kwargs: None,
+        foldx_slot_limit=0)
+    assert result["lane_status"][("a", "coverage")] == "STOPPED_BY_BUDGET"
+    assert result["lane_status"][("b", "coverage")] == "STOPPED_BY_BUDGET"
+    assert store.states[("b", "coverage")] == "budget_limited"
+
+
 def test_ranked_prefetch_shares_signatures_and_consumes_only_formal_heads():
     class PrefetchStore(Store):
         def prefetch_groups(self, *lane):
@@ -210,6 +223,28 @@ def test_foldx_batches_multiple_heads_and_matches_unordered_rows():
     assert result["foldx"]["results"][("A1D",)]["provenance"][0]["cache_hit"] is True
 
 
+def test_foldx_schedules_one_candidate_per_sector_before_second_lane():
+    queues = {}
+    position = 1
+    for sector in ("north", "south", "east"):
+        for principle in ("coverage", "mechanism"):
+            queues[(sector, principle)] = [
+                candidate(f"{sector}|{principle}", f"A{position}D")
+            ]
+            position += 1
+    store = Store(queues)
+    calls = []
+
+    def foldx(batch, *, slot_start, runs):
+        calls.append((list(c.candidate_id for c in batch), slot_start, runs))
+        return PredictionResult("success", records=[pair_row(c, [1.] * runs, slot_start)
+                                                     for c in batch])
+
+    SiteFirstValidation().run_indexed(store, lambda batch: spurs(batch), foldx,
+                                     max_workers=3, foldx_slot_limit=30)
+    assert calls[0] == (["north|coverage", "south|coverage", "east|coverage"], 0, 3)
+
+
 def test_foldx_prioritizes_an_unattempted_site_when_budget_allows():
     shared1, shared2, unseen = candidate("shared1", "A1D"), candidate("shared2", "A2D"), candidate("new", "C3D")
     shared1.impact_evidence = shared2.impact_evidence = {"site_set_id": "same"}
@@ -233,6 +268,27 @@ def test_foldx_prioritizes_an_unattempted_site_when_budget_allows():
     assert result["foldx"]["ledger"]["unseen_site_candidates"] == 2
     assert result["foldx"]["ledger"]["attempted_site_keys"] == ["different", "same"]
     assert result["foldx"]["ledger"]["slot_limit"] == 30
+
+
+def test_foldx_covers_a_new_sector_before_reusing_a_covered_site():
+    first = candidate("a1", "A1D")
+    alternate = candidate("a2", "C3D")
+    second = candidate("b1", "A2D")
+    first.impact_evidence = second.impact_evidence = {"site_set_id": "shared"}
+    alternate.impact_evidence = {"site_set_id": "alternate"}
+    store = Store({("a", "coverage"): [first, alternate],
+                   ("b", "coverage"): [second]})
+    calls = []
+
+    def foldx(batch, *, slot_start, runs):
+        calls.append([item.candidate_id for item in batch])
+        return PredictionResult("success", records=[pair_row(item, [1.] * runs, slot_start)
+                                                     for item in batch])
+
+    SiteFirstValidation().run_indexed(
+        store, lambda batch: spurs(batch), foldx, foldx_slot_limit=30, max_workers=2
+    )
+    assert calls[0] == ["a1", "b1"]
 
 
 def test_mixed_three_of_ten_rules_and_releases_reserved_budget():
@@ -671,6 +727,22 @@ def test_less_than_ten_foldx_slots_dispatches_nothing():
     assert not calls
     assert result["foldx"]["ledger"]["attempted_slots"] == 0
     assert store.states[("s", "coverage")] == "budget_limited"
+
+
+def test_foldx_slot_limit_above_legacy_cap_is_honored():
+    a = candidate("a", "A1D")
+    store = Store({("s", "coverage"): [a]})
+    calls = []
+
+    def foldx(batch, *, slot_start, runs):
+        calls.append((slot_start, runs))
+        return PredictionResult("success", records=[pair_row(item, [1.] * runs, slot_start)
+                                                     for item in batch])
+
+    result = SiteFirstValidation().run_indexed(
+        store, lambda batch: spurs(batch), foldx, foldx_slot_limit=600)
+    assert calls == [(0, 3)]
+    assert result["foldx"]["ledger"]["slot_limit"] == 600
 
 
 def test_spurs_unique_budget_counts_dispatched_failures_without_retry():

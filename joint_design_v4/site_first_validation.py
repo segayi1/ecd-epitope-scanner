@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import statistics
+from collections import defaultdict
 from collections.abc import Mapping
 from copy import deepcopy
 from time import perf_counter
@@ -41,20 +42,23 @@ def _candidate_positions(candidate):
 class SiteFirstValidation(AdaptiveValidation):
     """Batch validation while preserving each lane's current site-first head."""
 
+    protocol = PROTOCOL
+
     def _init_ledgers(self, spurs_limit, foldx_limit):
         # The dataclass base has no post-init hook; initialize protocol-specific fields per run.
-        self.spurs_ledger.update(policy=PROTOCOL, batch_size=SPURS_BATCH_SIZE,
+        self.spurs_ledger.update(policy=self.protocol, batch_size=SPURS_BATCH_SIZE,
                                  refill_policy="head_miss_round_robin_v1",
                                  unique_requests=0, failed_requests=0,
                                  technical_failure=False, batches=[], stop_reason=None,
                                  timings={"seconds": 0.0}, model_batches=0, valid=0,
                                  failed=0, reserved_budget=0, request_limit=spurs_limit)
-        self.foldx_ledger.update(policy=PROTOCOL, slot_limit=foldx_limit,
+        self.foldx_ledger.update(policy=self.protocol, slot_limit=foldx_limit,
                                  reserved_slots=0, attempted_slots=0, valid_slots=0,
                                  failed_slots=0, released_slots=0, technical_failure=False,
                                  budget_exhausted=False, batches=[], stop_reason=None,
                                  timings={"first_pass_seconds": 0.0, "append_seconds": 0.0},
                                  model_batches=0, reserved_budget=0,
+                                 sector_coverage_policy="one_formal_candidate_per_sector_before_extra_v1",
                                  unseen_site_priority="distinct_site_first_v1",
                                  unseen_site_reserve_candidates=1,
                                  unseen_site_candidates=0, attempted_site_keys=[])
@@ -292,6 +296,7 @@ class SiteFirstValidation(AdaptiveValidation):
         lane_status = {}
         lane_heads = {}
         explored_positions = set()
+        formal_sectors = set()
         self.foldx_ledger["exploration_policy"] = "uncovered_residue_before_retry_v1"
         foldx = {"passed": {}, "lane_status": {}, "ledger": self.foldx_ledger,
                  "results": self.foldx_results}
@@ -435,6 +440,7 @@ class SiteFirstValidation(AdaptiveValidation):
                     if status == "PASS":
                         store.complete(*lane, candidate.candidate_id)
                         lane_status[lane] = "TARGET_REACHED"
+                        formal_sectors.add(str(lane[0]))
                     elif status == "DISPLAY_REVIEW":
                         store.record_outcome(*lane, candidate.candidate_id, "FOLDX_DISPLAY_REVIEW")
                     elif status == "SCIENTIFIC_FAILURE":
@@ -454,21 +460,47 @@ class SiteFirstValidation(AdaptiveValidation):
             remaining = foldx_limit - self.foldx_ledger["attempted_slots"] - self.foldx_ledger["reserved_slots"]
             slots = min(workers, max(0, remaining // 10))
             attempted_sites = set(self.foldx_ledger["attempted_site_keys"])
-            preferred, deferred = [], []
-            # Fill each batch with untried site sets before revisiting a lane.
-            for item in passed_heads.items():
-                key = _candidate_site_key(item[1])
-                if key not in attempted_sites:
-                    attempted_sites.add(key)
-                    preferred.append(item)
-                else:
-                    deferred.append(item)
-            selected = (preferred + deferred)[:slots]
+            # Cover sectors before spending a second batch slot in one sector.
+            candidates_by_sector = defaultdict(list)
+            for order, item in enumerate(passed_heads.items()):
+                signature, candidate = item
+                sector = str(by_signature[signature][0][0][0])
+                candidates_by_sector[sector].append(
+                    (_candidate_site_key(candidate) in attempted_sites, order, item))
+            sector_order = sorted(candidates_by_sector,
+                                  key=lambda sector: (sector in formal_sectors, sector))
+            ranked_by_sector = {
+                sector: sorted(candidates_by_sector[sector], key=lambda row: (row[0], row[1]))
+                for sector in sector_order
+            }
+            selected = []
+            sector_selected = defaultdict(int)
+            batch_sites = set()
+            batch_sectors = set()
+            while len(selected) < slots:
+                available = [
+                    (sector_selected[sector], sector in formal_sectors or sector in batch_sectors,
+                     _candidate_site_key(rows[0][2][1]) in batch_sites,
+                     rows[0][1], rows[0][2], sector)
+                    for sector, rows in ranked_by_sector.items() if rows
+                ]
+                if not available:
+                    break
+                uncovered = [row for row in available if not row[1]]
+                candidates = uncovered or available
+                nonduplicate = [row for row in candidates if not row[2]]
+                pick = min(nonduplicate or candidates,
+                           key=lambda row: (row[1], row[0], row[3]))
+                ranked_by_sector[pick[5]].pop(0)
+                selected.append(pick[4])
+                sector_selected[pick[5]] += 1
+                batch_sites.add(_candidate_site_key(pick[4][1]))
+                batch_sectors.add(pick[5])
             if not selected:
                 self.foldx_ledger["budget_exhausted"] = True
                 self.foldx_ledger["stop_reason"] = "FOLDX_BUDGET_INSUFFICIENT"
-                for sig, members in by_signature.items():
-                    for lane, candidate in members:
+                for lane in lanes:
+                    if lane not in lane_status and store.status(*lane)["status"] in {"ready", "exhausted"}:
                         store.mark_queue_state(*lane, "budget_limited", foldx_limit)
                         lane_status[lane] = "STOPPED_BY_BUDGET"
                 break
@@ -526,7 +558,7 @@ class SiteFirstValidation(AdaptiveValidation):
                         sig, candidate, "TECHNICAL_FAILURE", scores_by_sig[sig], audits[sig])
             for sig, candidate in selected:
                 result = self.foldx_results[sig]
-                result["repeat_audit"]["execution_protocol"] = PROTOCOL
+                result["repeat_audit"]["execution_protocol"] = self.protocol
                 audit = audits[sig]
                 self.foldx_ledger["reserved_slots"] -= 10
                 audit["released_slots"] = max(0, 10 - audit["attempted_slots"])
@@ -537,6 +569,7 @@ class SiteFirstValidation(AdaptiveValidation):
                     if lane_status_result == "PASS":
                         store.complete(*lane, lane_candidate.candidate_id)
                         lane_status[lane] = "TARGET_REACHED"
+                        formal_sectors.add(str(lane[0]))
                     elif lane_status_result == "DISPLAY_REVIEW":
                         store.record_outcome(*lane, lane_candidate.candidate_id, "FOLDX_DISPLAY_REVIEW")
                     elif lane_status_result == "SCIENTIFIC_FAILURE":

@@ -1,5 +1,75 @@
 # 项目记忆：有效决策、故障证据与维护约束
 
+## 2026-10-28 site-first 正式展示与递补验收
+
+正式科学 PASS 与展示资格分离：重复采样跨门、诊断缺失、明确跨执行冲突、结构需审查和机制证据不全不得进入 site-first 正式面板或区域推荐；保留物理结果及逐槽证据并继续递补。跨区共享十槽物理签名的回归验证两区均隔离且不重复调用；未找到替代项保持缺口。前端对 site-first 正式展示和空间比较要求明确正式资格与完整重复诊断。冻结 AIB234 输入无模型完整回放与展示产物核验通过；综合回归 226 passed，另1项历史 CTLA4 回放缺少 probe_sectors_v4.json、panel_candidates.json 和 surface_graph_v41.json，现明确 skip。旧 fdbde4aa24d7 的显示资格字段缺失为未知，其面板签名 448/680 单元格不一致，修复后的真实单例情况见下一段。
+
+2026-10-29 单例更新：真实 job `4c13e9a623db` COMPLETE，应用层冷评分/修复缓存条件下运行 653.906 秒；区域机制与覆盖共 14 张正式卡，精简面板 8 项，SPURS 55 请求、FoldX 42 槽均有效，所有组合仅需首轮 3 槽。85×8 面板签名与候选响应一致，独立几何及 6 项 ZIP/源文件/manifest 哈希复核通过。旧冻结基线 2321.969 秒，单次观测降低 71.84%，但 OS 页缓存与负载未严格匹配，性能目标 NOT_ASSESSED；实际十槽递补未触发。具体对照与边界见 `workspace_data/site_first_assessment_aib234_20261028_r1/AIB234_验收评估报告_20261029.md`。
+
+## 2026-10-27 site-first面板可辨识性响应丢失修复
+
+真实job `fdbde4aa24d7` 的 `panel_identifiability_v41.json` 中85个假设签名全零，mean response/separation/minimum distance也均为0；但同一job `panel_candidates.json` 的55候选中8个已评分候选都有85维非零响应，选中候选response和为5.79–7.42，mutation impact证据与SurfaceGraph位置完整。旧 `workspace_data/sf_old1/derived_export` 85假设/425候选/8选面板的签名非零（sum 40.912541、max .430165、mean response .216093、mean separation .110533）。根因：site-first在initial hypothesis response附加时 `candidates=[]`；实际候选由`SiteFirstValidation.materialized_candidates`在SPURS/FoldX执行后产生，原先直到`select_panel`之后才给最终选中项补响应，因此保存的panel目标优化使用全零向量。没有表面扰动输入或编号映射缺失。`joint_design_v4/engine.py`现只在site-first执行后、qualification/select_panel前对materialized candidates附加现有hypothesis responses。测试用实际engine fake模型和非空fixture hypothesis证明response/signatures非零；engine 6项通过，saved AIB234完整pipeline无模型重放及逐项一致性回归1项通过。旧运行目录未改、没有真实模型调用。剩余：fdbde4aa24d7的历史selected panel仍是旧全零结果，只能在独立派生分析/re-export中重算，不能宣称历史面板已修复。
+
+## 2026-10-27 最终导出重算推荐卡完整性收据
+
+新job `workspace_data/06710f1f861b` 的模型与几何已通过，但`card_evidence_completeness.json`记录的`analysis.json` SHA与最终analysis不一致；panel和sector源文件哈希匹配。调用顺序证实：pipeline的`write_card_acceptance`先保存analysis和receipt；`exporting.finalize_scientific_bundle`稍后从FoldX原始执行证据复制portable source evidence，更新`portable_source_evidence`/`files`并再次保存analysis，导致receipt过期。修复在finalizer完成所有analysis变更后、计算manifest SHA及ZIP前，重新运行`write_card_acceptance`核对当前卡片内容和源文件哈希；最终receipt结果回传pipeline作为完成门，并一起写入manifest/ZIP。回归模拟finalization前推荐卡缺失证据，证明原先PASS被最终复核降为INCOMPLETE，源hash、manifest和ZIP保持一致。定向新测试及相关finalizer测试3 passed。未更改job 06710f1f861b、未重跑模型；原receipt只能通过独立派生副本重导出重核，不得覆写历史运行。
+
+## 2026-10-27 site-first FoldX误报技术失败修复
+
+真实job `workspace_data/d14576822c6f` 的8个FoldX候选共24槽均有有效配对，但全部因worker将未舍入的原始配对中位数与共享FoldX接口的4位聚合值按1e-6直接比较而误报 `CANDIDATE_TECHNICAL_FAILURE`。原始 `Dif_input.fxout` 首候选三值0.565976/0.615856/0.287897，中位数0.565976，共享接口输出0.566；请求、二进制/输入身份及配对hash完整，`validate_pair` 通过。修复仅在 `integrations/workers/foldx_worker.py` 按既有4位合同比较聚合，同时记录原始中位数供正式输出；通用 `stability.py` 聚合精度及科学门槛不变。回归覆盖原始精度、raw median输出和真实聚合错配仍拒绝；父目录venv定向测试22项通过。历史job和结果未改、未启动模型/重跑；其原technical_failure状态不会因源码修复自动更改，需通过受控新任务重验。
+
+## 2026-10-27 位点先行 v2 实施及验证中
+
+用户批准方案；新增显式协议ordinary_site_first_v2（request.metadata.joint_v4_ml.execution_protocol.name），继续保留原生产默认。全部合法双/三位点集合先计算几何，机制用至多3个真实witness预排；当前位点集合才展开每位点3→6代表，缺失表位证据记录gap且不得获表位原则推荐。三点对区域最强合法双点做增益门，并用确切AA亲本做对应原则提前比较。SPURS最多4/队列预取/批64，FoldX跨队首批量最多8候选、3/10槽和总300预算，WT修复任务内按输入及二进制哈希验收后复用；模型与配对证据按候选独立、技术失败保留批内成功且停止新派发。
+
+针对性发现并修复：跨原则canonical对象覆盖、跨区同突变单次模型/独立正式门、错开队列复用旧FoldX、SPURS额度耗尽继续消费缓存、物理槽run编号完整性、单候选pair解析失败不吞同批成功；新协议正确接受真实表位状态PREDICTED并区分缺失。卡片测试使用明确标注fixture的侧链暴露数据；无原子侧链证据保持未知。
+
+最终源码对应targeted v3为34 passed/10.66秒，perf comparator最后修改专项3 passed；此前综合225 passed/43.11秒是前一源码快照。最终综合回归仍在运行，stdout会话73309，完成证据预定test_output/site_first_20261027/final_regression.xml，不能据运行中状态宣称通过。六位点×19替换输入、模拟模型：35位点集，准备0.05385秒、代表展开0.00593秒、全流程2.112秒、主进程峰值142,585,856B，记录six_site_19_replacements_final.json；前版同输入模拟99.423秒但搜索空间不同，两者不构成真实模型总耗时比较。
+
+真实性能尚未验收：无真实SPURS/FoldX基准、无13例重跑。site_first_performance.json是打包后独立sidecar，峰值仅当前Python进程、不含子进程/GPU；compare_site_first_performance.py只给初步runtime判定，需独立确认GPU/模型身份、RepairPDB冷热缓存及科学证据，不能单靠其宣称50%通过。新协议无全替换索引DB，显式启用，不自动改变现有默认或启动工作。
+
+## 2026-10-27 用户取消：停止重跑，不得自动恢复
+
+用户明确指出本次算法意图理解错误，要求停止运行并删除所有本轮产物。核查时批次执行器已退出、DB无RUNNING/QUEUED；已核验命令和创建时间后终止事件监听器42812及其conhost45936。禁止继续计算、自动恢复或把现实现当作已确认需求。
+
+删除范围已限定为本轮5个新job：61937605e0db、a40c9175989b、256ac00f4150、98a2a1f2f3e3、c495b2004808，以及workspace_data/ordinary_adaptive_rerun_20261026*、ordinary_adaptive_stop_repair_20261026、ordinary_adaptive_windows_path_repair_20261026。历史原始输入和旧结果不在删除范围。
+
+受限批量删除及单一固定目录删除均被工具自动审批审查拒绝（blocked by policy，未提供具体原因），未删除运行目录、控制文件或DB记录。不能绕过。状态已记STOPPED_BY_USER/cleanup_status=BLOCKED_BY_TOOL_POLICY。以后先对齐用户算法意图；删除完成前不能称产物已清理。
+
+## 2026-10-26 用户要求先停算，集中修复后再计算
+
+已核验批次命令及创建时间，终止launcher39404/owner33868和conhost4504；当前job98a2a1f2f3e3记FAILED，注明用户停止。未删除历史或部分产物，user_stop.json及state_before_user_stop.json保存停算实证。
+
+本轮新增修复在scripts/run_ordinary_adaptive_rerun.py：新任务或resume旧任务一旦非COMPLETE、验收非PASS/DIAGNOSTIC_COMPLETE，立刻HALTED_FOR_REVIEW且不创建下一例；源码变更或其他异常落INTERRUPTED/error并写报告；HALTED/INTERRUPTED/用户停止的报告门为NEEDS_REVIEW。preflight拒绝重复case_id，避免13次执行覆写同一状态键。Windows路径safe_name修复保留。回归同时验证新失败、旧失败、输出验收失败、源码变更和13例成功路径；测试工作目录隔离，避免mock在真实workspace创建上传目录。
+
+父目录venv相关19文件185 passed/26.99秒，含FoldX执行路径、身份/配对、解析及SPURS缓存；stop_and_repair_regression.xml。两位gpt-6-luna只读审查未报告额外明确阻断项；模型仍用模拟响应，真实结果验收待完成。完整输入哈希及13份真实请求再次构造通过。
+
+用户要求修完再计算，修复版已冻结新收据并重新启动有限13例，launcher9756、UTC2026-10-27T06:03:54；见workspace_data/ordinary_adaptive_stop_repair_20261026/。归档原state及停止报告，prior_attempts保留3次目录故障和1次用户停止，全部创建新job，任一例失败停止。无heartbeat、自动重试或轮询。完整结果和交叉报告仍待本批终态。
+
+## 2026-10-26 Windows候选目录修复与13例接续
+
+真实串行前3例AIB234/AIB226/AIB239的JobStore均COMPLETE，但结果验收为NEEDS_REVIEW；各例FoldX attempted=3、valid=0，原始候选ID含`|`直接进入`foldx_adaptive/<candidate_id>/slot_00`，在Windows建目录时触发WinError123，尚未启动FoldX模型。不是科学门拒绝。三个原job分别61937605e0db/a40c9175989b/256ac00f4150，原目录和尝试成本保留。
+
+engine复用util.safe_name，仅转换输出目录分量，科学候选身份不变。测试fake FoldX实际mkdir，以捕获Windows非法路径；父目录venv相关33项通过（windows_path_repair.xml）。新冻结收据与一次性接续记录见workspace_data/ordinary_adaptive_windows_path_repair_20261026/。接续前已确认旧owner1876退出且DB无活动任务；源码校验使旧执行器在第4例前停止。接续脚本只允许这3例已知错误且零有效FoldX槽，归档原state及prior_attempts后创建新job执行完整13例，不自动循环重试。启动PID39404，UTC2026-10-27T05:56:47；实际子进程owner以新job执行记录为准。
+
+尚无真实结果通过验收，不能宣称新算法完成可用性验收。后续每例核对状态、模型预算/科学门与导出，全部终态后给交叉比较报告。报告目录仍为workspace_data/ordinary_adaptive_rerun_20261026_report/，原失败状态备份state_before_repair.json。没有heartbeat或sleep轮询。
+
+## 2026-10-26 普通自适应资源验收完成，13例重跑已获授权
+
+后续修复将同位点几何、冻结参考分布及ranking.reference_values共享存储，物化恢复原字段；SQLite内部元数据zlib无损压缩，取消WAL双份大文件写入。完整写入前/物化后证据等价回归通过；SPURS输入配置无法突破1000唯一请求和64/批，FoldX仍300槽。15文件综合157 passed/30.092秒，执行器最终12 passed/6.34秒（有重叠），收据release_regression.xml与runner_final.xml。
+
+同一6位点×19评分替换输入合法候选85,240，流程及formal面板检查完成：99.423秒，PeakWorkingSetSize=2,382,639,104B，SQLite=397,062,144B。原测量脚本随后因自己的计数连接未关闭而清理失败；已修脚本，保留原错误，进程退出后原数据库quick_check=ok且候选数一致，resource_acceptance_verified.json据完整实测认定资源项PASS，不重算已有测量。仅模拟模型，未测真实模型叠加内存；不称恒定内存或任意输入规模通过。
+
+工程PASS收据workspace_data/ordinary_adaptive_rerun_20261026_acceptance.json绑定完整生产源码、runner及13例manifest哈希。用户已授权通过验收后真实重跑11binder+PD1+CTLA4，有限串行runner每例独立校验预算、3/10门、配对来源、卡片和ZIP，失败记NEEDS_REVIEW；终态不自动重试，无heartbeat。旧baseline实际仅5 AF3有逐组合FoldX和追加槽，6结构binder仅汇总；PD1/CTLA4旧来源限制保留。状态与报告见ordinary_adaptive_rerun_20261026_state.json及ordinary_adaptive_rerun_20261026_report/；全批真实模型及结果验收以它们的最终终态为准。
+
+## 2026-10-26 普通自适应算法审查：功能回归通过，完整运行验收待完成
+
+详见[普通自适应审查记录](ordinary_adaptive_review_20261026.md)。修复engine严格模式未初始化display_candidates、规范/原编号混用、tuple键诊断JSON失败与科学门前停止；ordinary_adaptive_validation改为逐队首SPURS→FoldX交错执行，修复跳项、SPURS预算双扣与缓存末预算，保留原配对证据；ordinary_adaptive保存三点科学证据/完成态并按位点集合缓存几何。FoldX输出改为candidate_id/slot目录，防止活动配对manifest相互覆盖。sector_recommendations按账本各原则赢家显示，binder表位N/A；ZIP去掉完整SQLite，保留执行账本。网页按卡片/审计/运行协议区分历史5槽与新3/10槽，不能由实际已有3槽推断历史已完成。
+
+父目录项目venv最终12文件129 passed（22.46秒），收据test_output/ordinary_adaptive_review_20261026/final_acceptance.xml；实际ZIP+manifest与真实Node渲染断言通过。历史冻结五槽测试显式legacy；分区导出短链期望按已有效合同更新为7。CTLA4 42组合/210配对：历史五槽41过1败，前三槽新规则40过2败；E59Y/K65F不能按历史median判新协议通过。Binder80组合/240配对三槽79过1败；源hash及逐组合结果见saved_evidence_audit.json，仅历史规则回放。
+
+未解决资源验收：单区7位点×5输入替换合法2576候选3.108秒、SQLite59,817,984B；优化后的保存6位点×19替换用例仍未在45秒诊断限时内完成（large_pool_probe.json），未取得峰值内存证据。ordinary_adaptive.py仍先全量创建区域候选再写SQLite，不能称恒定内存或正式运行验收通过。没有加cap或放宽科学门；未调用真实模型、完整浏览器验收、重启服务、回写历史或提交。后续优先处理建池与持久化资源增长，不应把129项通过当作大规模可用证明。
+
 ## 2026-10-26 运行剩余时间与FoldX / AF3状态核查
 
 新增job_timing.py与JobStore.time_estimate，详情API/SSE发布同owner/同输入协议的历史阶段耗时区间；当前execution trace识别FoldX首轮/追加等真实阶段，不用百分比倒推。至少3个不同执行参考，历史缓存60秒，排队/等待/结束不伪报倒计时，样本不足/超范围明确未知。恢复取最新execution_id，发布重放副本不重复计样本；既有数据库无迁移、科学结果不改。运行条中英/手机及新离线完成态已覆盖。
@@ -855,3 +925,312 @@ UI续修：`web/recommendations.js`和`web/app.js`同序读取本区`stability_r
 
 ## 2026-10-25 PD1文献8嵌合体与现有8设计共同结构对照
 新增独立PD1_mutant_comparison.html（原seg图保留），报告逐表与ECD序列验证45替换，现有8设计23替换；58独立位点。采用统一AFQ15116v6 ECD25–170预测坐标覆盖缺失N端/茎区，中性表面、构建体多色定位、共享位点多标记，单canvas离线。主面板L1–8+C3/C4/C5=11，其他5保留补充；原mut4/5/7保留A132L背景并建议单独对照。文献MPER译名/Seg3坐标计数纠正在网站标明，不用错误SASA汇总筛选。桌面/390px、逐位/交互/零网络验收PASS，数据来源hash未变；用户报告目录已复制网站、PNG、建议与验收JSON。详见docs/pd1_antibody_epitope_atlas/PD1_mutant_comparison_acceptance.json及用户目录PD1_mutant_comparison_delivery.json。未调用模型评分或重算突变结构。
+
+## 2026-10-29 13例site-first中期验收
+7个完成job（b5b5f4d2fde2、5c6b85a52786、3d50af6182e0、d95c39a8d802、149067f9c18b、6b5be732156e、5c5b71f04ea1）独立验证PASS；50区连通/30Å测地/22Å Cα/4残基/50Å²通过。99正式区域卡代表100个机制/覆盖原则队列，AIB193有一卡双原则；56面板记录与10528字段比较均通过。306槽全有效，AIB15三项科学失败已排除。AIB10按AF3模型1及匹配confidence重放。报告write_reports从旧manifest继承ordinary_v4_sequential_v1标签，实际analysis/ledger为ordinary_site_first_v2；运行中未改scripts/run_ordinary_adaptive_rerun.py，独立报告按实际协议交付。报告workspace_data/site_first_13_cases_audit_20261029_7completed/；其余6例及13例最终结论待完成，严格性能目标仍NOT_ASSESSED。
+
+## 2026-10-29 SPURS multi批量递补隔离补丁
+AIB203 123组合拆61批（53个单项批）导致重复模型加载；新增队首缺分才补最多64个唯一组合、跨lane队首优先轮转，缓存消耗不启动worker，剩余预算截断，账本标识head_miss_round_robin_v1。独立源码快照中73项回归通过；仅修改快照site_first_validation.py及其测试，两文件生产hash未变。补丁workspace_data/site_first_spurs_batch64_20261029/batch64.patch，收据validation_receipt.json。13例执行器仍运行并检查源码冻结，因此尚未启用；须批次终态后校验base hash应用及真实AF3/64批量计时验收。仍每批启动一次worker，无常驻模型；多预评分计入1000预算，边界分配顺序改为lane公平，不声称逐项结果完全等价。
+
+## 2026-10-29 下一例启用batch64（用户已授权，已应用）
+本条更新前条等待全批结束应用的计划：用户要求下一例启用。生产相关80项通过；当前AIB26/6d2cbffaf492保留旧进程与已验证旧源码归档。原例间源码守卫停机后，一次性WaitForExit接续器12668执行scripts/continue_site_first_batch64.py，只有精确授权边界且旧例全COMPLETE+PASS/DIAGNOSTIC_COMPLETE才续，失败不绕过。新状态/报告workspace_data/site_first_13_cases_20261029_batch64，保留previous_state和source_transition；前8例+AIB26为旧调度，AIB56起64项。实际新source digest f02c5b7a57cdbb52a28b502722b982485a3fe2fecc1881b49549547d20d27a4b（CRLF输出，文本与已测源码一致）；旧a0ae652b1dfb8996482601f787aa8d8466b1d157dd95da365dfb5b04bf44d9c8。收据workspace_data/site_first_spurs_batch64_20261029/activation.json。AIB56实际启动待事件，不能视分段13例为同配置性能数据。
+
+
+## 2026-10-29 WSL 常驻桥 stdin 抢占
+
+- 症状：真实常驻 worker 环境握手超时，单次结束后看不到有效响应；直接连接 WSL worker 则正常。原因是 `integrations/wsl_bridge.py::_wsl_path` 的子进程继承桥的 stdin，可能读走待处理请求。修复使用 `stdin=subprocess.DEVNULL`；`tests/test_wsl_bridge_input.py` 守护此边界。
+- 修复后真实 WSL 握手、两次 GPU 请求及结束身份校验通过；`workspace_data/site_first_runtime_opt_20261029/smoke_03/receipt.json` 保存证据，第二次模型加载 0.008 秒，首次 65.836 秒。不能据此推断整个案例的加速或全套优化已验收。
+
+
+## 2026-10-29 site-first 未完成原则汇总缺漏
+
+- 实际 13 例审核中 PD1 VS006 三原则 candidate_failures，AIB60 VS004 和 AIB26 VS002 覆盖原则 budget_limited；普通 ledger `uncompleted_gaps` 却为空，但 `queues` 准确记录终态。自动 PASS 仅验证已有输出的门控和一致性，不能推出各区各原则完整。
+- 审查须同时遍历正式主卡/alternatives 和全部适用原则队列终态；预算不足不等于科学失败，无卡不等于实验无结合。未修改历史结果；汇总/验收契约修复待办。
+
+
+## 2026-10-29 site-first 原则缺口
+
+普通 site-first 队列过去仅在部分路径写 uncompleted_gaps，空列表不代表区域原则完整。现 ledger 对终态补全缺口，runner 依据实际 queues 分别报告技术验收和区域完整性；unknown 与 not_applicable 不能当 PASS。PD1 VS006 因低 pLDDT 与 P/G 保护只有一个可用位点；AIB60 VS004 和 AIB26 VS002 的组氨酸描述符未知导致展示复核及预算不足。提前跳过复核候选会改变预算分配及物理证据，必须显式版本并验证。
+
+### 2026-10-29 已知展示复核预筛（显式启用）
+
+- 为解决已知机制缺失候选消耗 SPURS/FoldX 预算后仍不能正式展示的问题，新增 `metadata.joint_v4_ml.execution_protocol.display_prefilter = "known_review_v1"`。仅普通 site-first 调度读取；默认不开启，历史协议路径保持兼容。
+- 共享 `known_display_review_reasons` 用于提前检查结构复核和已有机制 `missing_axes`；重复采样未知不属于提前排除理由，仍由真实 FoldX 后校验处理。候选保留 `DISPLAY_REVIEW_BEFORE_SCORING` 决策、原因、`scientific_status: NOT_ASSESSED`，不伪造科学失败或物理结果。候选 ID 维度检查避免污染其他区域的共享突变。
+- 预筛移除已知复核队首后顺序递补，前瞻批次也不为这些候选消耗分数预算；1000/300 上限及 3→10 重复门槛不变，但预算分配会变化，不能声称与旧版最终推荐完全等价。
+- PD1 VS006 正式位点不足问题仍需输入结构证据改善；预算优化不能保证所有区域都有方案。
+
+## 2026-10-30 十槽复算确认与已知复核预筛
+
+原因：旧site-first十槽中位数通过后，展示层仍仅凭跨门采样波动剔除，导致3→10追加无法服务正式推荐；最终回填诊断还可能覆盖候选复核标记。用户明确要求保留高优先级候选并追加确认。
+
+修改：新site-first运行默认display_prefilter=known_review_v1、repeat_confirmation_policy=ten_slot_median_v1；原普通生产默认保留。首轮恰1/3超限后追加7槽，完整10槽中位数≤2且原其他门通过，可正式展示；敏感性true与逐槽值保留，标记TEN_SLOT_MEDIAN_CONFIRMED。共享helper用于后端和独立验收，网页按同证据核对；区域卡完整输出确认诊断，最终回填使用candidate_rechecks的诊断。结构/机制缺失、不完整/无效证据、明确跨执行冲突仍阻止正式展示。显式None可保留旧行为；历史目录不重写。
+
+验证：132 passed、1 skipped（旧CTLA4输入缺失），含真实AIB234结构+模拟评分的普通3槽与3+7端到端、共享物理去重/10槽计费、旧诊断兼容、网页/导出/独立验收。真实保存十槽局部回放15个组合，9个物理通过均确认，保留其他原门后5个候选上下文可展示；4个仍机制缺失。收据workspace_data/site_first_confirmation_20261030/修改与验证报告.md与saved_ten_slot_replay.json。
+
+边界：无真实模型重算/浏览器交互验收；局部证据回放不代表新队列最终推荐，完整十例调度与受控性能对照仍待完成。预算与阈值不变，但新预算分配/展示资格会改变结果，不声称与旧面板等价或固定加速。
+
+
+## 2026-11-01 ELOF1 离线页标记贴附
+
+独立结果页原从Cβ固定外移3 Å、标签外移5 Å且置顶，造成表面外悬浮和背面标签透视。workspace_data/elof1_panel_20261101/workbench_review.js现以3Dmol实际表面网格中对应残基的顶点锚定彩点，保留共享位点身份，短线连接标签并启用深度遮挡；骨架锚定真实原子。check_workbench.cjs验证28标记/18位点贴附、旋转稳定、全部14突变体与三视口；check_offline_package.cjs验证实际解压目录禁网浏览与本地下载。v2离线包及截图见workspace_data/deliveries/ELOF1_offline_20261101_v2.zip和源目录marker_anchored_*，收据marker_browser_acceptance.json及包内acceptance/offline_package_acceptance.json。当前用户已解压v1目录同步页面并备份previous；旧ZIP保留。候选、评分、分区、覆盖与科学导出逐项字节一致；无模型重算，标记为WT定位。
+
+
+## 2026-11-03 效率改进验收缺陷修复
+
+- 原因：仅对可见 FoldX 队首排序无法触达隐藏位点；自定义设计从投影 analysis.json 回填会覆盖完整数据库结果；旧任务缺 summary_json 导致列表标签丢失。
+- 修复：SiteFirstQueue 在已覆盖组合重试前切换到含新位置的合法组，保留已处理历史并恢复待处理候选；探索期间 SPURS 仅预取队首。SiteFirstValidation 标记实际 SPURS 科学失败或 FoldX 派发/缓存触达，策略 uncovered_residue_before_retry_v1。科学门与总预算不变。
+- api._hydrate_for_custom 从完整结果深副本开始，磁盘仍写投影；JobStore 在后台用 SQLite 单次多路径提取逐条补摘要，列表不读取 result_json；条件更新避免覆盖新摘要。
+- 验证：test_output/efficiency_repairs_20261103/regression.xml 94 passed；boundaries.xml 5 passed（含前三例重复，共96个不同测试）。覆盖真实队列30槽/2次SPURS边界、挂起候选恢复、完整自定义设计API结果和旧schema迁移。
+- 限制：后台迁移完成前旧列表可能暂缺摘要；未做全仓、真实模型或浏览器验收。首次成功仍结束原则队列，不能保证完整Pareto前沿召回。历史运行文件未重写。
+
+## 2026-11-08 V2 独立发布候选修复进行中
+
+- 独立发布候选的 FoldX worker 将包父目录放到导入搜索首位，在旁边存在同名旧项目时误导入旧项目，导致配对模块缺失、真实运行全部 FoldX 槽技术失败。候选版 `integrations/workers/foldx_worker.py` 现从 worker 所在包目录加载配套代码，定向测试使用同名冲突包验证解析。
+- 候选版 `structure_analysis.py` 缺少可映射预测置信度时不再把 B-factor 当作 pLDDT；`procaliper_worker.py` 将缺少可选包记录为 TOOL_NOT_CONFIGURED；`exporting.py` 纳入 execution_protocol.json。三项定向回归通过。
+- 限制：结果 ZIP 仍可能包含本机路径；便携 FoldX 证据包含原始文件及哈希，隐私处理须保留证据一致性。修复后的真实 strict 运行、完整测试、发布包重建和隐私验收尚待完成；历史结果未更改。
+- 后续：安装后的 Python 3.12 全套测试 53 passed；新增隐私扫描覆盖嵌套 ZIP/gzip、Windows 路径与自定义标记，定向测试 2 passed。扫描旧 strict 结果发现 7 个条目包含用户目录，旧源码候选包通过同一检查。已启动独立 strict 真实模型任务，状态与结果待后续核验；扫描工具不保证识别所有个人信息。
+- 新 strict 运行前两批生成 16 条成功记录、48 个 FoldX 配对槽；逐槽调用 validate_pair 均通过。该核验只覆盖已经生成的两批，不代表整次任务、正式推荐或隐私验收完成。
+- 额外发现原子数相等的未验证 confidence JSON 会被按解析顺序直接赋值，可能错配 pLDDT。候选版 structure_analysis.py 对未预验证的 AF3 CIF 改用原始 atom-site 身份及置信度校验；PDB 无可核验映射时保持未知。隔离源码副本五项回归通过，含原失败场景、匹配 CIF 与非法值；另有原项目五项 AF3 选择、原子映射及可信度回归通过。当前运行先于此修改，不能作为此项真实输入验收。
+- 隐私修复进行中：候选版输入身份和结构元数据不再写原始绝对路径，保留复制的输入及摘要；隔离源码预览及输入回归 10 项通过。V4 清单的工具命令对绝对路径作明确标记的脱敏，运行器仍用原命令，隔离定向回归 7 项通过。其他来源字段和 FoldX 证据中的路径尚未清除，不可据此认定结果 ZIP 可公开。
+- 候选版 FoldX 的新运行、采样与 BuildModel 收据在写入时脱敏命令路径，并显式标记；实际进程参数、二进制/输入/输出摘要保持原值。隔离定向回归 8 项、FoldX worker/收据/解析回归 22 项通过；其中旧测试的六个配对用例适配到发布版 integrations.paired。历史收据与正在运行任务未修改，其他输出路径仍需处理。
+
+
+## 2026-11-09 V2 独立开源包验收完成
+
+独立发布源码位于相邻 ecd_epitope_scanner_open_release_v2。修复安装后 FoldX worker 的同名包误导入、置信度原子身份校验与导出隐私；公开入口固定 ordinary_site_first_v2。最终安装 wheel 在独立目录 84 passed；源码 ZIP 独立重建的 wheel 成员内容完全一致。真实公开 PD-L1 strict 结果为 11 分区、57 设计、33 complete 队列、113 有效 FoldX 配对槽、66 PASS 证据卡，736 清单文件摘要一致。SPURS 的两项本地修改以 MIT 补丁及固定版本配置命令交付，补丁在原始版本上检查应用通过。
+
+完整包及校验值位于 `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst` 内的 `ecd_v2_acceptance/ecd_epitope_scanner_v2_complete_20261109.zip`；验收材料位于同一归档内的 `ecd_v2_acceptance/final_release_20261109`。源码、wheel、轻量验收附件及完整包的递归隐私扫描通过；清除发布源码中的私人质粒元数据。历史 strict ZIP 内执行源码快照仍含清理前实验材料标识，原件保留在归档中，不纳入公开附件。Python 3.11/Linux CI、全新机器外部安装及本次 ProCaliper 交叉检查未验证；计算结果不证明实验结合。原工作树未整体暂存、提交或推送，历史结果未回写。
+
+
+## 2026-11-09 Public research repository
+
+Published the independently scoped V2 source at https://github.com/segayi1/ecd-epitope-scanner with release v1.0.0 (commit 91b43fbf059b9d6a9df4e1dd1eb9657ebfaf6ded). Repository documentation, external setup, validation record, citation metadata and release notes use English. The release includes source, the tested wheel, sanitized English acceptance evidence and checksums; anonymous downloads were compared with local assets. Commit identity uses the GitHub account and noreply address. No original project history or historical raw run archives were published.
+
+Pytest collection now has explicit tests rootdir/confcutdir and an independent working directory, supporting the hyphenated repository name; the published command passed all 84 local tests in 183.78 seconds. Scientific runtime files match the previously accepted wheel. CI status is linked from the repository; the last observed new workflow was running. Publication checkout/state: `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst!ecd_v2_acceptance/github_publish_20261109`. Manuscript bibliographic details remain to be supplied.
+
+
+## 2026-11-09 GitHub POSIX privacy acceptance
+
+The public CI failure was one real export-redaction gap: Linux temporary paths were not matched by the shared text sanitizer. Both Python jobs originally reported 83 passed and one failed request-identity assertion. Version 1.0.1 covers POSIX temporary roots in the shared export and recursive archive scanner, with explicit cross-platform request, gzip and URL-preservation regression cases. API and exported software version metadata are aligned. Scientific scoring and historical run outputs are unchanged.
+
+Final public commit 3f631fd80dadbb67c2fac73178c56b8e936178dc passed all 91 tests on both Python 3.11 and Python 3.12 in GitHub Actions run 42633859796. Local full regression: 91 passed; final privacy/version checks: 30 passed. The source archive independently rebuilds an identical wheel payload. Release https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.0.1 is latest; four public downloads match local assets and pass recursive privacy checks. State and evidence: `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst!ecd_v2_acceptance/github_publish_20261109/privacy_fix_state.json`. Older failed commit checks and v1.0.0 artifacts remain historical records.
+
+
+## 2026-11-09 External-model reproduction guide
+
+Release v1.0.2 commit 021dd49d0b0e39db72786a5738b0dc42f9590f4a documents the accepted SPURS/Hugging Face and DiscoTope revisions, CUDA 12.4 / PyTorch 2.5.1, direct dependency constraints and the ESM-IF1 checkpoint. The documented Windows worker commands explicitly use the project virtual-environment Python. Four SPURS assets match the recorded run and 28 DiscoTope source/model-archive files match the pinned upstream revision. The current upstream DiscoTope requirements specify torch 2.10; the guide adjusts the local clone to the 2.5.1 used in the accepted run before dependency installation.
+
+Offline verification: 21 direct package constraints matched the existing model environments, 23 shell blocks parsed, worker environment resolution passed using a path with spaces, and the README inspection command reproduced the saved run summary. Local Python 3.12 and GitHub Python 3.11/3.12 each passed 91 tests. Source archive rebuild matches the wheel; four public release downloads and remote documentation match local artifacts. No external model was re-downloaded and no fresh-machine installation was performed. Exact scientific outputs remain subject to sampling and numerical variation.
+
+
+## 2026-11-11 Global task center and V2 default
+
+The workbench now loads `web/job_center.js` on the structure design, experiments, surface partitions, CTLA4 mutants and PD1 antibody pages. It polls the compact `/api/jobs` response only while the page is visible, lists RUNNING, QUEUED and WAITING_FOR_AF3_UPLOAD tasks before eight recent terminal tasks, and opens a selected task through the existing `/?job=<id>` recovery path. `JobStore.summaries` extracts the request identifier in SQLite so running jobs remain recognizable without loading full request or result payloads.
+
+After job `5d4a0e679c41` completed, the production default `JOINT_V4_ML_PARAMETERS["execution_protocol"]["name"]` and the pipeline fallback were aligned to published `ordinary_site_first_v2`. The broader internal protocol support and scientific gates remain available and unchanged.
+
+Regression evidence: `node --check web/job_center.js`; `node --test tests/job_center.test.cjs` (2 passed); focused Python protocol/API/UI tests from the repository parent (25 passed, 1 deselected). Live browser verification navigated from `/experiments` to the task center and reopened completed job `5d4a0e679c41` at `/?job=5d4a0e679c41`.
+
+Limitation: the deselected historical region-principles test requires absent fixture `workspace_data/d14576822c6f/analysis.json`. The dirty checkout uses mixed/CRLF endings, so `git diff --check` reports extensive pre-existing whitespace warnings and is not a clean gate.
+
+
+## 2026-11-11 4–12 display-region defaults
+
+The service now applies the current 4–12 display-region policy to omitted requests at every active entry point. Configuration, `PipelineRequest`, `JobCreate`, upload/AF3 form defaults, CLI arguments, the V4 engine fallback and both sector-builder defaults use a maximum of 12. The existing soft preference remains 4–12, while explicit smaller requests, construct budgets, residue-size preferences, connected/unique coverage, area and diameter gates are unchanged. Current README, partition guide, method documentation and `scripts/replay_v4_selection.py` were synchronized.
+
+Focused regression passed 47 tests. After restarting the service, live OpenAPI reported `max_sectors.default=12` for `JobCreate` and both multipart endpoints; the served UI still submits 12 for JSON and uploaded structures. Historical implementation plans, old protocol experiments and one explicitly historical P0–P3 binder rerun retain seven-sector parameters to preserve their recorded contract.
+
+
+## 2026-11-11 Historical workspace archive and local cleanup
+
+The local runtime history was removed from the active checkout only after a complete external archive passed content and entry-count verification. The archive contains all 30 job records in `workspace_data/jobs.sqlite3`, every workspace run and experiment payload, the former evaluation samples, historical FoldX scratch runs, package-install sources, test caches and the three obsolete dated task handoffs. Source, current documentation, `.tool_cache`, `.tool_envs`, `models`, `vendor` and `.venv` remain in the working tree.
+
+Archive location: `F:/ECD_archives/20261111`. `workspace_data_20261111.tar.zst` contains 43,434 files and 21,137,987,040 uncompressed bytes; `miscellaneous_20261111.tar.zst` contains 596 files and 247,992,322 bytes. Both SHA-256 values and restore commands are in `archive_receipt.json`. The only skipped entry was the self-referential junction `workspace_data/eleven_binder_review_20261018/article_repacked`; its target directory is included normally.
+
+Verification: zstd content checks passed; streaming tar enumeration reproduced the exact file and byte totals; the source paths were absent afterward. The clean workbench starts with a new empty job database. This cleanup does not change scoring, geometry, mutation evidence or the active 4–12 display-region contract. Historical archival copies remain outside the checkout and must be restored intentionally when an old run is required.
+
+A final residue pass preserved the Paraplume smoke evidence and ESM wheel referenced by the tool locks, while archiving 12 one-off pytest/phase-0 records to `residual_test_records_20261111.zip` (SHA-256 `85CEBD5935D4EC7821213032AC7CAFEDA0EABDDB0D679FA174D2FB1D8C77AF17`). Nineteen regenerable Python cache directories outside `.venv` and `.tool_envs` were removed. The restarted service reports health `ok`, the task API returns an empty list, and both the job and experiment databases contain no business records.
+
+
+## 2026-11-11 External V2 acceptance archive
+
+The superseded `E:/ecd_v2_acceptance` tree was archived to `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst`. The archive contains 3,786 files, 765 directories and 14,166,855,564 uncompressed bytes in 1,525,322,631 compressed bytes. zstd content testing passed; tar enumeration found the expected 4,552 entries including the root, and the SHA-256 is `68F516436EEB0566236D9DBF2F10206D092654E75B2368F6508167F04E0244D3`. The receipt is `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109_receipt.json`.
+
+The original E: directory remains because automated approval review rejected its recursive deletion. The active service does not reference it and `/api/jobs` is empty. The completed archive is the restoration source for final v2 package, strict-result, publication and acceptance evidence.
+
+
+## 2026-11-12 Epitope-weighted perturbation and per-sector triples
+
+Ordinary site-first selection can now optimize a surface-perturbation proxy alongside designable-surface coverage. `joint_design_v4/regional_perturbation.py` defines `PERTURBATION_SELECTOR_POLICY = "epitope_weighted_surface_perturbation_v1"`, normalized chemical-axis scales, `perturbation_utility(candidate)`, and `perturbation_margin(candidate, parents)`. Utility uses mutation chemistry, exposure, and a monotonic DiscoTope prior; missing epitope evidence uses the neutral prior 0.5, and incomplete evidence yields no selector score.
+
+`joint_design_v4/site_first.py` admits triples when either the existing coverage gain passes or the triple beats its strongest exact double parent by a positive perturbation margin. Materialized triples record `triple_role`, `triple_enhancement_delta`, both gate outcomes, and the selector policy. Exact double parents remain available for comparison. Combination-level SPURS/FoldX qualification is unchanged and cannot be inherited from a parent.
+
+`joint_design_v4/identifiability.py` applies the new ordering only when selector-policy evidence is present: an unrepresented sector first, then positive triple margin, perturbation utility, designable geodesic area, information and risk. The ordinary V2 engine raises the primary-panel target to at least the actual sector count, capped at 12, while controls and historical protocols retain their own budgets.
+
+Regression: focused perturbation, triple and budget tests passed 111 with 1 skipped; engine, historical protocol, panel sensitivity and V4 compatibility tests passed 75. The selector is a ranking proxy, not affinity-loss evidence, and this change was not validated by a new real-model or wet-lab run. Historical run outputs were not rewritten. The dirty mixed/CRLF checkout still makes `git diff --check` unsuitable as a whitespace gate.
+
+### Acceptance follow-up
+
+The implementation above does not yet satisfy the agreed panel objective: it ranks individual mutation-based utilities and geodesic coverage, rather than maintaining per-surface-point physical and epitope-weighted perturbation fields. It also changes the existing `ordinary_site_first_v2` path without the planned versioned shadow replay, and the V4 pipeline summary still states that epitope prior was not used for panel selection. Triple margin calculation can use fewer than three scored exact parents. The earlier regression results establish only the paths exercised by those tests; they do not establish acceptance of the full upgrade.
+
+The selector could stop on a zero-area-gain candidate even when another candidate could cover additional surface. `joint_design_v4/identifiability.py` now considers available positive-area choices before stopping after the minimum budget is met. A focused regression reproduces the prior premature stop; the perturbation, site-first, surface and selector suite passes 112 tests with 1 skipped. Geometry-only stopping remains a limitation until panel-level perturbation fields are implemented. No real-model or historical-input shadow replay was performed in this follow-up.
+
+### CTLA4 diagnostic follow-up
+
+The API budget limit is now 12. Triple admission requires all three exact amino-acid-preserving double parents with complete proxy evidence. The panel selector accumulates pointwise physical and epitope-weighted neighborhood proxies; the epitope prior is applied once and missing prior is neutral. Focused API, triple and surface tests passed 59, with 2 skipped. The field propagates mutation-site prior across geodesic support and is not a measured perturbation or target-point epitope field.
+
+Diagnostic job `1d812aa2f9be` was submitted for P16410 using experimental 1AH1 chain A, with a maximum of 12 primary constructs. Its first observed state was RUNNING/FETCHING; no outcome is available yet. New/old protocol isolation, accurate export of epitope-prior use, historical shadow replay, and real-model result verification remain outstanding. The current job runs the development behavior under the existing V2 name and is not a formal acceptance run.
+
+### Diagnostic result review and repairs
+
+Job `1d812aa2f9be` completed. The conserved-column calculation raised `KeyError` when no aligned sequence matched the reference; `conservation.py` now assigns zero for that column. The selector had ranked triple-parent margin above new panel field gain, so the saved run selected two additional zero-field-gain triples; `identifiability.py` now prioritizes field gain after sector priority. V4 summary export now derives epitope-prior use from selector provenance and eligible scored evidence. Focused regression: 97 passed, 2 skipped. Details and limitations are recorded in `docs/ctla4_diagnostic_review_20261112.md`.
+
+The recorded surface fields remain neighborhood proxies, protocol version isolation and shadow replay are unfinished, and repeated provenance makes the original job outputs unusually large. These changes have not been verified with another real-model run. Historical outputs remain untouched.
+
+### CTLA4 partition and runtime follow-up
+
+The eight regions in job `1d812aa2f9be` result from a size-first objective that prefers fewer regions once its size and count preferences are satisfied; the requested 12 is a soft target. The historical hard geodesic limit uses full eligible-surface shortest paths, which can leave and re-enter a display region. Four saved regions therefore exceed 30 Å when measured using only their induced region graph. The related older CTLA4 partition audit records a feasible smaller-region witness, but it is not a replay of this job's strict induced-diameter constraint. The requested strict in-region limit and associated CTLA4 replay remain to be implemented and verified.
+
+In adaptive/site-first FoldX aggregation, `PredictionResult` omitted the worker's measured repair and BuildModel times, so the model diagnostics exported zero despite nonzero ledger timings. `joint_design_v4/engine.py` now retains the worker metrics and their summed runtime. `tests/test_ordinary_adaptive_engine.py` covers the manifest values; 7 tests passed from the repository parent. The prior CTLA4 job remains unchanged. Protocol isolation and repeated per-card provenance remain unresolved; their causes and proposed repair boundaries were inspected, but no repair was made in this follow-up.
+
+### CTLA4 induced-path repair and protocol follow-up
+
+The previous balanced display partition checked geodesic diameter on the full eligible graph, allowing paths to leave a region. `joint_design_v4/sectors.py` now validates the induced region graph during construction and repair and before export; `connected_bounded_v3` retains its historical full-graph rule. Contracted edges can traverse actual solvent-surface relay residues, but all eligible graph nodes on an induced path belong to the region. Replay of job `1d812aa2f9be` (experimental 1AH1 chain A, saved structure, mapping and evidence) yields 12 connected regions and a maximum induced diameter of 28.2675 Å with 8,643 search states. Tests cover unique coverage, size and area, Euclidean and induced geodesic limits, determinism, budget exhaustion and an external-shortcut counterexample.
+
+The construct budget is independent of display-region count. `ordinary_site_first_v2` remains the default and the perturbation selector is being isolated under `ordinary_site_first_perturbation_v1`; completion requires end-to-end protocol regression and shadow replay. Point-field epitope weighting now uses each target surface residue's predicted percentile, with neutral weight for missing evidence; field values still spread candidate-level chemical utility across geodesic support and are uncalibrated proxies. A selector-only replay of 24 previously qualified development candidates at a seven-construct budget selected candidates covering 4 legacy versus 7 perturbation regions. The historical pool already reflects development admission rules, so this is not a full protocol comparison.
+
+Recommendation exports refer to shared `ordinary_candidate_ledger.json` and `v4_manifest.json` worker provenance instead of embedding those large objects in every card. Applying the transformation to 64 saved cards reduced JSON from 104,122,599 to 5,138,279 bytes; historical outputs were not rewritten. Full export, offline/UI resolution, real-model rerun and scientific acceptance remain to be verified.
+
+### Protocol isolation, exports and real-model follow-up
+
+`ordinary_site_first_v2` remains the default and retains its prior candidate and selection policy; `ordinary_site_first_perturbation_v1` explicitly opts into the perturbation selector and enhanced triple gate. Both retain the same site-first FoldX sampling cohort. The display-region count does not expand the primary construct budget. The new selector applies available predicted epitope percentile to the target surface residue; absent scores are neutral. The spatial field remains a geometric proxy, not measured binding or a calibrated physical field.
+
+From the repository parent, 30 site-first candidate, adaptive engine, recommendation export and offline tests passed. The offline HTML and zipped artifact tests verify the shared ledger and worker provenance references and include the referenced files. The saved-input selector replay remains a comparison of the same development candidate pool, not an end-to-end historical protocol replay. A separate small-budget real-model run was launched from the saved experimental 1AH1 chain A structure and P16410 accession under the new protocol, with at most 4 constructs, 100 SPURS combination requests and 30 FoldX slots. Its output is `workspace_data/ctla4_repair_validation_20261112`, with script and logs in the temporary directory; its outcome is not yet known.
+
+### 2026-11-12 construct-budget UI alignment
+
+The API and PipelineRequest already accepted an explicitly configured ordinary construct maximum of 12 independently of display region count, while `web/app.js` still rejected values above 8. The budget input now applies the same ceiling of 12 to ordinary and preview requests without deriving the budget from region count. The obsolete API and page contract assertions were updated, and the browser interception test confirms both request types submit 12. From the repository parent, 100 surface, API and page-contract tests passed; the browser test intercepted three expected requests without page errors. The default or assay-specific budget may still be lower.
+
+The real-model validation process was observed alive and had completed partition diagnostics; no final model outcome is available yet. The prior broad regression recorded 182 passed, 2 skipped and one obsolete API assertion failure; the corrected assertion is included in the 100 passing tests above.
+
+The complete ten-file geometry, perturbation, selection, API and display regression was rerun after the budget UI correction: 183 passed and 2 skipped from the repository parent (one Starlette deprecation warning). This test result does not replace the pending real-model run and end-to-end protocol shadow replay.
+
+### Site-first representative admission follow-up
+
+The perturbation protocol admitted site groups using one witness but expanded additional mutation representatives without enforcing each representative's own triple gate or rechecking the exact double parents' sequence legality. `joint_design_v4/site_first.py` now checks each of the three precise parents against the same sequence policy, requires complete parent evidence, and only queues the triple when its own coverage or perturbation gate passes. The historical `ordinary_site_first_v2` path is unchanged. Regression from the repository parent: 69 site-first candidate, scheduler and adaptive engine tests passed, including independent tests for a representative with no positive marginal gain and an illegal parent. The already-running real-model process started before this correction and cannot establish its end-to-end behavior; a new real-model validation after that run is needed.
+
+### Preview protocol activation fix
+
+The default requested site-first name was treated as active even in preview mode, although preview skips the adaptive execution that creates `adaptive_run`; the full pipeline fixture therefore raised `UnboundLocalError`. `joint_design_v4/engine.py` now enables site-first behavior only when the strict nonphysical adaptive path is active. The pipeline fixture and related export/renderer/adaptive regression was restarted from the repository parent (session 72531); its terminal result has not yet been observed.
+
+The pre-fix real-model run completed using the saved CTLA4 experimental input, explicitly requested perturbation protocol, and a four-construct budget. It produced 11 display regions and four selected constructs, with 7 formally eligible of 36 scored candidates. `analysis.json` is 5,180,008 bytes and `sector_recommendations_v4.json` 2,307,983 bytes; `selected_panel_v4.json` is 30,582,700 bytes, principally hierarchy pair diagnostics. This run predates the representative admission correction and is diagnostic, not final validation. A fresh run with the current corrections was launched as PID 11024, output `workspace_data/ctla4_repair_validation_final_20261112`, with final-named stdout/stderr logs in the system temp directory. Its outcome remains unknown.
+
+### Saved CTLA4 selector-only comparison
+
+`scripts/ctla4_selector_shadow_20261112.py` now reads the historical job's own DiscoTope percentile CSV and saved budget and optimizer settings instead of fixture priors and an invented seven-construct budget. From the repository parent, `python -m ecd_epitope_scanner.scripts.ctla4_selector_shadow_20261112` compared the same 24 development-qualified candidates with 74 scored surface priors and the saved 4/12/12 budget: the legacy selector selected 11 and stopped for no positive coverage gain; the perturbation selector selected 12 and reached the maximum. This is a selector-only comparison of a pool already admitted under development behavior, not an end-to-end comparison or an acceptance of either protocol. Different queue candidates lack equivalent saved model evidence.
+
+The restarted preview pipeline, partition export, recommendation renderer and adaptive engine regression completed from the repository parent: 21 passed in 242.06 seconds. Separately, independent recomputation on the completed pre-representative-fix CTLA4 run found 11 connected regions covering all 74 graph nodes exactly once, with maximum induced path diameter 23.331 Å and reported Cα diameters within 22 Å. Four selected candidates had formal and display eligibility, finite SPURS multi and FoldX scores, and CONSENSUS_PASS. This does not validate the later representative-gate correction, for which the separate real-model run remains active.
+
+### Post-fix CTLA4 real-model validation
+
+The post-fix experimental 1AH1 chain A / P16410 run completed under `ordinary_site_first_perturbation_v1` with maximum four constructs. Independent saved-output verification passed: 11 connected regions uniquely cover 74 eligible nodes; maximum region-induced path diameter 23.331 Å and Cα diameter 20.0209 Å; all four selected triples have complete exact-parent evidence, pass their triple gates, have finite SPURS multi and FoldX scores, and carry CONSENSUS_PASS. Of 36 candidates, seven were formally eligible and four selected; 29 lacked FoldX at the configured 30-slot budget and are not formal recommendations. All 108 recommendation provenance references resolve and are included in the offline archive. The analysis JSON is 5,190,610 bytes, the recommendations JSON 2,313,116 bytes and selected panel 30,587,977 bytes. These are computational predictions, not experimental binding or folding validation.
+
+A same-structure, same-budget `ordinary_site_first_v2` real-model comparison was started separately as PID 11348 in `workspace_data/ctla4_repair_validation_v2_comparison_20261112`; logs are in the system temp directory. It uses independently computed model results and does not replace a same-evidence historical shadow replay. Completion and output remain unverified.
+
+The historical `1d812aa2f9be` and post-fix run were compared by sorted canonical mutation signatures in their actual ledgers. Historical evidence contains 68 scored SPURS combinations and 26 FoldX-scored combinations; the post-fix run contains 36 and 7. Only two SPURS identities overlap and none of the seven new FoldX identities occurs in the historical FoldX set. Historical scores alone therefore cannot qualify the post-fix FoldX combinations in a same-evidence replay; missing evidence must remain missing.
+
+Historical CTLA4 same-evidence queue feasibility was checked using the original saved graph, sectors, canonical sequence, residue records, DiscoTope evidence and 938 eligible single replacements. For the first head in each of 24 region/principle lanes, exact mutation identities appear in the original ledger as follows: current isolated v2 has SPURS evidence for 1/24 and FoldX evidence for 1/24; perturbation_v1 has SPURS for 24/24 and FoldX for 18/24. The historical task had development behavior under the v2 label. This comparison measures availability of recorded identities only; it does not reconstruct subsequent scheduling or establish model qualification, and absent scores remain absent. The read-only script is `F:/UserData/haowen-chen/Temp/ctla4_queue_head_replay_20261112.py`.
+
+### Explicit experimental protocol entry point
+
+The ordinary web and API requests previously could not select `ordinary_site_first_perturbation_v1`; only Python `PipelineRequest.metadata` could. The task form now offers it explicitly as experimental, with default v2 unchanged. JSON, structure upload and official AF3 directory upload accept a constrained `execution_protocol`, persist it into `metadata.joint_v4_ml.execution_protocol.name`, and reject site-first selection with preview or physical-preview modes instead of silently ignoring it. AF3 provenance is retained. The app script cache version was updated. Repository-parent API, AF3 and UI tests: 29 passed; intercepted browser submission test passed with no page errors. An earlier wider API/engine group passed 37 tests. This exposes an experimental selection; it does not establish completed protocol comparison or experimental calibration.
+
+### Same-input real-model protocol comparison
+
+The separate `ordinary_site_first_v2` CTLA4 comparison completed and passed the same read-only output verifier as perturbation_v1: 11 connected regions, 74 uniquely covered eligible nodes, maximum induced path 23.331 Å and Cα diameter 20.0209 Å, four formal/display-eligible selected constructs with finite combination SPURS and FoldX CONSENSUS_PASS, and 108 resolvable provenance references included in the archive. Both runs have the same saved 1AH1 chain A structure path, P16410 accession, strict mode, 4-construct ceiling, ECD sequence and sectoring parameters. Each used independent model calculations, not an identical frozen model-evidence set.
+
+In this four-construct, 100 SPURS request, 30 FoldX slot diagnostic, v2 selected four doubles across VS001–VS003 and perturbation_v1 selected four triples across the same three regions. Both had seven formally eligible candidates. Geodesic-12 eligible-area coverage was 0.221832 for v2 and 0.237245 for perturbation_v1; this is geometric support, not measured perturbation or binding. V2 generated 40 candidates, including 33 lacking FoldX and four lacking combination SPURS; perturbation_v1 generated 36, including 29 lacking FoldX. These are budget-limited computational results; missing evidence was not promoted. Full same-evidence historical shadow replay remains unavailable because the relevant historical combination identities and scores are absent, as quantified above.
+
+### Live service availability
+
+The existing 127.0.0.1:8765 service was healthy with no queued/running API jobs, but its OpenAPI schema did not contain the newly added `execution_protocol`; it is running older Python code. An attempted restart of that exact service was rejected by the execution environment with `blocked by policy`, so it was not stopped. A separate updated service was started at http://127.0.0.1:18765 (launcher PID 24800; Uvicorn process reported 38220). Health and OpenAPI show the new protocol field, the served page and JavaScript contain the experimental protocol selector and submission, and the existing historical job is visible in the job list. Both services access the same workspace; use the updated 18765 service for the new entry point. The historical job detail request exceeded the brief read timeout, so full detail retrieval was not confirmed in this check.
+
+### Historical display projection size
+
+The saved `1d812aa2f9be` display endpoint still returned approximately 90.6 MB because each historical recommendation carried repeated ordinary adaptive and FoldX ledger objects. `joint_design_v4/reporting.py` now replaces these nested ledgers in compact display projections with `analysis.json` path references, preserving full historical artifacts and card evidence. On the saved 190,776,917-byte analysis, the updated projection is 6,344,655 bytes and retains eight region cards; all 321 projected ledger references resolve to the original saved data. Display projection, API and recommendation export tests: 22 passed from the repository parent. The current 18765 service was started before this change and still needs a safe reload to serve the reduced historical projection; the earlier attempt to restart 8765 was rejected by the execution environment.
+
+For the two current same-input real-model runs, exact mutation-signature comparison found 36 finite SPURS-scored identities per run, one shared (71 in the union); each has seven FoldX-scored identities, none shared. The saved scores can support only those exact combinations in a common evidence pool; subsequent queue requests need their own evidence and must not be imputed. The independent runs do not themselves constitute an end-to-end same-evidence shadow replay.
+
+Using the post-fix 11-region CTLA4 graph and the union of both separately computed ledgers, first-head-only reconstruction yields 33 region/principle heads per protocol: exact SPURS scores exist for 33/33 heads in each, while FoldX-scored identities exist for 7/33 v2 and 6/33 perturbation heads. These counts do not prove model passage or cover later queue requests. Missing FoldX evidence must remain missing; the common pool is not sufficient to claim an end-to-end same-evidence replay.
+
+### Common-candidate selector comparison
+
+The two completed post-fix CTLA4 runs supplied 14 distinct, formally and display-eligible candidates with saved SPURS/FoldX CONSENSUS_PASS. Using their unchanged recorded evidence, the same 11 regions, hypotheses, DiscoTope priors and 4/4/4 budget, a selector-only replay selected four candidates under each selector. Legacy selector chose candidates in VS002/VS003, with 12 Å geometric eligible-area coverage 0.157597; perturbation selector chose VS001/VS002/VS003, with coverage 0.237245. Both selected four triples from this combined pool. This compares selection over an identical frozen candidate/evidence pool, not complete protocols: the pool was formed from candidates admitted under different protocol-specific gates, so the legacy selector result is not an ordinary-v2 end-to-end output. Coverage is geometric support, not measured binding. Read-only script: `F:/UserData/haowen-chen/Temp/ctla4_common_evidence_selector_20261112.py`.
+
+### Construct-budget form bounds
+
+The browser form still limited minimum and target values to 8 even though the API accepts explicit budgets up to 12, preventing valid 12/12/12 submission before JavaScript ran. The native input bounds now match the API, the adaptive-budget label no longer claims an unconditional 4–8 range, and the app/i18n cache versions reflect the change. A browser interception test submitted minimum, target and maximum all equal to 12; display API and UI regression: 21 passed. The default budget remains 4/7/8.
+
+The four post-fix selected triples were also reconstructed from saved mutation options and checked against the canonical sequence. Each has three sequence-legal exact parents with complete chemical/exposure evidence; recalculated strongest-parent perturbation margins match the records (0.401367, 0.439433, 0.075424 and 0.278320). All selected single-site options have finite eligible SPURS evidence; each selected combination has three matching FoldX slots and paired-model records with a ledger median matching the displayed score. This is computational evidence, not experimental activity validation.
+
+### Site-first FoldX budget terminal states
+
+A saved-evidence scheduler replay reproduced a missing gap: when the FoldX reservation budget ended in a round where another lane advanced after a SPURS review result, that lane could remain `ready` and be reported only as `STOPPED`. `joint_design_v4/site_first_validation.py` now marks all remaining ready/exhausted lanes as `budget_limited` when FoldX dispatch cannot reserve another candidate, preserving completed or already-terminal states. Site-first scheduler, candidate and adaptive engine regression: 72 passed from the repository parent. Existing run ledgers remain historical and are not rewritten. A bounded shared-evidence replay reached 7/33 v2 lanes and 8/33 perturbation lanes with 36 SPURS requests and 21 actual FoldX slots each; remaining lanes are budget-limited. Reconstructed single-option warnings differ from original saved options and require fidelity verification, so this replay is not full acceptance.
+
+### Shared-evidence replay warning fidelity
+
+The bounded CTLA4 scheduler replay now reconstructs single-option warnings using saved residue review reasons and surface SASA/context fields, following `build_single_evidence`. Compared with saved real-run candidates, all 40 matching v2 candidates and all 36 matching perturbation candidates agree in the checked mutation identity, eligibility, review flag, exclusions, warnings, epitope fields, stability band, single SPURS score and regional/triple gate fields. Both paths terminate at the 30-slot reservation budget with no missing scores requested: v2 7 reached/26 budget-limited; perturbation 8 reached/25 budget-limited; each used 36 SPURS requests and 21 actual FoldX slots. Replay uses a shared saved evidence pool, a deterministic first-record policy for one differing SPURS score, and recreated formal/display callbacks. This verifies only the bounded scheduler and checked fields, not full pipeline/export equivalence or experimental efficacy. Scripts: `F:/UserData/haowen-chen/Temp/ctla4_union_heads_warnings_20261112.py` and `ctla4_scheduler_warnings_fidelity_20261112.py`.
+
+### Offline task site asset fix
+
+The shared online page gained `job_center.js`, which polls the live jobs API, but the offline task-site exporter kept its script reference without packaging it. This broke the local-asset contract. `exporting.py` removes that online-only script when creating the offline site; the offline page continues to use its embedded analysis and does not poll the jobs API. Offline site, display projection, and recommendation export tests: 13 passed from the repository parent. A current-code TestClient request for historical job 1d812aa2f9be returned a 6,346,498-byte display response, and all 321 ledger references resolved through its original analysis artifact. Running service 18765 predates these Python changes and needs a safe reload to serve them.
+
+### Budget-limited recommendation display
+
+Adaptive queue gaps carry `state`, whereas the shared online/offline recommendation renderer previously read only `reason`, leaving a budget-limited principle without an intelligible explanation. `web/recommendations.js` now falls back to `state` and displays localized budget-exhaustion text; cache versions were updated. Online/offline recommendation, offline site and presentation tests: 12 passed from the repository parent; browser submission test passed with no page errors. Existing runtime data and scientific eligibility remain unchanged.
+
+### Budget-gap post-fix real-model validation
+
+CTLA4 validation `workspace_data/ctla4_budget_gap_validation_20261112` completed with the latest budget-state fix. Independent checks passed: 11 connected regions cover all 74 eligible nodes once; maximum induced geodesic diameter 23.331 Å, Cα diameter 20.0209 Å; four selected candidates meet saved model and eligibility gates; 108 recommendation provenance references resolve and are included in the archive. The ledger has eight complete and 25 budget-limited region/principle queues, with no remaining ready lane; all 25 budget gaps appear in both the ledger gap list and the respective recommendation cards. The archive's offline page omits online-only job_center.js and its bundled renderer contains the budget explanation. Of 36 candidates, seven were formally eligible and 29 lacked FoldX under the 30-slot budget. This is a computational run, not experimental validation. Analysis JSON was 5,189,210 bytes, recommendations JSON 2,313,234 bytes, and selected panel 30,588,095 bytes.
+
+### Shared-evidence queue-by-queue comparison
+
+The bounded same-evidence replay was compared lane-by-lane with actual CTLA4 ledgers. All 33 perturbation_v1 queue states and completed winner identities match the latest post-budget-fix real-model run. Against the pre-fix v2 run, all 33 completed winner identities match; one lane (VS001 epitope_support) changes from erroneously `ready` in the saved pre-fix run to `budget_limited` in the current replay, matching the fixed budget contract. The comparison uses shared stored evidence and recreated callbacks, and does not by itself prove complete pipeline/export equivalence. Read-only script `F:/UserData/haowen-chen/Temp/ctla4_scheduler_compare_fixed_20261112.py`.
+
+### Final engineering acceptance checkpoint
+
+The current worktree passed 382 tests with 2 skipped from the repository parent across the 25 changed or directly affected Python test files, including all eight core V4/CTLA4/PD-L1 regression files and the API, display, export, offline, scheduler and UI suites. The post-export-change preview pipeline fixture passed separately (`1 passed`, 291.22 s). JavaScript syntax checks passed, `node --test tests/job_center.test.cjs` passed 2/2, and `tests/browser_surface_perturbation.mjs` passed with 3 intercepted submissions and no page errors when supplied the installed `playwright-core/index.mjs`.
+
+The latest real-model output `workspace_data/ctla4_budget_gap_validation_20261112` was rechecked with both read-only validators: 11 connected regions uniquely cover 74 eligible nodes; maximum induced geodesic diameter is 23.331 Å and maximum Cα diameter is 20.0209 Å; 4 candidates are selected with 108 resolvable recommendation references; ledger states are 8 complete and 25 budget-limited with all 25 gaps represented in recommendation `unavailable_principles`. `analysis.json` is 5,189,210 bytes, `sector_recommendations_v4.json` is 2,313,234 bytes, `selected_panel_v4.json` is 30,588,095 bytes, and the design ZIP is 27,683,591 bytes. The offline `index.html` contains no live `job_center.js` reference.
+
+Package-wide pytest collection is still blocked by historical fixtures outside this repair: `test_audit_p0_p3_prior_attempts.py` cannot import `scripts.audit_p0_p3_batch`; `test_case_coordinator_boundary.py` lacks `psutil`; `test_finalize_af3_completion.py`, `test_af3_batch_recovery.py` and `test_af3_final_acceptance.py` reference missing ignored `workspace_data/af3_binder_batch_20261017` files. No listener was present on ports 18765 or 8767 at the final check, so there is no stale service to reload; start the service afresh when interactive use is needed. The scientific boundary remains unchanged: candidate and spatial-field scores are computational predictions without calibration or wet-lab validation, and 29 of 36 candidates remained nonqualified because the 30-slot FoldX budget did not cover them.
+
+### Selector evidence in budget exports and UI
+
+The new selector already stored its priority, coverage basis and per-construct physical/epitope-weighted field gains in `PanelBudgetDecision.budget_curve`, but `panel_budget_curve_v411.csv` selected only the legacy columns and the compact-panel UI showed only the selected count. `joint_design_v4/reporting.py` now exports coverage gain, physical and epitope-weighted field gains, field statuses, perturbation utility, sector-first flag, triple margin and triple role. `web/app.js` displays the selector order and a per-construct gain table when the selector priority is active. Filtered focused regression: 35 passed, 2 skipped from the repository parent; new CSV and Node-rendered UI assertions pass. The displayed values remain ranking proxies, not binding-loss predictions, and no scientific gate or historical output changed.
+
+### Sector-coverage dispatch and 12-construct rerun
+
+`joint_design_v4/site_first_validation.py` now schedules one FoldX batch slot per sector before a second slot in an already covered sector, records `sector_coverage_policy=one_formal_candidate_per_sector_before_extra_v1`, and marks all remaining live or exhausted queues `budget_limited` when no candidate can reserve FoldX slots. The panel selector already ordered `sector_first` candidates ahead of duplicates; the earlier four-construct panel was limited by the 30-slot FoldX budget and the four-construct ceiling, not by a missing sector preference in the selector. The UI maximum is now 12. Scheduler and 11-sector/12-construct regression: 107 passed, 1 skipped from the repository parent.
+
+A separate CTLA4 real-model rerun is running as exec session 6343 with the saved 1AH1 chain A/P16410 structure, `ordinary_site_first_perturbation_v1`, a 4/12/12 construct budget, 100 SPURS requests and 300 FoldX slots. Output is `workspace_data/ctla4_sector_coverage_20261112`; the earlier four-construct artifacts remain unchanged. The outcome is pending and must not be represented as sector coverage until its ledgers and selected candidates are checked.
+
+The session 6343 rerun was stopped while in FoldX to avoid continuing the undersized 100 SPURS/300 FoldX configuration; its partial output remains untouched and is not a result. The adaptive FoldX hard cap is now 1000 slots, the default ordinary protocol budget is 600 slots, and the replacement CTLA4 rerun uses `ordinary_site_first_perturbation_v1` with 1000 SPURS requests, 600 FoldX slots, a 4/12/12 construct budget and 30/22 Å region bounds. Output is `workspace_data/ctla4_full_budget_20261112`; script and logs are `F:/UserData/haowen-chen/Temp/ctla4_full_budget_20261112.py`, `.stdout.log` and `.stderr.log`. FoldX is still dispatched only after a finite passing SPURS combination result; 600 slots cover the saved 36-candidate pool at the 10-slot reservation even if every candidate reaches the repeat-confirmation stage. Outcome pending.
+
+The foreground replacement run `workspace_data/ctla4_full_budget_20261112` was interrupted by the execution-session lifetime after about 50 minutes at `V4_SPURS_COMBINATION`; no final exports were written and its partial output is not a result. A new detached run with the same 1000 SPURS/600 FoldX protocol uses `workspace_data/ctla4_full_budget_detached_20261112` and logs `F:/UserData/haowen-chen/Temp/ctla4_full_budget_detached_20261112.stdout.log` and `.stderr.log`; its saved request confirms 4/12/12 constructs and the two budgets. The earlier foreground and aborted outputs remain untouched.
+
+## CTLA4 full-budget sector coverage acceptance (2026-11-13)
+
+The completed `workspace_data/ctla4_full_budget_detached_20261112` run used `ordinary_site_first_perturbation_v1`, 4/12/12 constructs, 1000 SPURS requests and 600 FoldX slots. It produced 354 panel candidates, 32 formal candidates and 12 formal selected constructs; the first 11 cover the 11 distinct sectors and the twelfth supplements VS010. All 11 regional recommendations are formal. SPURS used 455 unique requests (zero failures; 101 prefetched unused), and FoldX used 163 slots (zero technical failures) on 45 combinations; all 45 have matching finite SPURS PASS evidence, with 32 FoldX PASS and 13 scientific failures. All 33 queues completed with no budget gaps. Selected combinations each have a matching FoldX PASS.
+
+Acceptance checks recomputed connectivity and induced graph diameter: 11 disjoint regions cover all 74 nodes, maximum induced diameter 23.331 A and maximum reported CA diameter 20.021 A. The panel CSV candidate order matches the JSON; the ZIP passed its CRC check and its selected panel, budget curve and sector recommendations match the standalone files. All 12 selections are STABILITY_FALLBACK; the supplemental candidate has positive marginal field coverage but negative net objective. These are computational results and do not establish experimental binding effects.
+
+## 2026-11-13 DiscoTope display and task cancellation
+
+The latest completed task `e0a33580e373` (Q9NZQ7) used the default `ordinary_site_first_v2`, not the explicitly selected perturbation protocol: its 12 primary constructs comprise 10 doubles and 2 triples. It contains 215 predicted DiscoTope residue records. The separate CTLA4 task `785dd802d1b3` used `ordinary_site_first_perturbation_v1` and selected 12 triples.
+
+Recommendation site details now retain raw and calibrated DiscoTope scores; the shared online/offline renderer also reads saved per-residue evidence for older runs. Scores describe native input residues, not mutant-combination binding effects. Task cancellation uses a `CANCELLING` state for running jobs and changes to `CANCELLED` at the next pipeline progress checkpoint; queued and AF3-waiting jobs cancel immediately. Existing output files are retained. Regression from the repository parent: 53 passed, plus two Node job-center tests; the cancellation test covers running, queued, and terminal status handling. Long model calls are not forcibly interrupted; cancellation can wait until the next checkpoint.
+
+## 2026-11-13 Q9NZQ7 SQLite result size repair
+
+Task 4fc14facfd14 completed model selection and export but failed during job completion because JobRunner attempted to store the full in-memory analysis, including 2.78 GB of candidate records, in one SQLite value. JobRunner now stores the same non-bulk-identity-compacted display projection written to analysis.json; full candidates remain in panel_candidates.json. The saved card completeness receipt passed (70 cards), 12 sectors have PASSED recommendations, saved selected IDs agree with the standalone panel, and ZIP analysis/panel entries match standalone files. The failed database row was restored to COMPLETE from the saved analysis without changing run artifacts. Relevant job, projection and API regressions passed 25 tests. Full ZIP CRC and wet-lab validity were not assessed.

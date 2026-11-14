@@ -1,0 +1,13 @@
+# 停算、集中修复与重新计算（2026-10-26）
+
+## 2026-10-26 用户要求先停算，集中修复后再计算
+
+已核验批次命令及创建时间，终止launcher39404/owner33868和conhost4504；当前job98a2a1f2f3e3记FAILED，注明用户停止。未删除历史或部分产物，user_stop.json及state_before_user_stop.json保存停算实证。
+
+本轮新增修复在scripts/run_ordinary_adaptive_rerun.py：新任务或resume旧任务一旦非COMPLETE、验收非PASS/DIAGNOSTIC_COMPLETE，立刻HALTED_FOR_REVIEW且不创建下一例；源码变更或其他异常落INTERRUPTED/error并写报告；HALTED/INTERRUPTED/用户停止的报告门为NEEDS_REVIEW。preflight拒绝重复case_id，避免13次执行覆写同一状态键。Windows路径safe_name修复保留。回归同时验证新失败、旧失败、输出验收失败、源码变更和13例成功路径；测试工作目录隔离，避免mock在真实workspace创建上传目录。
+
+父目录venv相关19文件185 passed/26.99秒，含FoldX执行路径、身份/配对、解析及SPURS缓存；stop_and_repair_regression.xml。两位gpt-6-luna只读审查未报告额外明确阻断项；模型仍用模拟响应，真实结果验收待完成。完整输入哈希及13份真实请求再次构造通过。
+
+用户要求修完再计算，修复版已冻结新收据并重新启动有限13例，launcher9756、UTC2026-10-27T06:03:54；见workspace_data/ordinary_adaptive_stop_repair_20261026/。归档原state及停止报告，prior_attempts保留3次目录故障和1次用户停止，全部创建新job，任一例失败停止。无heartbeat、自动重试或轮询。完整结果和交叉报告仍待本批终态。
+
+证据：test_output/ordinary_adaptive_review_20261026/stop_and_repair_regression.xml；workspace_data/ordinary_adaptive_stop_repair_20261026/acceptance.json及launch.json。工程回归通过，不能替代本批真实SPURS/FoldX结果验收。

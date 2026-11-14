@@ -16,7 +16,7 @@ from .models import PredictionResult
 
 SPURS_BATCH_SIZE = 64
 SPURS_REQUEST_LIMIT = 1000
-FOLDX_ATTEMPT_LIMIT = 300
+FOLDX_ATTEMPT_LIMIT = 1000
 
 
 def _mutations(candidate: Any) -> tuple[str, ...]:

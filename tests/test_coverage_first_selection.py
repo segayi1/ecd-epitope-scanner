@@ -8,9 +8,11 @@ from types import SimpleNamespace
 import pytest
 
 from ecd_epitope_scanner.joint_design_v4.engine import (
-    _deconvolution_presets, _legacy_designs, _sector_recommendation_designs,
+    _deconvolution_presets, _legacy_designs,
+    _sector_recommendation_designs,
 )
 from ecd_epitope_scanner.joint_design_v4.identifiability import greedy_panel
+from ecd_epitope_scanner.joint_design_v4.regional_perturbation import PERTURBATION_SELECTOR_POLICY
 from ecd_epitope_scanner.joint_design_v4.models import (
     CombinationStabilityEvidence, InferenceHypothesis, ResidueKey,
     V4Candidate, V4MutationOption, V4Panel, V4Sector,
@@ -36,6 +38,25 @@ def candidate(identifier, positions, response=(0.1, 0.1), mutant="A"):
     )
 
 
+def selector_candidate(identifier, sector_id, positions, prior=.5, exposure=.8):
+    item = candidate(identifier, positions)
+    item.sector_id = sector_id
+    for mutation in item.mutations:
+        mutation.epitope_evidence_status = "SCORED"
+        mutation.epitope_prior = prior
+        mutation.chemical_descriptors = {
+            "charge_delta": 1., "volume_delta_a3": 50.,
+            "hydropathy_delta": 1., "donor_delta": 1.,
+            "acceptor_delta": 1., "aromatic_delta": 0.,
+        }
+        mutation.impact_evidence = {
+            "sidechain_exposure": {"value": exposure},
+            "selector_policy": PERTURBATION_SELECTOR_POLICY,
+        }
+    item.impact_evidence = {"selector_policy": PERTURBATION_SELECTOR_POLICY}
+    return item
+
+
 def hypotheses():
     return [SimpleNamespace(hypothesis_id=identifier, discotope_prior=0.5) for identifier in ("H1", "H2")]
 
@@ -59,6 +80,69 @@ def test_surface_area_gain_precedes_information_gain():
     assert selected == [large_cover]
     assert decision.budget_curve[0]["coverage_gain_area_a2"] == 40
     assert decision.budget_curve[0]["coverage_gain"] == pytest.approx(40 / 42)
+
+
+def test_selector_fills_each_sector_before_global_coverage_and_uses_epitope_weighted_utility():
+    low = selector_candidate("a_low", "A", [1, 2], prior=.1)
+    high = selector_candidate("a_high", "A", [1, 3], prior=.9)
+    other = selector_candidate("b_other", "B", [4, 5], prior=.9)
+    selected, _, decision = greedy_panel(
+        [low, high, other], hypotheses(), budget(minimum=2, maximum=2), 0,
+        lambda *args: 0., surface_areas={1: 1, 2: 100, 3: 1, 4: 1, 5: 1},
+    )
+    assert [item.candidate_id for item in selected] == ["a_high", "b_other"]
+    assert all(row["sector_first"] for row in decision.budget_curve[:2])
+    assert decision.selection_priority.startswith("sector_first_epitope_weighted")
+
+
+def test_selector_covers_every_sector_before_a_twelfth_supplement():
+    candidates = []
+    expected = {f"VS{index:03d}" for index in range(1, 12)}
+    for index in range(11):
+        position = index * 2 + 1
+        candidates.extend([
+            selector_candidate(f"s{index}_primary", f"VS{index + 1:03d}", [position, position + 1], prior=.8),
+            selector_candidate(f"s{index}_alternate", f"VS{index + 1:03d}", [position + 1, position + 2], prior=.4),
+        ])
+    selected, _, decision = greedy_panel(
+        candidates, hypotheses(), budget(minimum=4, maximum=12), 0,
+        lambda *args: 0., surface_areas=dict.fromkeys(range(1, 25), 1.),
+    )
+    assert {item.sector_id for item in selected[:11]} == expected
+    assert all(row["sector_first"] for row in decision.budget_curve[:11])
+    assert len(selected) == 12 and not decision.budget_curve[11]["sector_first"]
+
+
+def test_selector_does_not_stop_before_available_positive_coverage():
+    first = selector_candidate("first", "A", [1, 2], prior=1.)
+    no_gain = selector_candidate("no_gain", "A", [1, 3], prior=.9)
+    remaining = selector_candidate("remaining", "A", [4, 5], prior=.1)
+    first.covered_positions_by_scenario = {"geodesic_0": [1, 2, 3]}
+    no_gain.covered_positions_by_scenario = {"geodesic_0": [1, 2, 3]}
+    selected, _, decision = greedy_panel(
+        [first, no_gain, remaining], hypotheses(), budget(minimum=1, maximum=3), 12,
+        lambda *args: 0., surface_areas=dict.fromkeys(range(1, 6), 1.),
+    )
+    assert [item.candidate_id for item in selected] == ["first", "remaining"]
+    assert decision.budget_curve[1]["coverage_gain_area_a2"] == 2.
+
+
+def test_new_panel_field_gain_precedes_triple_parent_margin(monkeypatch):
+    from ecd_epitope_scanner.joint_design_v4 import spatial_support
+    monkeypatch.setattr(spatial_support, "annotate_pointwise_perturbation_fields", lambda *args: None)
+    first = selector_candidate("first", "A", [1, 2])
+    duplicate = selector_candidate("duplicate", "A", [1, 3, 5])
+    complementary = selector_candidate("complementary", "A", [4, 5])
+    for item, field in ((first, {"1": 4.}), (duplicate, {"1": 2.}),
+                        (complementary, {"4": 1.})):
+        item.impact_evidence["surface_perturbation_field"] = {
+            "physical_field": field, "epitope_weighted_field": field}
+    duplicate.risk_components["triple_enhancement_delta"] = 100.
+    selected, _, decision = greedy_panel(
+        [first, duplicate, complementary], hypotheses(), budget(minimum=1, maximum=2), 12,
+        lambda *args: 0., surface_areas=dict.fromkeys(range(1, 6), 1.))
+    assert [item.candidate_id for item in selected] == ["first", "complementary"]
+    assert decision.budget_curve[1]["physical_field_gain_area_a2"] == 1.
 
 
 def test_positive_cover_remains_selectable_when_net_objective_is_negative():

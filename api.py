@@ -76,6 +76,7 @@ class JobCreate(BaseModel):
     design_engine: Literal["joint_v4_ml"] = "joint_v4_ml"
     ml_mode: Literal["strict", "preview"] = "strict"
     surface_strategy: Literal["legacy", "surface_perturbation_v1_preview"] = "legacy"
+    execution_protocol: Literal["ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"] | None = None
     optimization_profile: Literal["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"] = "legacy"
     candidate_ids: list[str] | None = None
     calibration_repeat_schedule: list[int] | None = None
@@ -83,7 +84,7 @@ class JobCreate(BaseModel):
     model_assets_root: str | None = None
     case_time_budget_seconds: float | None = Field(default=None,gt=0,allow_inf_nan=False)
     case_byte_budget: int | None = Field(default=None,gt=0)
-    max_sectors: int = 7
+    max_sectors: int = 12
     target_sector_residues: int | None = Field(default=None, ge=7, le=15)
     maximum_sector_geodesic_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     maximum_sector_ca_diameter_a: float | None = Field(default=None, gt=0, allow_inf_nan=False)
@@ -111,7 +112,7 @@ class JobCreate(BaseModel):
                        maximum=self.maximum_constructs, adaptive=self.adaptive_budget,
                        legacy_max=self.max_primary_constructs,
                        policy=profile["design_policy"] if profile else None,
-                       maximum_limit=12 if self.surface_strategy == "surface_perturbation_v1_preview" else 8)
+                       maximum_limit=12)
         optimizer_budget(profile, budget)
         PipelineRequest(**self.model_dump())
         return self
@@ -386,6 +387,7 @@ def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
         key: job[key]
         for key in (
             "id",
+            "identifier",
             "status",
             "stage",
             "progress",
@@ -531,6 +533,7 @@ async def create_upload_job(
     design_engine: Literal["joint_v4_ml"] = Form("joint_v4_ml"),
     ml_mode: Literal["strict", "preview"] = Form("strict"),
     surface_strategy: Literal["legacy", "surface_perturbation_v1_preview"] = Form("legacy"),
+    execution_protocol: Literal["ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"] | None = Form(None),
     optimization_profile: Literal["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"] = Form("legacy"),
     candidate_ids: list[str] | None = Form(None),
     calibration_repeat_schedule: list[int] | None = Form(None),
@@ -538,7 +541,7 @@ async def create_upload_job(
     model_assets_root: str | None = Form(None),
     case_time_budget_seconds: float | None = Form(None,gt=0,allow_inf_nan=False),
     case_byte_budget: int | None = Form(None,gt=0),
-    max_sectors: int = Form(7),
+    max_sectors: int = Form(12),
     target_sector_residues: int | None = Form(None, ge=7, le=15),
     maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
     maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
@@ -559,7 +562,7 @@ async def create_upload_job(
         from .joint_design_v4.budget import resolve_budget
         resolve_budget(minimum=minimum_constructs, target=target_constructs,
                        maximum=maximum_constructs, adaptive=adaptive_budget, legacy_max=max_primary_constructs,
-                       maximum_limit=12 if surface_strategy == "surface_perturbation_v1_preview" else 8)
+                       maximum_limit=12)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     if suffix not in {".cif", ".mmcif", ".pdb", ".ent"}:
@@ -570,7 +573,7 @@ async def create_upload_job(
             candidate_ids=candidate_ids,calibration_repeat_schedule=calibration_repeat_schedule,
             export_mode=export_mode,model_assets_root=model_assets_root,
             case_time_budget_seconds=case_time_budget_seconds,case_byte_budget=case_byte_budget,
-            surface_strategy=surface_strategy,minimum_constructs=minimum_constructs,
+            surface_strategy=surface_strategy,ml_mode=ml_mode,execution_protocol=execution_protocol,minimum_constructs=minimum_constructs,
             target_constructs=target_constructs,maximum_constructs=maximum_constructs,
             max_primary_constructs=max_primary_constructs,adaptive_budget=adaptive_budget,
             target_sector_residues=target_sector_residues,
@@ -584,6 +587,7 @@ async def create_upload_job(
         export_mode=export_mode, model_assets_root=model_assets_root,
         case_time_budget_seconds=case_time_budget_seconds, case_byte_budget=case_byte_budget,
         surface_strategy=surface_strategy,
+        execution_protocol=execution_protocol,
         input_type="structure",
         analysis_target=analysis_target,
         identifier=structure.filename or "structure",
@@ -601,8 +605,8 @@ async def create_upload_job(
             else DEFAULT_ASSAY_PROFILE_ID
         ),
         assay_format="unspecified" if analysis_target == "binder" else "cell_surface",
-        minimum_regions=1,
-        maximum_regions=6,
+        minimum_regions=4,
+        maximum_regions=12,
         design_engine=design_engine,
         ml_mode=ml_mode,
         max_sectors=max_sectors,
@@ -638,6 +642,7 @@ async def create_af3_directory_job(
     design_engine: Literal["joint_v4_ml"] = Form("joint_v4_ml"),
     ml_mode: Literal["strict", "preview"] = Form("strict"),
     surface_strategy: Literal["legacy", "surface_perturbation_v1_preview"] = Form("legacy"),
+    execution_protocol: Literal["ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"] | None = Form(None),
     optimization_profile: Literal["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"] = Form("legacy"),
     candidate_ids: list[str] | None = Form(None),
     calibration_repeat_schedule: list[int] | None = Form(None),
@@ -645,7 +650,7 @@ async def create_af3_directory_job(
     model_assets_root: str | None = Form(None),
     case_time_budget_seconds: float | None = Form(None, gt=0, allow_inf_nan=False),
     case_byte_budget: int | None = Form(None, gt=0),
-    max_sectors: int = Form(7),
+    max_sectors: int = Form(12),
     target_sector_residues: int | None = Form(None, ge=7, le=15),
     maximum_sector_geodesic_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
     maximum_sector_ca_diameter_a: float | None = Form(None, gt=0, allow_inf_nan=False),
@@ -670,13 +675,14 @@ async def create_af3_directory_job(
         resolve_budget(minimum=minimum_constructs, target=target_constructs,
                        maximum=maximum_constructs, adaptive=adaptive_budget,
                        legacy_max=max_primary_constructs,
-                       maximum_limit=12 if surface_strategy == "surface_perturbation_v1_preview" else 8)
+                       maximum_limit=12)
         request = PipelineRequest(
             input_type="af3_upload", identifier=accession or "AF3_UPLOAD", accession=accession or None,
             analysis_target=analysis_target, chain=chain or None, sequence=sequence or None,
             ecd_start=ecd_start, ecd_end=ecd_end, strict_af3=True, allow_partial=False,
-            minimum_regions=1, maximum_regions=6,
+            minimum_regions=4, maximum_regions=12,
             design_engine=design_engine, ml_mode=ml_mode, surface_strategy=surface_strategy,
+            execution_protocol=execution_protocol,
             optimization_profile=optimization_profile, candidate_ids=candidate_ids,
             calibration_repeat_schedule=calibration_repeat_schedule, export_mode=export_mode,
             model_assets_root=model_assets_root, case_time_budget_seconds=case_time_budget_seconds,
@@ -711,6 +717,15 @@ async def create_af3_directory_job(
 @app.get("/api/jobs/{job_id}")
 def get_job(job_id: str, view: Literal["full", "display"] = "full") -> dict[str, Any]:
     return _public_job(_job_or_404(job_id), view=view)
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str) -> dict[str, Any]:
+    _job_or_404(job_id)
+    try:
+        return _public_job(RUNNER.cancel(job_id))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @app.get("/api/jobs/{job_id}/events")

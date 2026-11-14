@@ -46,8 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--original-cds")
     analyze.add_argument("--allow-partial", action="store_true")
     analyze.add_argument("--allow-afdb-fallback", action="store_true")
-    analyze.add_argument("--min-regions", type=int, default=5)
-    analyze.add_argument("--max-regions", type=int, default=8)
+    analyze.add_argument("--min-regions", type=int, default=4)
+    analyze.add_argument("--max-regions", type=int, default=12)
     analyze.add_argument(
         "--design-engine",
         choices=["joint_v4_ml"],
@@ -60,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="strict",
         help="Joint V4 external-evidence policy",
     )
-    analyze.add_argument("--max-sectors", type=int, default=7)
+    analyze.add_argument("--max-sectors", type=int, default=12)
     analyze.add_argument("--optimization-profile", choices=["legacy", "coverage_scan_v2_preview", "coverage_scan_v3_preview"], default="legacy")
     analyze.add_argument("--surface-strategy", choices=["legacy", "surface_perturbation_v1_preview"], default="legacy")
     analyze.add_argument("--candidate-ids", nargs="+")

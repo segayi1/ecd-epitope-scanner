@@ -44,7 +44,8 @@ def test_af3_directory_create_saves_manifest_and_binder_fields(monkeypatch, tmp_
     api, _, submitted = _setup(monkeypatch, tmp_path)
     response = client.post(
         "/api/jobs/af3-directory",
-        data={"analysis_target": "binder", "chain": "A", "official_source_confirmed": "true"},
+        data={"analysis_target": "binder", "chain": "A", "official_source_confirmed": "true",
+              "execution_protocol": "ordinary_site_first_perturbation_v1"},
         files=_files(),
     )
     assert response.status_code == 202, response.text
@@ -52,6 +53,7 @@ def test_af3_directory_create_saves_manifest_and_binder_fields(monkeypatch, tmp_
     assert request["input_type"] == "af3_upload"
     assert request["analysis_target"] == "binder"
     assert request["chain"] == "A"
+    assert request["metadata"]["joint_v4_ml"]["execution_protocol"]["name"] == "ordinary_site_first_perturbation_v1"
     assert request["af3_manifest_path"].replace("/", "\\").endswith("af3_inputs\\manifest.json")
     assert request["assay_profile"] is None
     assert request["metadata"]["official_af3_source_confirmed"] is True

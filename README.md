@@ -57,14 +57,14 @@ V4 示例：
 .\.venv\Scripts\python.exe -m ecd_epitope_scanner analyze `
   --structure .\input\model.pdb --accession Q9NZQ7 --chain A `
   --design-engine joint_v4_ml --ml-mode preview `
-  --max-sectors 7 --max-primary-constructs 7 --output .\results\joint_v4
+  --max-sectors 12 --max-primary-constructs 7 --output .\results\joint_v4
 ```
 
 `strict` 模式只选择单点证据合格且组合级共识通过的候选；缺少稳定性必需证据、模型分歧或没有候选通过门控时会输出 `BLOCKED_EXTERNAL_EVIDENCE`。DiscoTope 缺失会写入 warning 并使候选全部归入 `STABILITY_FALLBACK`，但不再单独阻断正式推荐。`preview` 允许调试和审查，但其设计状态为 `PREVIEW_CANDIDATE`，不会被旧 UI/汇总计为正式推荐。V4 原生结果写入 `v4_manifest.json`、`tool_inventory.json`、`surface_evidence.csv`、`discotope_residues.csv`、`candidate_combinations.csv.gz`、`selected_panel_v4.json` 和 `v4_scientific_report.md`，并同时生成旧 UI 可读取的 `regions.json`/`designs.json` 投影。
 
 V4 worker 使用 stdin/stdout JSON 协议：程序接收一个 `PredictionRequest` JSON，stdout 必须只有一个 JSON 对象，至少包含 `status`（`success`、`partial` 或 `failed`）和 `records`；日志只能写入 stderr。请求中的预测链是连续编号的规范化目标链，`residue_mapping.csv` 保存 `normalized_position`、UniProt 位置、author 编号、插入码和 WT 氨基酸之间的映射。若 ProCaliper 或 DiscoTope 返回成功，其结果必须覆盖整条规范化链；ProCaliper 缺失或 provenance 不全只影响 SASA cross-check 状态。SPURS/FoldX 的组合结果必须只返回请求过的突变组合，并通过位置范围及 WT 校验。
 
-严格模式要求 SPURS single 与 SPURS multi 等稳定性证据完成；每个组成单点属于 `PREFERRED` 或 `ACCEPTABLE`；组合状态通过稳定性共识。除非明确允许 SPURS-only review，最终入选面板还需完整 FoldX 确认。ProCaliper 是可选 SASA cross-check；方法 provenance 不全、SASA 方法设置不同或 ProCaliper 不可用时只写诊断提示，native normalized-context SASA 与 Surface V2 几何负责 surface eligibility。DiscoTope 是软先验，缺失不单独阻断。四点组合保留为 exploratory candidates，不进入主面板；三点组合还须展示相对最接近双点探针的假设响应增益。
+严格模式下，正式入选组合须有合格的单点 SPURS 证据、有限的组合 SPURS 与 FoldX 评分，并通过稳定性共识及其他候选门；SPURS-only 结果不能替代 FoldX。ProCaliper 是可选 SASA cross-check；方法 provenance 不全、SASA 方法设置不同或 ProCaliper 不可用时只写诊断提示，native normalized-context SASA 与 Surface V2 几何负责 surface eligibility。DiscoTope 是软先验，缺失不单独阻断。四点组合保留为 exploratory candidates，不进入主面板；三点组合须满足所选协议的高阶增益门。
 
 计算预筛只能说明“低预测风险”。进行表位归因时仍需同时验证表达/膜表面表达、构象对照抗体或折叠控制、稳定性，以及必要时的配体或功能读出。
 V4.1 保留 ECD anchor-axis 膜相对几何代理，但没有模拟实际膜平面、细胞间距或特定 Fab 的有限尺寸 steric reach；`cell_surface` 结果会显式提示这些未知量。SASA 只描述溶剂暴露，ProCaliper 当前只提供 SASA/rSASA 交叉审计，不能据此宣称抗体可达。固定预算的 V2/V3/V4 对照与前瞻验证方案见 [`docs/joint_v4_validation_protocol.md`](docs/joint_v4_validation_protocol.md)，当前未提供经验性能比较结果。

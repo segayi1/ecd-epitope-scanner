@@ -130,8 +130,10 @@ Object.assign(item.impact_evidence,{ranking_version:'mechanism_channels_v2',arom
  local_interaction_diagnostics:{pairs:[{positions:[7,8],wt_ca_distance_a:8,nearby_opposed_charge:true,ca_below_6_a:false,ca_above_25_a:false}]}});
 item.resource_audit={single_threshold_audit:{review_band_count:4,otherwise_eligible_count:3,lower_exclusive_kcal_mol:0.5,upper_inclusive_kcal_mol:1,high_exposure_cutoff:0.6,high_rsasa_count:1,high_sidechain_exposure_count:2}};
 const state={lang:'zh',result:{regions:[{id:1,residues:[7]}],residues:[],designs:[],joint_v4_ml:{sectors:[{sector_id:'VS001'}]}}};
+state.result.joint_v4_ml.epitope_evidence=[{residue:{uniprot_pos:7},raw_score:0.12345,calibrated_score:-1.23456,status:'PREDICTED'}];
 const ui=createRecommendationRenderer({state,h,fmt,fmtPct,notation});
 const online=ui.renderSectorRecommendations([item]);
+for(const text of ['DiscoTope 原始分数','DiscoTope 校准分数','0.123','-1.235','并非突变后组合的预测分数']) assert(online.includes(text),text);
 for(const text of ['本区强扰动工程代表','42%','120.000 Å²','88.000 Å²','75%','10, 11','表位倾向 P 按计算表面排序与局部峰值标注','平均绝对化学变化','变化幅度（非带符号）','14.200 Å³','选择敏感性','最小–最大归一化','组合轴按位点绝对变化汇总','逐位带符号化学变化','9 Å','12 Å','15 Å']) assert(online.includes(text),text);
 assert(online.includes('已纳入正式主面板（稳定性模型通过；扰动证据不全）'));
 assert(online.includes('稳定性模型门槛已通过；机制扰动证据不全，缺少：芳香性变化'));

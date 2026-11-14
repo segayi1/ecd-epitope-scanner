@@ -5,6 +5,7 @@ import itertools
 import math
 
 from .models import PanelBudgetDecision
+from .regional_perturbation import PERTURBATION_SELECTOR_POLICY, perturbation_utility
 
 
 def panel_metrics(selected, hypotheses):
@@ -86,14 +87,26 @@ def objective(selected, hypotheses, risk_function, risk_weights=None):
 
 
 def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk_weights=None, stop_parameters=None,
-                 surface_areas=None):
+                 surface_areas=None, epitope_priors=None):
     decision = PanelBudgetDecision(**budget)
-    if any(c.geometry_support for c in pool):
+    selector_active = any(
+        (candidate.impact_evidence or {}).get("selector_policy") == PERTURBATION_SELECTOR_POLICY
+        for candidate in pool
+    )
+    if selector_active:
+        decision.selection_priority = "sector_first_epitope_weighted_perturbation_then_designable_area_then_information_then_risk"
+        decision.coverage_basis = "epitope_weighted_surface_perturbation_field_plus_physical_surface_field_plus_geodesic_area"
+        if surface_areas is not None:
+            from .spatial_support import annotate_pointwise_perturbation_fields
+            annotate_pointwise_perturbation_fields(pool, surface_areas, epitope_priors)
+    elif any(c.geometry_support for c in pool):
         decision.selection_priority = "direct_coverage_then_geometric_complementarity_then_information_then_risk"
     selected = []
     covered_positions = set()
+    physical_field = {}
+    weighted_field = {}
     total_area = sum(max(0., area) for area in surface_areas.values()) if surface_areas is not None else None
-    if surface_areas is not None:
+    if surface_areas is not None and not selector_active:
         decision.coverage_basis = "geodesic_0_eligible_surface_area"
     old_value, old, old_risk, old_redundancy = objective([], hypotheses, risk_function, risk_weights)
     for _ in range(decision.maximum_constructs):
@@ -103,7 +116,8 @@ def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk
                 continue
             if candidate.order >= 4 or candidate.search_role == "EXPLORATORY" or not candidate.connected:
                 continue
-            if candidate.order > 2 and sum(c.order > 2 for c in selected) >= higher_order_max:
+            if (not selector_active and candidate.order > 2
+                    and sum(c.order > 2 for c in selected) >= higher_order_max):
                 continue
             if any(construct_signature(candidate) == construct_signature(c) for c in selected):
                 continue
@@ -116,31 +130,71 @@ def greedy_panel(pool, hypotheses, budget, higher_order_max, risk_function, risk
             area_gain = (sum(max(0., surface_areas.get(p, 0.)) for p in positions-covered_positions)
                          if surface_areas is not None else None)
             coverage_gain = (area_gain / total_area if total_area else 0.) if surface_areas is not None else metrics["coverage"]-old["coverage"]
+            utility = perturbation_utility(candidate) if selector_active else None
+            field = (candidate.impact_evidence or {}).get("surface_perturbation_field", {})
+            candidate_physical = {int(position): float(value) for position, value in
+                                  (field.get("physical_field") or {}).items()}
+            candidate_weighted = {int(position): float(value) for position, value in
+                                  (field.get("epitope_weighted_field") or {}).items()}
+            physical_gain = (sum(max(0., surface_areas.get(position, 0.)) *
+                              max(0., candidate_physical.get(position, 0.) - physical_field.get(position, 0.))
+                              for position in surface_areas) if selector_active and surface_areas is not None else None)
+            weighted_gain = (sum(max(0., surface_areas.get(position, 0.)) *
+                              max(0., candidate_weighted.get(position, 0.) - weighted_field.get(position, 0.))
+                              for position in surface_areas) if selector_active and surface_areas is not None else None)
+            sector_first = selector_active and candidate.sector_id not in {c.sector_id for c in selected}
+            triple_margin = float(candidate.risk_components.get("triple_enhancement_delta") or -math.inf)
             choices.append((coverage_gain, metrics["information"]-old["information"], value-old_value,
-                            candidate, metrics, value, risk, redundancy, positions, area_gain))
+                            candidate, metrics, value, risk, redundancy, positions, area_gain,
+                            utility, sector_first, triple_margin, physical_gain, weighted_gain))
         if not choices:
             decision.stop_reason = "NO_FEASIBLE_NONREDUNDANT_CANDIDATES"
             break
-        coverage_gain, information_gain, gain, winner, metrics, value, risk, redundancy, positions, area_gain = min(
-            choices, key=lambda c: (-c[0], -c[3].geometry_support.get("mean_marginal_area_a2", 0.0),
+        if selector_active and len(selected) >= decision.minimum_constructs and not any(c[11] for c in choices):
+            choices = [choice for choice in choices
+                       if max(choice[0] or 0., choice[13] or 0., choice[14] or 0.) > 1e-12]
+            if not choices:
+                decision.stop_reason = "NO_POSITIVE_COVERAGE_GAIN"
+                break
+        (coverage_gain, information_gain, gain, winner, metrics, value, risk, redundancy,
+         positions, area_gain, utility, sector_first, triple_margin, physical_gain,
+         weighted_gain) = min(
+            choices, key=lambda c: (-int(c[11]),
+                                   -(c[14] if c[14] is not None else -math.inf),
+                                   -(c[13] if c[13] is not None else -math.inf),
+                                   -c[12],
+                                   -(c[10] if c[10] is not None else -math.inf),
+                                   -c[0], -c[3].geometry_support.get("mean_marginal_area_a2", 0.0),
                                    c[3].geometry_support.get("mean_overlap_fraction", 0.0),
                                    -c[1], -c[2], c[3].candidate_id))
         relative = information_gain / max(old["information"], 1e-12)
         pair_reduction = len(old["near_pairs"]) - len(metrics["near_pairs"])
-        if coverage_gain <= 1e-12 and len(selected) >= decision.minimum_constructs:
+        if not selector_active and coverage_gain <= 1e-12 and len(selected) >= decision.minimum_constructs:
             decision.stop_reason = "NO_POSITIVE_COVERAGE_GAIN"
             break
         selected.append(winner)
         covered_positions.update(positions)
+        winner_field = (winner.impact_evidence or {}).get("surface_perturbation_field", {})
+        for position, value_field in (winner_field.get("physical_field") or {}).items():
+            physical_field[int(position)] = max(physical_field.get(int(position), 0.), float(value_field))
+        for position, value_field in (winner_field.get("epitope_weighted_field") or {}).items():
+            weighted_field[int(position)] = max(weighted_field.get(int(position), 0.), float(value_field))
         decision.budget_curve.append(dict(construct_count=len(selected), candidate_id=winner.candidate_id,
             objective=value, net_gain=gain, information_gain=information_gain, relative_information_gain=relative,
             coverage_gain=coverage_gain, coverage_gain_area_a2=area_gain,
+            physical_field_gain_area_a2=physical_gain,
+            epitope_weighted_field_gain_area_a2=weighted_gain,
+            surface_field_status=winner_field.get("status"),
+            surface_field_epitope_status=winner_field.get("epitope_status"),
             geometric_support=winner.geometry_support,
             hypothesis_coverage_gain=metrics["coverage"]-old["coverage"],
             mean_separation_gain=metrics["mean_separation"]-old["mean_separation"],
             minimum_separation_gain=metrics["minimum_distance"]-old["minimum_distance"],
             unresolved_pair_reduction=pair_reduction, risk_delta=risk-old_risk,
-            redundancy_delta=redundancy-old_redundancy))
+            redundancy_delta=redundancy-old_redundancy,
+            perturbation_utility=utility, sector_first=sector_first,
+            triple_enhancement_delta=(triple_margin if math.isfinite(triple_margin) else None),
+            triple_role=winner.triple_role))
         old_value, old, old_risk, old_redundancy = value, metrics, risk, redundancy
     else:
         decision.stop_reason = "MAXIMUM_CONSTRUCT_BUDGET_REACHED"

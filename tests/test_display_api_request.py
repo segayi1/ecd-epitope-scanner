@@ -42,6 +42,55 @@ def test_display_request_rejects_invalid_settings(field, value):
         PipelineRequest(input_type="uniprot", identifier="Q9NZQ7", **{field: value})
 
 
+def test_display_request_defaults_to_latest_4_to_12_policy():
+    from ecd_epitope_scanner.cli import build_parser
+
+    request = PipelineRequest(input_type="uniprot", identifier="Q9NZQ7")
+    job = api.JobCreate(identifier="Q9NZQ7")
+    args = build_parser().parse_args(
+        ["analyze", "--uniprot", "Q9NZQ7", "--output", "out"]
+    )
+
+    assert (request.minimum_regions, request.maximum_regions, request.max_sectors) == (4, 12, 12)
+    assert job.max_sectors == 12
+    assert (args.min_regions, args.max_regions, args.max_sectors) == (4, 12, 12)
+
+
+def test_json_and_upload_accept_twelve_construct_budget(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, "STORE", JobStore(tmp_path / "jobs"))
+    monkeypatch.setattr(api.RUNNER, "submit", lambda job_id: None)
+    client = TestClient(api.app)
+    values = {"minimum_constructs": 4, "target_constructs": 12, "maximum_constructs": 12}
+    responses = [
+        client.post("/api/jobs", json={"identifier": "P16410", **values}),
+        client.post("/api/jobs/upload", data=values,
+                    files={"structure": ("input.pdb", io.BytesIO(b"HEADER test\nEND\n"), "chemical/x-pdb")}),
+    ]
+    for response in responses:
+        assert response.status_code == 202, response.text
+        request = api.STORE.request_for(response.json()["id"])
+        assert request.maximum_constructs == 12
+
+
+def test_json_and_upload_propagate_explicit_protocol(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, "STORE", JobStore(tmp_path / "jobs"))
+    monkeypatch.setattr(api.RUNNER, "submit", lambda job_id: None)
+    client = TestClient(api.app)
+    protocol = "ordinary_site_first_perturbation_v1"
+    responses = [client.post("/api/jobs", json={"identifier": "P16410", "execution_protocol": protocol}),
+        client.post("/api/jobs/upload", data={"execution_protocol": protocol},
+            files={"structure": ("input.pdb", io.BytesIO(b"HEADER test\nEND\n"), "chemical/x-pdb")})]
+    for response in responses:
+        assert response.status_code == 202, response.text
+        request = api.STORE.request_for(response.json()["id"])
+        assert request.metadata["joint_v4_ml"]["execution_protocol"]["name"] == protocol
+    assert client.post("/api/jobs", json={"identifier": "P16410", "ml_mode": "preview",
+                                       "execution_protocol": protocol}).status_code == 422
+    rejected = client.post("/api/jobs/upload", data={"execution_protocol": protocol, "ml_mode": "preview"},
+        files={"structure": ("input.pdb", io.BytesIO(b"HEADER test\nEND\n"), "chemical/x-pdb")})
+    assert rejected.status_code == 422
+
+
 @pytest.mark.parametrize("target", [7, 8, 12])
 def test_json_and_upload_propagate_display_settings(monkeypatch, tmp_path, target):
     monkeypatch.setattr(api, "STORE", JobStore(tmp_path / "jobs"))

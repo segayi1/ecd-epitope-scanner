@@ -105,6 +105,7 @@ def build_offline_site(output_dir: Path, analysis: dict[str, Any], lang: str = "
         for name in ("zh", "en")
     }
     page = (WEB_ROOT / "index.html").read_text(encoding="utf-8")
+    page = re.sub(r'<script\s+src="/assets/job_center\.js(?:\?[^"]*)?"\s+defer></script>', '', page)
     page = re.sub(
         r'(?P<attr>href|src)="/assets/(?P<path>[^"]+)"',
         lambda match: f'{match.group("attr")}="./assets/{match.group("path").split("?", 1)[0]}"',

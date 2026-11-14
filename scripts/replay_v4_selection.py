@@ -154,7 +154,7 @@ def main():
         sectors = build_epitope_sectors([
             SurfaceEvidence(**{**row, "residue": ResidueKey(**row["residue"])})
             for row in analysis["joint_v4_ml"]["surface_evidence"]], epitope, graph,
-            {row.uniprot_pos: row for row in records}, params.get("max_sectors", 7),
+            {row.uniprot_pos: row for row in records}, params.get("max_sectors", 12),
             params["sectoring"], diagnostics=partition_diagnostics)
         # Frozen generation anchors and score identities refer to the original partition.
         evidence_source["resource_audits"] = {}

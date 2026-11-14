@@ -79,6 +79,17 @@ def test_complete_details_include_passes_unknown_values_and_local_metrics():
     assert row["stability_evidence"]["foldx_ddg_kcal_mol"] == 0
 
 
+def test_site_details_preserve_discotope_scores_and_missing_evidence():
+    from ecd_epitope_scanner.joint_design_v4.models import EpitopeEvidence
+    one = candidate("one", [1, 2])
+    row = build([one], epitope_evidence=[EpitopeEvidence(
+        one.mutations[0].residue, raw_score=0.12, calibrated_score=-1.25,
+        surface_percentile=0.4, status="PREDICTED")])[0]
+    first, second = row["site_details"]
+    assert (first["discotope_raw_score"], first["discotope_calibrated_score"]) == (0.12, -1.25)
+    assert second["discotope_raw_score"] is None
+
+
 def test_lower_risk_prefers_known_model_values_and_epitope_alternative():
     high = candidate("high", [1, 2], ddg=.4)
     low = candidate("low", [2, 3], ddg=-.2)

@@ -1,5 +1,69 @@
 # CTLA4 field-fusion research task
 
+## 2026-10-29 位点先行 13 例重跑
+
+- 目标与范围：用户明确要求重跑冻结清单中的 11 binder、PD-1、CTLA-4；逐例启用 ordinary_site_first_v2，独立输出和模型缓存，保留历史数据。
+- 验收：13 输入 SHA 核对，6 例 AF3 附带 confidence；每例核验科学门、展示资格、配对和导出，技术失败或验收失败停止后续派发。
+- 状态：启动器 `scripts/run_site_first_13_cases.py` 已完成 13 请求构建自检和 AIB234 保存产物验证，launcher PID 21740；进度和报告位于 `workspace_data/site_first_13_cases_20261029`，启动日志位于 `workspace_data/site_first_13_cases_20261029_launch`。具体运行终态待后续核验；50% 严格性能目标尚未评估。
+
+## 2026-10-27 site-first identifiability签名全零
+
+- **目标**：修复新site-first面板在选择时使用全零hypothesis response而忽略可用surface/impact响应。
+- **范围**：site-first候选materialization与 `select_panel` 之间的候选响应映射；不改SPURS/FoldX、输入/表面扰动证据或科学门，不修改旧运行目录。
+- **步骤/结果**：只读比较 `fdbde4aa24d7` 与 `sf_old1/derived_export` 保存的panel签名、候选响应/impact及surface位置，并核对engine物化顺序。新job 85×8 selected签名全零，但55候选中8已执行项具有85维非零响应；旧面板均值响应0.216093、分离0.110533。原因是site-first响应附加先于空队列物化、panel select后才重附。现对site-first materialized candidates在select_panel前附加一次真实hypothesis响应。
+- **验收**：加入非空fixture surface hypothesis的site-first engine回归，并要求panel均值及签名非零；engine文件6 passed，保存AIB234无真实模型回放1 passed。
+- **边界/回顾**：surface/impact输入和position映射完整；历史job `fdbde4aa24d7`未改，旧签名不会自动重算。需要独立派生分析再核验历史面板，不能回填或重跑模型。
+
+## 2026-10-27 最终导出卡片收据哈希复核
+
+- **目标**：保证最终analysis、推荐卡完整性收据、run manifest和ZIP彼此一致，并核对最终保存卡片。
+- **范围**：`exporting.finalize_scientific_bundle`及pipeline最终验收门；保留历史job和科学门，不调用真实模型。
+- **步骤/结果**：读取项目记忆、卡片完整性历史修复和普通自适应导出审计；只读核对job `06710f1f861b`的receipt、analysis及manifest hash/mtime，确认FoldX来源证据复制后finalizer二次写analysis造成单项哈希失配。finalizer现于manifest/ZIP前重新计算卡片完整性与源hash，并把最终receipt回传pipeline。
+- **验收**：模拟analysis在初始PASS收据后出现卡片证据缺失，finalizer必须重判INCOMPLETE；最终receipt哈希、manifest与ZIP一致。专项用例及来源证据打包回归3 passed。
+- **边界/回顾**：真实job未改、未重跑。其验收仍待独立派生目录重导出核验；不会覆盖历史文件。
+
+## 2026-10-27 site-first FoldX raw median核验
+
+- **目标**：修正已完成配对的FoldX technical_failure误报，同时继续拒绝真正的worker聚合错配。
+- **范围**：site-first FoldX worker聚合核验与FoldX parser/worker回归；不改通用稳定性聚合、科学门、历史job或结果。
+- **步骤/结果**：只读核对真实job `workspace_data/d14576822c6f` 原始FoldX、配对ledger、请求与源码，确认8候选24有效槽均因4位聚合值与raw median直接比较而误报。worker改为按既有4位精度核验聚合，同时成功记录保留完整raw median。
+- **验收**：覆盖四位精度及真实raw值、保留0.565976 raw median、错配仍失败；在仓库父目录以项目venv执行 `pytest test_foldx_parsing.py test_site_first_worker.py test_site_first_worker_integration.py`，22项通过。
+- **边界/回顾**：未重跑模型或改历史job。d14576822c6f仍保留原technical_failure状态；源码修复不表示历史验收已重算通过。
+
+## 2026-10-27 位点先行v2实施（用户已确认计划）
+
+- 目标：全部位点集合轻量评价，具体替换按3→6代表逐层展开，SPURS预取、FoldX批量并行并共享WT修复；同条件真实耗时目标较旧流程降低50%。
+- 范围：新增显式ordinary_site_first_v2；分区/单点准入/3或10槽/科学门保留，不切生产默认，不自动恢复任何真实重跑。
+- 进度：[x] 候选层/增量队列；[x] 批量验证与预算；[x] engine、worker、卡片协议接入；[x] 最新针对34项和性能对比3项通过、六位点模拟2.112秒；[ ] 最终综合测试仍在运行；[ ] 匹配条件真实A/B基准与50%目标验收待执行。详细交接见tasks/ordinary_site_first_20261027_handoff.md。
+- 验收：几何每位点集合一次、替换不全区展开、预算/并行身份正确、共享修复一次、导出一致；50%必须真实基准证明，不能用模拟通过替代。
+
+## 2026-10-27 用户取消：停止重跑，不得自动恢复
+
+用户明确指出本次算法意图理解错误，要求停止运行并删除所有本轮产物。核查时批次执行器已退出、DB无RUNNING/QUEUED；已核验命令和创建时间后终止事件监听器42812及其conhost45936。禁止继续计算、自动恢复或把现实现当作已确认需求。
+
+删除范围已限定为本轮5个新job：61937605e0db、a40c9175989b、256ac00f4150、98a2a1f2f3e3、c495b2004808，以及workspace_data/ordinary_adaptive_rerun_20261026*、ordinary_adaptive_stop_repair_20261026、ordinary_adaptive_windows_path_repair_20261026。历史原始输入和旧结果不在删除范围。
+
+受限批量删除及单一固定目录删除均被工具自动审批审查拒绝（blocked by policy，未提供具体原因），未删除运行目录、控制文件或DB记录。不能绕过。状态已记STOPPED_BY_USER/cleanup_status=BLOCKED_BY_TOOL_POLICY。以后先对齐用户算法意图；删除完成前不能称产物已清理。
+
+## 2026-10-26 先停算、集中修复、再计算（用户最新要求）
+
+- 目标：停止当前13例批次，修复已出现的工程问题并验证，再重新计算和交叉报告。
+- 范围：新自适应engine/模型边界、批次runner及验收状态；保留输入、历史job、失败预算和部分产物。
+- 已完成：[x] 核验PID/命令/创建时间，终止39404/33868及conhost4504；[x] 当前job98a2a1f2f3e3记FAILED并注明用户停止；[x] 批次STOPPED_BY_USER和原state备份保存。
+- 进度：[x] 集中审查路径/配对/槽/映射边界；[x] 修复首例失败停止、异常状态与报告门；[x] 19文件185项回归；[x] 13输入与请求核对、冻结收据；[ ] 真实逐例验收和最终交叉报告。修复版launcher9756已启动，首例不通过即停止剩余任务。
+- 验收：相关回归全部通过、没有已知阻断缺陷后才重启；首例技术失败应立即停止批次、异常写明确状态；13例最终科学证据和导出通过后报告。
+- 停算证据：workspace_data/ordinary_adaptive_windows_path_repair_20261026/user_stop.json。
+
+
+## 2026-10-26 当前验收与真实重跑状态（更新）
+
+- 目标：完成新自适应算法可用性验收，重跑11binder+PD1+CTLA4并交叉报告。
+- 范围/步骤：前3例真实日志定位Windows目录故障 → engine目录分量复用safe_name → 真实mkdir回归 → 归档失败尝试后有限串行13例。
+- 已完成：候选/预算/导出综合157项及runner12项；资源85,240候选完成；本次路径修复相关33项通过。前3例真实结果NEEDS_REVIEW，零有效FoldX槽，原job保留。
+- 进行中：修复版一次性接续已启动，见workspace_data/ordinary_adaptive_windows_path_repair_20261026/launch.json。原3例以新job重做，其余10例继续，无自动重试/heartbeat。
+- 验收：13例终态、逐例模型/科学门/卡片与导出核验通过后，完成交叉比较及修改效果报告；无历史逐组合证据项保留UNKNOWN。
+- 复盘：mock只返回预测而不创建模型目录，漏掉Windows非法字符；已用原平台实际mkdir补回归。全批结果仍待完成，不标整体PASS。
+
 ## 2026-10-23 FoldX重复采样风险诊断
 
 - **目标**：让候选推荐和报告披露重复值是否跨越已配置FoldX门限，保留现行中位数资格合同。
@@ -516,3 +580,446 @@
 - 结果：ETA/API/生命周期36项通过，FoldX/AF3相关58项通过、1权限跳过/1完整集成未选；1440/390px中英四场景真实渲染PASS，零HTTP/pageerror。历史只读核查AF3 binder5例、structure binder6例可估，部分抗原组样本不足。
 - 运行：0运行/排队，WSL预检PASS，核对旧服务PID12876与完整创建时间后隐藏重启，当前服务18924；health/API新增time_estimate及HTML字段PASS，service_reload.json终态PASS。
 - 回顾/边界：FoldX取median且跨门敏感仅复核标签，未增加方差硬拒绝门；AF3预处理已主流程接入，sample_id父目录fallback遗留未修。无新模型、无历史覆盖或自动化；完整说明docs/job_eta_and_integration_audit_20261026.md。
+## 2026-10-26 普通自适应算法验收与审查
+- 目标：审查最近未提交修改，修复阻断可用性的问题，验证普通严格模式新算法及历史兼容。
+- 范围：候选队列、SPURS/FoldX调度、引擎映射与科学门、报告/网页/ZIP；不覆盖历史产物。
+- 步骤：[x] 阅读交接与项目记忆、两路独立审查；[x] 复现严格模式初始化崩溃；[x] 修复调度/映射/导出；[x] 专项及核心回归、保存证据验收；[x] 记录结论和剩余限制；[ ] 大候选池完成时间与峰值内存验收。
+- 验收：逐轮模型调用、失败不跳项、共享结果不越序、预算及技术失败停止；规范编号映射回真实位置；仅合格项进入显示与精简面板；ZIP不含完整未评估索引；保存输入只读，测试日志可追溯。
+- 结果/回顾：最终129 passed/22.46秒；历史CTLA4和binder配对只读回放、实际ZIP与Node渲染通过。修复11类问题，详见docs/ordinary_adaptive_review_20261026.md。单区2576候选约3.108秒/SQLite59.8MB；6位点×19替换优化后45秒探针仍未完成，峰值内存未验收，完整运行可用性不标通过。未真实模型、完整浏览器验收、提交或重启；本轮审查交回，剩余项明确保留。
+
+## 2026-10-26 完成验收后重跑13例并交叉比较
+- 目标：完成普通自适应资源验收，然后重新运行此前11个binder、PD1和CTLA4，交付本次修改效果的逐例及汇总报告。
+- 范围：候选建池性能、冻结输入/置信度与源码清单、有限串行重跑器、新任务目录、结果JSON/CSV/Markdown；保留旧任务及历史结果。
+- 步骤：[x] 建立11个binder输入哈希清单；[ ] 核准PD1/CTLA4输入与比较基线；[ ] 定位并修复大池热点，记录完成耗时与峰值内存；[ ] 功能回归及验收收据PASS；[ ] 验收通过后以新job ID串行重跑13例；[ ] 逐例验证模型预算/来源/卡片/导出并交付交叉报告。
+- 验收：所有AF3按AF3且带对应置信度重放；不以候选cap或放宽科学门换取通过；源码及输入哈希冻结。重跑器无循环轮询、无自动重试、无重复提交；仅在验收PASS时可调用真实模型。报告区分旧五槽和新三/十槽、实际计算和历史回放、技术失败和科学未通过；未知基线明示。
+- 当前状态：PREPARED_ACCEPTANCE_PENDING；大池仍有45秒诊断超时，尚未开始13例真实模型调用。
+- 本轮更新：工程验收PASS；157综合回归及12执行器专项通过（重叠）。85,240候选99.423秒，峰值2,382,639,104B，SQLite397,062,144B，quick_check通过；完整源码/输入/runner哈希已冻结到ordinary_adaptive_rerun_20261026_acceptance.json。即将按此前授权启动有限串行13例，模型和每例输出验收尚未完成。
+- 已启动：launcher24664/执行owner1876，首例AIB234新job61937605e0db已RUNNING/PROCALIPER_ANALYSIS且无error；其余按有限串行执行，每例自动验收并更新report。13例终态前不称真实模型结果全部通过；不重复提交、不修改冻结源码、不新增自动化。
+- 后续进展：13例真实rerun清单和有限串行runner已准备，AF3采用上次最终选择（AIB10 m001，其余m000），dry-run 13项通过。最新候选/engine/runner 14 passed；大池资源收据仍待90秒有界测量，runner尚待root审查，不签发整体PASS、不启动真实模型。交接tasks/ordinary_adaptive_rerun_20261026_handoff.md；旧结果保持。
+
+## 2026-10-27 位点先行单例验收
+- 目标：用冻结 AIB234 输入完成真实模型、科学门、几何和导出验收，并以独立冷缓存串行比较冻结旧流程。
+- 范围：仅一例结构 binder，显式启用 ordinary_site_first_v2；独立 job、账本与对照目录，保留原输入及历史结果。
+- 步骤：[x] 输入/硬件/模型预检；[x] 模型替身回放真实输入；[ ] 完成真实新流程及逐区验收；[ ] 成功后执行旧版并比较身份、缓存和墙钟；[ ] 输出评估报告。
+- 验收：预算、配对证据、科学门、独立连通/直径、卡片/ZIP一致性通过；50%目标仅在模型身份、硬件、输入、缓存和耗时范围可比时判定。旧版与新协议的科学差异及代表替换限制须明确。
+- 状态：2026-10-27 07:58 PDT 启动有限串行执行器；先运行新协议，验收通过后才启动旧版；各阶段事件和终态报告写入 workspace_data/site_first_acceptance_20261027。真实结果和性能结论尚待执行完成。
+- 更新：首例 d14576822c6f 因 FoldX 汇总四位精度误判而 NEEDS_REVIEW；24 对原始证据校验通过。修复后 255 项相关回归与真实配对无模型回放通过，独立新任务 06710f1f861b 在 site_first_acceptance_r1 目录进行；性能结论仍待结果。
+- 后续：06710f1f861b 模型通过但导出收据和 CSV 验证发现问题，独立重导出通过；旧版 sf_old1 应用层冷缓存 2321.969 秒、独立重导出通过并核验300对配对。修复导出后新任务 fdbde4aa24d7 应用层冷缓存 799.532 秒，自动验收 PASS；单例观测减少65.57%，身份、输入和应用层缓存核对通过。Windows 页缓存及背景负载未控，严格同缓存性能目标 NOT_ASSESSED；报告 site_first_acceptance_r2/assessment_report.md。warm-cache、AF3/抗原及其他样本未验收。
+- 独立审查更正：fdbde4aa24d7 的85组面板签名全零，与已选候选的假说响应有448/680处不一致；原自动 PASS 未覆盖此问题，面板科学验收 NEEDS_REVIEW，65.57% 不能证明正确算法的性能。正在修复候选延迟物化后的响应计算顺序并补验收回归。
+
+## 2026-10-28 site-first展示复核隔离
+- 目标：需审查组合不得进入正式面板、本区主方案/备选或空间比较；复核记录保留在审查详情与账本。
+- 范围：`site_first_display.py`、site-first验证递补、panel/sector导出筛选、网页正式资格判定；保持科学PASS与展示资格分离，不重复计费。
+- 进度：既有后端已以独立 `display_eligible` 过滤 panel/sector，并记录无替代项缺口；十槽审查结果按突变签名复用、candidate_rechecks按候选ID隔离；补齐前端显式展示资格防线与回归断言。
+- 验收：展示复核候选仅出现在审查详情；空间比较拒绝 display_eligible=false 或 DISPLAY_REVIEW；十槽物理结果复用且候选级复核独立；定向回归通过。
+- 结果：定向37项通过；含保存CTLA4回放的套件另有1项因本检出缺少 `workspace_data/5068b62450ec/probe_sectors_v4.json` 失败，未触碰历史数据。
+- 后续：重复诊断未知及明确跨执行冲突均不进入 site-first 正式展示；共享十槽跨门物理结果在两个区域均被隔离并触发递补。综合回归 226 项通过，历史 CTLA4 回放因缺少三个源文件标记为 skipped；冻结 AIB234 的完整无模型回放和正式展示核验通过。真实单例及最终报告仍待完成；严格同缓存性能、AF3、抗原和13例尚未验收。
+- 单例启动：首次启动包装器提前创建目标目录导致 Python 在建任务前退出，原错误保留 `workspace_data/site_first_acceptance_aib234_20261028/launcher.stderr.log`；随后采用独立启动日志目录，并以全新输出目录创建 job `4c13e9a623db`，启动前应用评分与 FoldX 修复缓存均为空。2026-10-29T07:00:18Z 记录 RUNNING/PROCALIPER_ANALYSIS；终态及独立评估尚待检查。日志目录 `workspace_data/site_first_launch_aib234_20261028_r1`，验收目录 `workspace_data/site_first_acceptance_aib234_20261028_r1`。
+- 已附着进程完成监听器 PID 24076：仅等待 launcher PID 26132 退出；单例 PASS 时生成独立对照报告，否则记录终态及错误，不重复提交或周期轮询。监听器首版因 JSON 日期被自动解析而误判身份，留下原错误；第二版按日期类型比较并已确认等待中。完成收据为日志目录下 `completion_summary_r2.json`，报告目录预定 `workspace_data/site_first_assessment_aib234_20261028_r1`。
+- 终态：`4c13e9a623db` 数据库 COMPLETE，单例与独立计算证据验收 PASS；7 区机制/覆盖共 14 张正式卡，8 张进入全局精简面板，全部 3 槽通过。85×8 面板签名逐项一致；6 个关键文件的 ZIP/源文件/manifest 哈希独立一致。新 653.906 秒、旧 2321.969 秒，单次观测降低 71.84%；OS 页缓存与负载未严格匹配，50% 目标仍 NOT_ASSESSED。用户报告及独立导出核查见 `workspace_data/site_first_assessment_aib234_20261028_r1/`；已修复缓存、AF3/抗原及 13 例仍待后续计划条件满足。
+
+## 2026-10-29 13例批次中期独立验收
+- 目标：按用户要求复核本批结果并交付完整证据报告。
+- 当前快照：7例PASS，AIB203运行，另外5例尚未启动；全批PENDING。7例50区独立几何、99正式卡、56面板记录、5264签名单元格及原始配对/JSON/CSV/ZIP一致性均通过；306槽无技术失败，AIB15的3项科学失败未入正式输出。
+- 报告：workspace_data/site_first_13_cases_audit_20261029_7completed/完整验收报告_当前7例.md；明细JSON、CSV及只读生成脚本在同目录。
+- 后续：剩余6例终态后完成最终13例验收及交叉报告；运行中不改冻结源码。自动汇总协议标签继承旧manifest，实际7例analysis/ledger均为ordinary_site_first_v2；完整报告已按实际协议标注。
+
+- AIB203耗时归因：123组合拆61次SPURS（53次单项），组合评分3822秒，其中模型加载2000秒、解码1.737秒；VS001机制73项递补造成滑动预取碎批次。已定位性能问题，待本批冻结运行结束后优化及结果等价验证。详见7例审查目录AIB203_耗时分析.md。
+
+## 2026-10-29 SPURS批量递补优化（隔离补丁）
+- 用户授权将逐项递补改批量；64项队首缺分触发补批、跨lane轮转与缓存消耗已实现，73项回归通过；source/test两文件hash前后相同。
+- 成果：workspace_data/site_first_spurs_batch64_20261029/batch64.patch、README.md、validation_receipt.json。当前13例仍RUNNING，未应用生产；待本批终态核对hash后应用、真实64批量验证。常驻worker未实现，每批仍一次启动；真实速度/显存未标定。
+
+## 2026-10-29 用户授权从下一例启用batch64
+- 两文件补丁已应用，生产相关回归80 passed；实际source digest f02c5b7a57cdbb52a28b502722b982485a3fe2fecc1881b49549547d20d27a4b（git apply输出CRLF，文本与已测隔离源码一致）。
+- 当前AIB26/6d2cbffaf492继续旧进程，开跑源码ZIP哈希已核对。旧执行器下例前因源码检查停下为预期边界；一次性WaitForExit接续器12668校验本例COMPLETE+验收通过及精确停点，再以新进程续AIB56/AIB60/PD1/CTLA4；失败不跳过。
+- 新状态/报告：workspace_data/site_first_13_cases_20261029_batch64；旧状态保留，source_transition列旧job与两段hash。激活收据workspace_data/site_first_spurs_batch64_20261029/activation.json。下一例尚未确认启动，最终报告需分段，不视13例为同配置性能数据。
+
+### 隔离优化进度补记
+
+- `workspace_data/site_first_runtime_opt_20261029/ecd_epitope_scanner` 中新增 SPURS 常驻 worker、WSL 行协议桥、进程作用域和 opt-in 引擎包装；模型权重及源码内容变化会拒绝继续使用。当前只做模拟测试：常驻 worker、runner、site-first validation 共 30 例通过，scope 1 例通过；没有在真实 WSL/GPU 或任务上验证。
+- 尚未完成：真实 WSL/GPU 验证及 Windows 杀死 WSL 子进程的可靠清理，SPURS/FoldX 重叠、FoldX 并行调度、环境指纹复用均未完成，不能用于剩余批次。运行中的 PD1 仍由原执行器处理；源码边界拦截后续任务。继续前检查当前任务终态，勿重复执行或改变原产物。
+- 后续：完成并验证上述优化，冻结源码和预算策略，以新的收据与隔离状态运行 CTLA4、AIB56、AIB60；AIB26 按用户要求仍跳过；各版本分组汇报并完成交叉审查。
+
+### PD1 终态和批次报告异常
+
+- PD1 `5212c397d9c3` 数据库 COMPLETE；优先批次 state 中该例 PASS，自动 post_validation 全部通过，耗时 2819.344 秒，8 区、19 张推荐卡，FoldX pass count 48，正式展示资格及导出一致性通过。归档已生成。
+- PID 29596 已退出；退出原因是批次 `write_reports` 把字符串 `manifest['protocol']` 当字典访问，报 `TypeError: string indices must be integers, not 'str'`。批次状态 INTERRUPTED，非预期源码边界停止；保留 state、stderr 与计算产物。下一例未由该执行器启动。后续独立恢复须修复并测试报告契约，不能重算或覆盖已通过 PD1。
+
+### 2026-10-29 用户要求测试通过后重算四例
+
+- 用户现要求 CTLA4、AIB56、AIB60 和此前跳过的 AIB26；AIB26 不再跳过。已完成 PD1 不重算。
+- 报告契约、流式 JSON、常驻 worker 及 FoldX 执行池有定向回归；WSL 路径转换子进程抢占 stdin 导致握手超时，已将 stdin 设为 DEVNULL，回归 59 passed。真实 GPU 同一 worker 两次请求及最终身份核验 PASS；一次性 worker 对照仍在运行。
+- 四例不得提前启动：尚需真实对照、Windows/WSL 异常清理、十例回放、固定 FoldX 负载、端到端对照及来源冻结/守卫验收；原选择顺序和预算保持不变。
+
+- 新增证据：真实一次性与常驻 worker 同输入结果一致（worker_compare_01）；真实故意超时后 Windows 进程和对应 WSL PID 均已退出（cleanup_01）。缓存身份新增常驻无 OOM 重试协议标识，扩展回归发现普通 adapter 无 command 属性的兼容错误并修复，38 passed。
+- 仍待：十例保存数据回放、AIB234/AIB203/PD1 案例级对照及 FoldX 1/2/4/8 固定负载；未启动四例，不能用单次模型对照代替整案验收。
+
+- 用户进一步明确要求立即启动四例；独立执行器 `workspace_data/site_first_runtime_opt_20261029/run_four_cases.py` 的 13 项输入预检通过并启动，PID 39812。新批次 `workspace_data/site_first_four_optimized_20261029`，顺序 CTLA4、AIB56、AIB60、AIB26；参数显式启用常驻 SPURS 和 FoldX 池，之前 PD1及历史案例只引用不重算。
+- 首次快照 CTLA4 job `bb76740c3073` RUNNING/PROCALIPER_ANALYSIS，stderr 为空；队列失败即停。完整案例级 A/B、十例回放与 1/2/4/8 固定负载仍未完成，不得将此次执行当成这些验收已通过。后续按用户要求观察执行结果并及时收集错误，不启用循环轮询或自动化。
+
+### 13例独立验收与未完成原则
+- 全部13例 COMPLETE，自动和独立协议、正式展示资格、签名、输入及区域几何检查通过；13例93区、193正式区域卡、104精简面板、9736签名单元一致。新报告 workspace_data/site_first_four_optimized_20261029/independent_audit/13例_验收与新算法评估.md。
+- 逐区覆盖尚不完整：PD1 VS006 三原则 candidate_failures；AIB60 VS004 和 AIB26 VS002 sector_coverage budget_limited，ledger uncompleted_gaps 均为空。审查方须检查 queues 的终态；自动 PASS 不意味着各原则都有卡。待修复缺口汇总与验收表述，不覆盖历史结果。
+- 常驻四例每例单 worker，GPU 模型实际复用；受控案例A/B、十例调度等价回放、FoldX固定负载未完成。
+
+- PD1 VS006 缺口因低 pLDDT 加 P/G 保护只剩 E84；AIB60/AIB26 因组氨酸机制证据未知的展示复核与 FoldX 预算耗尽。已修复 ledger 缺口汇总和独立区域完整性状态，65 项测试通过。提前排除已知展示复核候选需要显式版本和新对照；详情见独立诊断报告。
+
+### 2026-10-29 已知展示复核预筛（显式启用）
+
+- 为解决已知机制缺失候选消耗 SPURS/FoldX 预算后仍不能正式展示的问题，新增 `metadata.joint_v4_ml.execution_protocol.display_prefilter = "known_review_v1"`。仅普通 site-first 调度读取；默认不开启，历史协议路径保持兼容。
+- 共享 `known_display_review_reasons` 用于提前检查结构复核和已有机制 `missing_axes`；重复采样未知不属于提前排除理由，仍由真实 FoldX 后校验处理。候选保留 `DISPLAY_REVIEW_BEFORE_SCORING` 决策、原因、`scientific_status: NOT_ASSESSED`，不伪造科学失败或物理结果。候选 ID 维度检查避免污染其他区域的共享突变。
+- 预筛移除已知复核队首后顺序递补，前瞻批次也不为这些候选消耗分数预算；1000/300 上限及 3→10 重复门槛不变，但预算分配会变化，不能声称与旧版最终推荐完全等价。
+- PD1 VS006 正式位点不足问题仍需输入结构证据改善；预算优化不能保证所有区域都有方案。
+
+### 2026-10-30 已知复核预筛与十槽确认
+
+- 目标：避免已知不可正式展示的候选占用评分预算；首轮三槽恰有一槽超限时，保留候选并追加七槽，以完整十槽中位数确认资格。
+- 范围：site-first 引擎默认解析、共享展示资格、区域卡/原始诊断/导出、网页资格和独立验收；历史目录及非 site-first 默认协议保留。
+- 步骤：核对现有门控与调用方 → 启用已知复核预筛、标记十槽确认结果并保留真实跨门诊断 → 回归调度去重/预算、旧资格兼容、导出和网页。
+- 验收：追加通过能进入正式候选且不再递补；追加失败/证据不全/结构机制缺失/明确跨执行冲突仍不通过；共享候选只计算一次，1000/300 上限不变。
+- 当前：实现完成，最终相关回归132 passed、1 skipped（旧CTLA4保存输入缺失）。AIB234真实结构+模拟评分端到端覆盖三槽和十槽两路径，区域卡、导出、独立验收一致。五例保存的真实十槽证据局部回放：15个十槽组合，9个物理通过均可正确确认，其中5个候选上下文通过其他保存门；其余4个仍受机制证据缺失限制。
+- 收据：workspace_data/site_first_confirmation_20261030/修改与验证报告.md、saved_ten_slot_replay.json。未启动真实评分或改写历史结果；旧十例调度/受控性能验证仍未完成，不声称50%提速。
+
+
+## 2026-11-01 ELOF1 界面引导分区与组合稳定性
+
+- 目标：复用 8B3D 单点池和九结构界面图谱，建立界面优先、兼顾表面覆盖的分区组合候选面板。
+- 范围：独立输出 workspace_data/elof1_panel_20261101；保留生产源码、历史筛选及界面结果。
+- 步骤：显式表面图及连通有界分区 → 区内界面/覆盖队列和少量跨区组合 → SPURS multi → FoldX 3/10 槽及失败递补 → 导出逐区结果、缺口和覆盖记录。
+- 验收：编号/WT/候选池一致；分区唯一覆盖、连通、面积和直径通过；组合 SPURS≤1、FoldX 3槽或完整十槽确认；预算≤1000组合/300槽；原始配对和来源可查，不将计算稳定性等同实验结合。
+- 当前：准备及模型执行入口已建立，运行结果待本目录 manifest。
+
+- ELOF1 本轮终态：SCORING，6 区， 个唯一突变体，SPURS  请求/FoldX  槽。报告 workspace_data/elof1_panel_20261101/ELOF1_panel_report.md；全部队列状态与缺口以本目录文件为准。
+
+
+- 2026-11-01 ELOF1 状态核查：原评分主进程已退出但状态未收尾；138 SPURS（101 PASS/36 REVIEW/1 OVER_LIMIT），4 FoldX 组合/12有效槽（3 PASS/1失败）。已在独立进程接续，复用完整证据，另计3个中断未验证槽，评分与最终报告串联；入口 workspace_data/elof1_panel_20261101/continue.ps1。最终结果待本目录 manifest。
+
+- ELOF1 本轮终态：COMPLETE，6 区，14 个唯一突变体，SPURS 138 请求/FoldX 66 槽。报告 workspace_data/elof1_panel_20261101/ELOF1_panel_report.md；全部队列状态与缺口以本目录文件为准。
+
+
+- ELOF1 最终结果与展示验收完成：6区、14唯一双点突变体、19/19用途队列；138 SPURS，66 FoldX计费槽=63有效+3中断未验证。独立科学核查与 result_acceptance.json 通过；复用 workbench.css/offline_template 样式的 ELOF1_workbench.html 已通过真实Chrome离线、七步、分区/突变/序列联动、三视口及零网络请求验收。未改生产前端或科学结果；详情与截图见 workspace_data/elof1_panel_20261101/。
+
+### ELOF1 分区证据与逐突变体审阅
+
+- 目标：明确六区的几何规则、九复合物来源和每个组合预期影响的结合伙伴，恢复逐个定位与完整 overview。
+- 范围：仅独立结果目录的页面模板、构建及来源导出；使用冻结接触表和既有稳定性结果。
+- 步骤：逐位点接触关联 → 分区与候选来源说明 → 14 突变体的正面平滑定位、前后切换、共享位点总览 → 浏览器验证及来源表一致性核对。
+- 验收：同复合物双点支持与跨结构并集明确区分；所有候选均有来源和扰动假设；14 个组合的实际替换、28 个位点成员、18 个唯一位点联动；七步、三视口、离线和单模型保持有效。
+- 完成：14 个组合逐个审阅、600 ms 平滑正面定位、前后切换及快速切换取消、overview 全选/勾选/共享位点、序列联动、七步和三视口通过真实 Chrome 检查，零页面错误与远程请求。458 条候选接触记录与冻结原表逐项一致，同 PDB/同伙伴链双点支持与 14 行设计总表核对通过；收据 review_browser_acceptance.json 与 binding_evidence_acceptance.json。原评分结果与生产代码未变；结合扰动为待验证假设。
+
+### ELOF1 打包离线交付
+
+- 目标与范围：将当前交互结果页、分区/设计说明、表格、评分结果及九个参考复合物完整打包，直接解压浏览。
+- 步骤：明确纳入文件 → 本地复合物链接与使用说明 → ZIP 完整性及解压检查 → 禁网浏览器检查全部审阅交互和本地下载。
+- 验收：从实际解压目录打开，14 突变体逐个审阅及 overview、七步、三视口均有效；本地来源与 CSV 链接可用；无远程请求；包内保留验收记录。
+
+- 离线包交付完成：workspace_data/deliveries/ELOF1_offline_20261101.zip；实际解压目录禁网 Chrome 验证通过（14突变体、overview、七步、三视口、全部本地来源链接与CSV下载）；包内 acceptance/offline_package_acceptance.json 保留验证记录，ZIP完整性通过。
+
+### ELOF1 位点标记贴附修复
+
+- 目标：消除表面视图彩点悬浮和背面标签透视；保留共享位点、逐个审阅和原科学结果。
+- 范围：独立结果页的 workbench_review.js、模板说明、浏览器检查及离线包；修复截图中的已解压目录，并另交付 v2 压缩包。
+- 原因与改动：固定 Cβ 外移 3 Å/标签外移 5 Å，改为对应残基的真实显示网格顶点锚定；彩点中心距表面 0.12 Å、半径 0.48 Å；标签距锚点 1.25 Å并用短线连接，启用深度遮挡；骨架视图用真实原子。
+- 验收：28 标记/18位点贴附及标签连接距离、旋转坐标保持、全部14突变体切换、三视口与离线下载；突变清单、分区、覆盖、稳定性分数和来源导出逐项保持一致。
+
+- 完成：marker_browser_acceptance.json 与 v2 包内 acceptance/offline_package_acceptance.json 均 PASS；真实解压目录禁网验证通过。当前 ELOF1_offline_20261101 目录同步修复，旧页面/收据备份 previous，原压缩包保留；v2 ZIP 完整性通过。
+
+## 2026-11-02 算法提交与详细 Methods
+
+- 目标：提交当前普通 V4 筛选算法及其依赖，编写以突变体筛选为重点、与提交源码一致的新 Methods。
+- 范围：算法、模型适配/执行、相关导出和展示、配套测试及验收脚本；排除运行数据、日志、图片、临时探针和过程记录。
+- 步骤：核对差异及协议边界 → 相关回归并精确暂存提交 → 按源码编写独立版本 Methods → 核对阈值、公式、状态和出处。
+- 验收：提交清单无运行产物；相关测试结果可查；文档说明默认/显式协议、候选生成、三原则、SPURS、FoldX 3→10、科学/展示资格、预算和缺口。
+- 当前：已完成范围识别，相关回归进行中；不启动真实模型或修改历史运行。
+- 算法提交：f2b310e（74文件，算法/运行适配/导出展示/配套测试与验收脚本）。未纳入日志、运行数据、图片、临时探针或既有过程记录。
+- 回归：本次涉及的35个测试文件共285 passed、1 skipped，168.466秒；跳过项缺少历史CTLA4的probe_sectors_v4.json、panel_candidates.json、surface_graph_v41.json。收据 test_output/method_release_20261102/regression.xml，仅留本地。
+- 文档：docs/method_ordinary_site_first_v2.md，17节，包含默认v1/显式v2、位点集合、3→6代表、三原则、SPURS批64/1000请求、FoldX3→10/300槽、正式科学与展示资格及源码定位。
+- 文档验收：17节、24个源码路径及协议JSON通过一致性检查；独立源码审核未发现指定规则错述。方法文档单独提交，原方法文档保留。
+- 复盘：源码是当前合同依据，早期设计记录中的每队列预取4和侧链绝对SASA门不作为当前规则；明确几何预排/科学复核/展示资格，按实际队列终态解释缺口。
+- 完成边界：仅本地Git提交；未push、未重跑真实模型、未做全仓或浏览器验收。其余原有工作区修改保留。
+
+## 2026-11-02 普通V4整体核查与资源/位点保留评估
+
+- 目标：核查历史测试问题闭环、当前源码与真实新版运行；在尽量保留合格位点的约束下评估计算和存储优化。
+- 范围：普通自适应及site-first、13例实际结果、十槽确认保存回放、配套模型执行/导出；独立ELOF1定制运行仅作边界，不混作普通协议验收。
+- 步骤：历史问题与回归映射；全仓可运行测试；运行来源与逐原则资格/响应核对；存储/时间/请求计数；位点保留与近似搜索风险；综合报告和改进优先级。
+- 验收：每项结论有当前源码、测试或产物依据；区分最后协议真实运行与旧版结果；报告实际缺口和未测召回率，不用速度代替召回。
+- 输出目录：workspace_data/algorithm_audit_20261102。生产源码和历史运行保持；本轮评估使用保存证据和本地回归，不默认启动付费/长时间模型重算。
+
+## 2026-11-03 PD1 / CTLA4 真实运行与对照
+
+- 目标：验证新版位点探索及导出，比较同输入旧 site-first 结果的位点保留与计算、存储用量。
+- 范围：PD1 配对 AF3 模型与置信度、CTLA4 1AH1 A 链；新建隔离任务库与输出，保留旧运行和当前源码改动。
+- 步骤：核对输入、环境和回归；串行运行并逐例验证；按位点、替换、区域原则和资源生成对照报告。
+- 验收：真实模型来源和 1000/300 预算可追溯；区域几何、物理证据、正式资格及导出分别核验；标明未覆盖和无实验真值的限制。
+- 前置回归：96 项中 95 项通过，AF3 恢复 API 测试超时；该测试遗留任务的进程已退出，保留原记录。新运行使用独立任务库。
+- 用户于 2026-11-04 要求停止：进程树已终止并复核，PD1 未完成，CTLA4 未启动；保留输入、缓存及日志。中断收据 workspace_data/pd1_ctla4_site_first_20261103/stopped_by_user.json；原 state 和数据库未正常收尾，仍显示 RUNNING。
+
+## 2026-11-04 论文 Methods 阈值引用
+
+- 目标：为论文方法中有出处的数值阈值补充直接引用，明确文献先例与本研究预设参数。
+- 范围：docs/method_paper_ordinary_site_first_v2.md 的阈值说明、来源表和参考文献；保留现行数值与排序规则。
+- 步骤：核对原始文献和官方置信度说明；在对应段落补引用及适用边界；核对参考文献编号和阈值完整性。
+- 已完成：补充 rSASA 25%、pLDDT 70、FoldX 2 kcal/mol 的来源；说明归一化、单点/组合及单向/双向判断差异；增加补充表 S1；订正 Tien 等作者名单。
+- 验收：所有正文引用编号均有对应条目，17 条参考文献均被引用；既有筛选表、公式和数值规则保留；文档内容与空白检查通过。
+- 复盘：工具论文不自动支持项目阈值；未找到直接出处的 SPURS、几何、覆盖增益和表位百分位参数标为研究预设值。仅文档变更，未运行模型或软件回归。
+
+
+## 2026-11-09 GitHub POSIX export privacy repair
+
+- Objective: resolve the failed Python 3.11/3.12 public CI and distribute a tested patch release.
+- Scope: shared export text redaction, recursive archive privacy checks, Linux path regressions and v1.0.1 release metadata; scientific scoring remains unchanged.
+- Evidence: both earlier CI jobs had 83 passes and one failed export-identity assertion for a synthetic POSIX temporary path. The missing temporary-directory forms reproduce on Windows with explicit POSIX fixtures.
+- Progress: shared matchers updated; 28 focused checks passed; an intermediate full run passed 90 tests. Final 91-test run and new GitHub matrix acceptance remain in progress.
+- Acceptance: installed distribution tests and both GitHub Python jobs pass; source/wheel/privacy checks and downloadable release assets agree.
+
+- Final acceptance (2026-11-09): complete. Local 91-test suite and 30 final focused checks pass; GitHub Python 3.11 and 3.12 each pass 91 tests at commit 3f631fd. Version 1.0.1 is latest; four anonymous asset downloads, source rebuild and privacy checks pass. No external-model recalculation was required.
+
+
+## 2026-11-09 External model reproduction documentation
+
+- Objective: make the published README and external-tool guide actionable for reproducing the recorded V2 workflow.
+- Scope: upstream revisions and package constraints, model checkpoint commands, WSL/Windows worker configuration and result inspection.
+- Result: v1.0.2 published; source/wheel/remote assets and privacy verified. Offline audits cover model/source identity, direct package versions, shell syntax and actual adapter command resolution. The recorded result-inspection command matches the saved strict output.
+- Acceptance: local and GitHub Python 3.11/3.12 test suites each pass 91 tests; source archive rebuild matches the wheel. Fresh-machine external installation and new model downloads were not performed as requested.
+
+## 2026-11-09 验收临时产物清理
+
+- 目标：移出已完成验收使用的一次性构建、测试环境和缓存，整理工作目录。
+- 范围：明确列出的 17 个目录；保留源码、模型、原始输入、历史运行、发布包和验收收据。
+- 步骤：核对用途、源码引用及进程使用；登记原路径与体积；移动到项目外归档；核对数量和保留文件。
+- 验收：所有清单项目在原位置消失、归档文件数与字节数一致；保留文件仍在，现有 Git 改动保留。
+- 状态：执行中。采用同盘可恢复归档，不释放磁盘空间。
+
+- 完成：17 个目录、17976 个文件、519147090 字节已移入 E:/ecd_cleanup_archive_20261109；逐目录文件数和字节数吻合，原位置已清空；保留文件大小/修改时间及 Git 状态一致。收据：E:/ecd_cleanup_archive_20261109/cleanup_receipt.json。
+- 复盘：源码重建副本、临时浏览器数据和测试虚拟环境可退出活跃目录；真实科学运行及最终发布/验收材料保留。未重跑模型或软件测试；同盘归档未释放磁盘空间。
+
+## 2026-11-11 运行任务跨页面入口与 V2 默认协议同步
+
+- 目标：离开结构设计页后仍可实时查看正在运行、排队和待补交的分析，并能一键回到任务；同时将正式结果的核心执行协议默认对齐公开 v1.0.2。
+- 实现：共享任务中心随五个工作台页面加载，轮询现有 `/api/jobs` 摘要，优先显示 RUNNING、QUEUED、WAITING_FOR_AF3_UPLOAD，再列最近八项终态任务；点击任务进入 `/?job=<id>` 并复用既有恢复流程。
+- 协议：`JOINT_V4_ML_PARAMETERS` 默认改为 `ordinary_site_first_v2`，pipeline 缺省回退同步；历史协议仍可显式选择，FoldX/SPURS 科学门未放宽。
+- 验证：Node 语法与任务中心测试 2 passed；相关 Python 回归 25 passed、1 deselected；实机从 `/experiments` 打开任务中心并回到 P16410 完成结果，五个页面均返回共享脚本。
+- 限制：deselect 的历史区域原则测试依赖已不存在的 `workspace_data/d14576822c6f/analysis.json`，无法重放；工作树中的 CRLF 使 `git diff --check` 混入大量既有空白警告。
+
+## 2026-11-11 4–12 显示分区默认值同步
+
+- 目标：让本地服务的所有省略参数路径与当前“4–12 显示分区为软目标”的设计一致，同时保留显式较小请求、构建体预算和全部科学硬门。
+- 范围：配置、pipeline/API/CLI 缺省值、V4 引擎及 sector builder 回退值、网页提交契约、当前使用说明和可复用重放脚本；历史协议与历史实验记录保持原值。
+- 验收：`PipelineRequest`、`JobCreate`、上传/AF3 表单、CLI parser 和低层分区函数均默认最大 12 区；网页仍提交 12，显示策略仍给出 4–12 软偏好与按链长的残基目标。
+- 验证：相关 Python 回归 47 passed；重启服务后 OpenAPI 的 `JobCreate.max_sectors.default`、上传与 AF3 multipart schema 均为 12，served `app.js` 的 JSON/upload 提交仍为 12。
+- 限制：历史计划、历史重跑脚本及历史运行记录保留原有 7 区参数，用于复现当时合同；它们不代表当前默认设计。
+
+## 2026-11-11 历史工作区与测试遗物清理
+
+- 目标：清空活动目录中的旧任务、运行工作区、测试缓存和一次性实验产物，同时保留可恢复的完整外部归档。
+- 范围：30 个历史任务及其全部 `workspace_data` 文件、旧 FoldX 临时目录、测试/字节码缓存、安装源码、零散输出和三个过期日期任务交接单。
+- 状态：完成。`workspace_data` 的 43,434 个文件、21,137,987,040 字节和其余 596 个文件、247,992,322 字节分别归档到 `F:/ECD_archives/20261111/*.tar.zst`。
+- 验收：两个归档均通过 zstd 内容检查；流式 tar 枚举与清理前清单的文件数、字节数完全一致；原路径已移除。哈希、排除项和恢复命令见 `F:/ECD_archives/20261111/archive_receipt.json`。
+- 保留：源码、当前文档、模型、供应商二进制、FlowKit/Paraplume 环境、Python 环境和当前运行依赖未移动；工作台重新启动后使用新的空任务数据库。
+- 残余核验：12 个一次性 pytest/phase-0 记录已归档为 `residual_test_records_20261111.zip` 并校验；19 个可再生成 Python 缓存目录已移除。服务健康检查通过，任务列表为空，任务库与实验库业务表均为 0 行。Paraplume 验证样本和 tool lock 引用的 ESM wheel 保留。
+
+## 2026-11-11 外部 V2 验收目录压缩复查
+
+- 目标：清理项目目录外已完成且不再由服务引用的 V2 验收输出。
+- 完成：`E:/ecd_v2_acceptance` 已归档为 `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst`，14,166,855,564 字节压缩为 1,525,322,631 字节；SHA-256 与收据已验证。
+- 待清理：原 14.17 GB 目录及 `.tool_cache/hf` 内 199,229,440 字节的 IgBert `.incomplete` 下载仍存在；执行环境的自动审批策略拒绝了递归目录和单文件删除。
+- 验收：归档 zstd 测试通过，tar 共 4,552 项（3,786 文件、765 目录及根项），服务 `/api/health` 为 `ok`，`/api/jobs` 为空。
+
+## 2026-11-12 表位加权表面扰动与分区三点选择
+
+- 目标：在 SPURS/FoldX 硬门下最大化表面理化扰动和整批有效可设计表面覆盖，并让每个分区比较三点与其三个精确双点父本的正边际。
+- 实现：site-first 新增 `epitope_weighted_surface_perturbation_v1`；三点可由覆盖增益或相对最佳精确双点父本的扰动正边际准入，组合稳定性仍完整重算。面板优先新分区、正边际三点、表位加权扰动和可设计面积，再以信息量和风险排序；普通 V2 主面板预算按实际分区数提升，最高 12。
+- 验收：表位/三点/预算定向回归 111 passed、1 skipped；engine、历史协议和 V4 兼容回归 75 passed。缺表位证据保持中性，历史运行未重写。
+- 边界：扰动值和表位权重均为排序代理，不代表结合损失；本轮未重跑真实模型或实验。使用 dirty CRLF 工作树时 `git diff --check` 仍会混入既有空白警告。
+
+### 2026-11-12 验收复核：尚未完成
+
+- 实际实现按单候选扰动代理和几何覆盖排序，尚未实现整批逐表面点扰动场及其边际覆盖；旧 V2 默认路径已改变，版本隔离与 shadow replay 未完成，报告中的表位先验使用状态仍需修正。
+- 三点扰动比较可能使用少于三个可评分的精确双点父本，尚不能保证约定的完整父本比较。
+- 已修复零新增面积候选导致提前停止、从而忽略其他正覆盖候选的问题；定向回归 112 passed、1 skipped。停止条件仍以几何面积为基础，需随整批扰动场升级。
+- 未进行真实模型或历史输入回放；以上测试不构成完整升级验收。
+
+### 2026-11-12 CTLA4 诊断运行与继续修复
+
+- 已增加 API 12 构建体预算支持、完整三个精确双点父本检查，以及按表面点累计的物理和表位加权扰动代理；定向回归 59 passed、2 skipped。
+- 诊断任务 `1d812aa2f9be` 使用 P16410、实验结构 1AH1 chain A 和最多 12 个主构建体；提交后状态为 RUNNING/FETCHING，尚无结果。
+- 待完成：新旧协议隔离、表位先验实际使用状态导出、真实模型结果检查和历史输入 shadow replay。当前逐点场使用突变位点表位先验传播到几何邻域，属于近似；不能据此宣称完整验收。
+
+### 2026-11-12 CTLA4 结果复核与验收修复
+
+- 任务 `1d812aa2f9be` COMPLETE；8 区、12 个三点，组合 SPURS/FoldX 均为计算筛选通过。结果细节及科学解释边界见 `docs/ctla4_diagnostic_review_20261112.md`。
+- 修复零一致性列导致 conservation KeyError、表位先验使用状态导出、面板排序中三点边际覆盖盖过实际面板场增益的问题；相关回归 97 passed、2 skipped。
+- 尚未完成：版本隔离、真实逐点表位/扰动建模、重复 provenance 导致的输出膨胀、FoldX 汇总耗时丢失、修复后的真实模型任务和历史 shadow replay；不得将本次诊断称为完整科学验收。
+
+## CTLA4 2026-11-12 resumed repair
+
+- Objective: enforce in-region path diameter on saved CTLA4 input; review protocol isolation and export size without altering historical jobs.
+- Acceptance: replay saved graph/mapping/structure, verify geometry, determinism and failure behavior; test from repository parent; preserve scientific evidence and legacy protocol semantics.
+- Progress: confirmed saved eight-region output and four induced-diameter violations; inspecting implementation and replay inputs.
+- Geometry implemented for balanced_connected_v4 with induced-region paths and cached validity; historical connected_bounded_v3 retains full-graph semantics. Saved CTLA4 replay gives 12 connected regions, maximum induced diameter 28.267503893414105 Å, LOCAL_SEARCH_COMPLETE, 8,643 states. Fixture preserves saved structure, mapping, surface and epitope evidence.
+- Exported recommendations now reference the shared adaptive ledger and worker provenance artifacts instead of repeating them per card. Transforming the historical 64 cards reduced JSON from 104,122,599 to 5,138,279 bytes; historical output is unchanged.
+- Verification from repository parent: 54 tests passed across balanced partition, ordinary adaptive engine, exclusive sector recommendations and sector recommendation exports.
+- Next: isolate perturbation selector and triple admission from ordinary_site_first_v2, perform historical shadow replay, and remove region-driven budget expansion so configured construct budget remains independent. Update docs/method_joint_v4.md and docs/project_memory.md, validate full exports/UI and run appropriate broader tests. No post-change real-model run or full scientific acceptance yet.
+- Continued: ordinary_site_first_v2 and ordinary_site_first_perturbation_v1 are separately labeled and tested; construct budget no longer expands with region count. Target surface residue priors drive the new field, with missing scores neutral. 30 site-first/engine/export tests passed, including offline and zip reference consistency; the earlier apparent offline failure was a test field-name typo.
+- Launched small-budget real-model validation PID 25568 using saved experimental 1AH1 chain A and P16410, new protocol, maximum 4 constructs, SPURS request limit 100 and FoldX slot limit 30. Output: workspace_data/ctla4_repair_validation_20261112; script/logs: F:/UserData/haowen-chen/Temp/ctla4_repair_validation_20261112.{py,stdout.log,stderr.log}. Check completion and evidence before acceptance; do not overwrite the original task.
+- Broad regression launched as session 81103. Check final result when available. Still required: full same-input protocol shadow replay with equivalent candidate-generation and model evidence; assess real-model run, complete scientific and UI/export acceptance, and update records. The selector-only replay does not prove full protocol equivalence.
+- Real-model validation retry PID 32536 was relaunched with the repository parent on sys.path after the first temporary-script import failure; authoritative logs are F:/UserData/haowen-chen/Temp/ctla4_repair_validation_retry_20261112.stdout.log and stderr. Do not claim its result until checked after completion.
+- Focused regression PID 32248 was relaunched with persistent stdout/stderr logs after the previous process handle disappeared; do not claim a pass until the log contains the pytest summary and exit code.
+- Current selector implementation keeps the new perturbation policy opt-in; ordinary_site_first_v2 remains on its historical selector and gates. Pointwise fields and chemical perturbation scores remain ranking proxies, not measured biophysical perturbations.
+- 2026-11-12: The persistent broader regression completed with 182 passed, 2 skipped and one outdated API assertion requiring rejection of ordinary budget 12. Actual contract explicitly permits 12 independently of region count. Fixed the stale web ceiling of 8 and updated stale API/static/browser assertions. From the repository parent 100 surface/API/web tests passed; `node tests/browser_surface_perturbation.mjs` with installed playwright-core passed, three intercepted submissions and no page errors.
+- Model process 32536 was observed live on 2026-11-12 at approximately 07:07 local, with partition diagnostics written and SPURS ongoing. Final outcome remains unverified; next inspect its existing retry logs and output, do not restart a live process.
+- 2026-11-12: Reran the complete previously failing ten-file regression after aligning the page and contract tests: 183 passed, 2 skipped, 1 Starlette deprecation warning in 11.89 seconds, from the repository parent. This covers the original failing test and replaces its earlier failed-run status, but does not establish a real-model result or full protocol shadow replay.
+- At approximately 07:13 local the existing model process 32536 remained alive; its execution trace advanced through FoldX first pass to SPURS combination at 07:11:59 local. It has no final result yet. Inspect the same process/log after at least five minutes; do not relaunch while live.
+- Confirmed the live model request.json identifies the historical experimental 1AH1 structure, P16410 chain A, explicit ordinary_site_first_perturbation_v1, maximum 4 constructs, 100 SPURS requests, 30 FoldX slots, and 30/22 Å display limits. This confirms inputs, not results.
+- Started additional pipeline, partition-export and recommendation-renderer regression from repository parent (exec session 86060); it was still running on its one initial observation. Check that same session for its terminal pytest summary; no pass is claimed yet.
+- 2026-11-12: Reproduced and fixed representative-level triple admission: a site group admitted by a witness had allowed other representatives through even when their own marginal gate failed, and exact double parents were not individually rechecked for sequence legality. New protocol now checks each representative and all three parents; legacy path unchanged. 69 site-first candidate, validation and adaptive engine tests passed from the repository parent. The in-flight CTLA4 model process began before this fix, so its eventual output does not validate the fixed code end-to-end; a new run is necessary after it terminates.
+- Additional pipeline/export test session 86060 was observed running on its initial observation; no terminal result yet. Separate site-first test session 46882 was superseded by a completed corrected run (69 passed).
+- The earlier model process completed with 11 regions, 36 candidates, 7 formally eligible and 4 selected under the perturbation protocol, maximum 4; analysis JSON 5,180,008 bytes and recommendation JSON 2,307,983 bytes. It predates the representative gate fix and is diagnostic only.
+- The full pipeline regression discovered preview mode UnboundLocalError because site-first name activated adaptive-only code even when adaptive execution was disabled. Fixed by restricting site_first_protocol to strict nonphysical runs. Pipeline/export/renderer/adaptive regression was relaunched as exec session 72531; final summary pending.
+- Launched fresh post-fix CTLA4 real-model validation PID 11024, separate output workspace_data/ctla4_repair_validation_final_20261112, logs F:/UserData/haowen-chen/Temp/ctla4_repair_validation_final_20261112.stdout.log and stderr. Do not overwrite history or rerun while live.
+- Read-only shadow investigation found the historical saved evidence supports selector-only comparison, not full protocol replay: different protocol queues may require model evidence absent from the historical saved pool. Existing selector script uses the wrong job priors and budget for strict historical comparison; do not treat it as acceptance without correcting these inputs. Need the same evidence and budget in an isolated output and clear missing evidence reporting.
+- Corrected and ran scripts/ctla4_selector_shadow_20261112.py using the original job's 74 scored DiscoTope surface priors, saved 4/12/12 budget and optimizer weights. On the same 24 previously qualified development candidates, legacy selector selected 11 (NO_POSITIVE_COVERAGE_GAIN), perturbation selector selected 12 (MAXIMUM_CONSTRUCT_BUDGET_REACHED). This is selector-only, not full protocol shadow replay or scientific acceptance.
+- Independently checked the completed pre-representative-fix CTLA4 output: 74 graph nodes covered exactly once by 11 connected regions, each with at least four residues and 50 Å²; maximum recomputed induced-graph path diameter 23.331 Å; all four selected candidates were formally and display eligible, with finite SPURS multi and FoldX scores and CONSENSUS_PASS. The reported per-region Cα diameters were within 22 Å. This remains diagnostic evidence for the pre-fix run, not validation of later code.
+- Preview-mode fix regression completed: pipeline fixture, partition exports, recommendation renderer and adaptive engine: 21 passed in 242.06s, from repository parent.
+- Post-fix model PID 11024 observed live at approximately 07:25 local, trace in SPURS combination scoring, no errors in stderr; inspect the same process after at least five minutes, without restarting.
+- After both the preview activation fix and per-representative triple gate fix, reran surface-perturbation, site-first candidate and adaptive engine regressions from the repository parent: 108 passed in 12.16s. Existing synthetic same-input tests cover protocol-specific queue behavior and worker calls; they do not replace the historical-input model-evidence replay.
+- Prepared and syntax-checked F:/UserData/haowen-chen/Temp/ctla4_repair_validation_v2_comparison_20261112.py for a separate real-model ordinary_site_first_v2 run. Script matches the post-fix perturbation run exactly except protocol name and new output directory. It is not started; after PID 11024 terminates, launch it with distinct stdout/stderr and compare geometry, budgets, model gating, candidate gaps and output. Two fresh model runs do not constitute replay of identical historical model evidence and must be labeled accordingly.
+- Added a real-sequence regression for A1N/T3D/A4E on AATAAA: the triple is sequence-legal, while its A1N/A4E exact parent creates an N-linked glycosylation sequon. The perturbation protocol rejects the actual triple representative even with positive site-level gain. Site-first candidate tests: 19 passed from repository parent.
+- Audited the completed pre-fix CTLA4 recommendation export directly: all 108 provenance references resolve to their six unique ledger/worker artifacts or JSON pointers, and the referenced source files are included in ecd_epitope_design.zip. This is real-output evidence of reference integrity; the post-fix run still requires its own result check.
+- At approximately 07:31 local, post-fix CTLA4 model PID 11024 was live and the execution trace had advanced through selection to V4_EXPORT; stderr was empty. No final result or archive is claimed. Next inspect the same process no earlier than five minutes after this observation; once terminal, verify artifacts and start the prepared v2 comparison if successful.
+- Prepared a reusable read-only real-run verifier at F:/UserData/haowen-chen/Temp/ctla4_repair_verify_20261112.py. It independently recomputes induced graph and Cα diameters, coverage, minimum area/size, selected budget and model gates, new-protocol triple gates, provenance references and zip membership. On the earlier diagnostic output it passed: 11 regions, 74 nodes, 23.331 Å induced, 20.0209 Å Cα, four selected and 108 provenance refs. Use this verifier on post-fix new and v2 comparison outputs after each finishes; it makes no writes.
+- Added a queue regression proving that when every materialized triple representative fails its own gate, the perturbation lane advances to an eligible double rather than stopping or emitting the failed triples. Site-first candidate tests: 20 passed from repository parent.
+- Updated current methods: the balanced policy uses induced-region path diameter while historical connected_bounded_v3 retains full-graph paths; documented that perturbation_v1 is opt-in, applies per-representative exact legal parents and coverage/perturbation admission, retains SPURS/FoldX gates, and uses uncalibrated pointwise proxies. Removed the contradictory global-diameter wording.
+- V4 core and V4.1 upgrade tests were rerun after the site-first activation and triple admission fixes: 65 passed (one Starlette deprecation warning), from the repository parent.
+- Post-fix real-model CTLA4 output verified PASS with reusable temp validator: 11 regions, 74 nodes, maximum induced diameter 23.331 Å and Cα diameter 20.0209 Å, four selected triples with complete exact parents, triple gate, finite SPURS multi/FoldX and CONSENSUS_PASS, and 108 resolvable provenance refs in archive. Seven of 36 candidates formally eligible; 29 lack FoldX at the configured slot budget. analysis.json 5,190,610 bytes; sector recommendations 2,313,116 bytes; panel 30,587,977 bytes. Computational evidence only.
+- Started same-input/budget independent real-model v2 comparison PID 11348, separate output workspace_data/ctla4_repair_validation_v2_comparison_20261112 and final-named temp logs. Result unknown; do not poll repeatedly or restart while live. This comparison does not replace same-evidence historical shadow replay.
+- Same-evidence shadow boundary quantified using canonical sorted mutation signatures from actual candidate ledgers: historical CTLA4 has 68 scored SPURS combinations and 26 with FoldX scores; the post-fix run has 36 and 7 respectively. Only 2 SPURS identities overlap, and none of the seven new FoldX identities appears among historical FoldX-scored identities. Consequently historical evidence cannot support complete same-model-evidence qualification of the new run's seven FoldX-scored combinations; do not manufacture or extrapolate those scores. Independent v2 real-model comparison remains running separately.
+- Further historical queue replay audit: single_mutation_options.csv records residue, mutation, SPURS score, stability, chemical descriptors, impact evidence and eligibility (938 eligible), but omits explicit review_required, epitope_prior and epitope status columns. Reconstructing complete site-first queues requires joining and validating these fields from original evidence and preserving all scientific gates; do not infer them as false or neutral merely to force a replay. Existing ledgers retain 68 evaluated SPURS results and 26 FoldX result records, allowing missing-evidence detection by exact mutation signature.
+- Historical queue reconstruction feasibility: joined all 938 eligible single-mutation CSV rows to their original analysis.json residue and epitope evidence by UniProt position. All 938 have both rows and a predicted surface percentile; zero have residue review_reasons. Current site-first build_single_evidence derives review_required from those review_reasons, and engine derives epitope support from saved local_peak/percentile and the saved seed threshold. This resolves these field joins for this job; exact historical behavior and missing combination-level model evidence still require careful validation. No queue replay was run in this check.
+- V2 comparison PID 11348 observed live at approximately 07:41 local; trace had completed an initial FoldX pass and returned to SPURS combination scoring. stderr was empty. Check the same process after at least five minutes; do not restart while live.
+- Reconstructed the first queue head in each of 24 region/principle lanes from historical 938 eligible singles, original 1AH1 surface graph, sectors, sequence, records and DiscoTope evidence; script is F:/UserData/haowen-chen/Temp/ctla4_queue_head_replay_20261112.py and performs no writes. Comparing exact mutation signatures against the same saved ledger: current isolated v2 heads have 1/24 SPURS and 1/24 FoldX identities recorded; perturbation_v1 heads have 24/24 SPURS and 18/24 FoldX identities recorded. The historical job was produced by development behavior under the v2 name, explaining why its evidence cannot establish a complete current-v2 same-evidence replay. This is head-only identity availability, not complete scheduling, model validation, or an acceptance comparison; missing scores were not invented.
+- Entry-point review: ordinary API JobCreate and both upload forms do not expose execution_protocol or arbitrary pipeline metadata; the isolated experimental perturbation protocol currently requires Python PipelineRequest.metadata. Corrected method documentation accordingly. The UI/API default remains ordinary_site_first_v2; do not claim users can select perturbation_v1 there. Decide the user-facing entry point only after the protocol comparison/acceptance; no silent default promotion.
+- Implemented explicit experimental site-first protocol selection for web, JSON jobs, structure upload and official AF3 directory upload. Default remains v2; selected protocol is persisted in pipeline metadata and rejected in incompatible preview/physical-preview modes. AF3 source metadata remains intact. API/AF3/UI regression: 29 passed; browser intercepted submissions passed without page errors; wider API/engine group: 37 passed. Existing service process may require restart to load changed Python code, and must not be restarted while doing so would interrupt active jobs.
+- The independent same-input/budget v2 comparison completed and passed the same temp verifier as the post-fix new protocol: 11 regions/74 nodes, induced max 23.331 Å, Cα max 20.0209 Å, four selected formal/display eligible, finite SPURS multi + FoldX CONSENSUS_PASS, 108 source references resolve and are archived. Both requests use the same structure, P16410/A, strict mode, max four constructs, ECD sequence and sectoring. Under 100 SPURS requests and 30 FoldX slots, v2 selected four doubles, new selected four triples, both over VS001–VS003; geometric 12 Å coverage v2 0.221832 vs new 0.237245. V2 had 40 candidates/7 formal, new 36/7 formal, with many unscored candidates. Independent model results are not same-evidence shadow replay or experimental binding validation.
+- Existing service at 127.0.0.1:8765 remains healthy but uses the old API schema. With no active jobs, attempted service restart was rejected by the execution environment (`blocked by policy`); no stop occurred. Started a separate updated service at http://127.0.0.1:18765 (launcher PID 24800; uvicorn 38220). Health and OpenAPI passed, served page/JS include new protocol selector, and job 1d812aa2f9be is visible in the list. Both services use the same workspace; the historical job detail request timed out during this check. Use 18765 for the new protocol, and avoid restarting either server while jobs are active.
+- Diagnosed historical API display payload at 90,635,643 bytes: repeated nested source and FoldX ledgers in recommendation cards. Updated compact projection to use original analysis.json path references for ordinary_adaptive_ledger and adaptive_ledger without modifying historical files. Actual saved analysis projection shrank from 190,776,917 to 6,344,655 bytes; 321 ledger references resolve and eight region cards remain. Projection/API/export regression 22 passed. Running port 18765 predates the projection change, so it requires a safe reload before serving this reduction. Earlier 8765 service restart was blocked by automatic policy; no service was stopped.
+- Compared actual saved exact combination signatures between the two current same-input real-model runs: each has 36 finite SPURS-scored identities, with one shared (71 in union); each has seven FoldX-scored identities, with none shared (14 in union). A shared-evidence replay can reuse the union only for those exact identities; it cannot assume scores for subsequent queue requests or equate the independently computed evidence. This quantifies the remaining full-shadow gap without inventing scores.
+- Rebuilt 33 initial region/principle heads for each protocol using the post-fix saved 11-region CTLA4 input, and checked exact mutation signatures against the union of both independent run ledgers. Both protocols have saved SPURS scores for all 33 heads; FoldX-scored identities are available for 7/33 v2 heads and 6/33 perturbation heads. This is first-head evidence availability only, not proof of PASS or complete queue replay. Missing FoldX must stop qualification rather than be synthesized. Read-only script: F:/UserData/haowen-chen/Temp/ctla4_current_union_heads_20261112.py.
+- Same-frozen-candidate selector replay on the 14 distinct formal/display-eligible, SPURS+FoldX CONSENSUS_PASS candidates from both post-fix real-model runs: same sectors, hypotheses, priors and 4/4/4 budget. Legacy selector selected four triples across VS002/VS003, 12 Å geometric area coverage 0.157597; perturbation selector selected four triples across VS001/VS002/VS003, coverage 0.237245. The candidate pool combines protocol-specific admissions and model observations, so this is selection-only, not an end-to-end v2/perturbation protocol comparison or measured binding. Temp read-only replay script ctla4_common_evidence_selector_20261112.py.
+- Refined the same-input first-head evidence audit using actual saved SPURS status rather than treating every missing FoldX record as necessary: among 33 v2 lane heads, 29 have recorded SPURS PASS, of which seven have recorded FoldX PASS and 22 lack FoldX records; four have SPURS REVIEW. Among 33 perturbation lane heads (32 distinct signatures), 32 have SPURS PASS, of which six have recorded FoldX PASS and 26 lack FoldX records; one has SPURS REVIEW. Counts are per lane, not independent candidates; recorded model PASS does not prove per-candidate scientific/display qualification. The 30-slot per-run budgets constrain which combinations were actually evaluated, and this does not replay downstream scheduling.
+- Common-evidence scoring implementation boundary: `SiteFirstValidation` schedules and charges individual 3-to-10 FoldX slot requests, filters display-review candidates and advances lanes based on actual results; `FoldXAdapter` validates exact mutation identity and requested slots. Any future common-model replay must map canonical UniProt mutations through residue_mapping.csv to the saved normalized prediction_context.pdb, preserve per-slot paired-model receipts/cohort, and account each protocol's own 30-slot budget even when sharing exact stored results. Bulk-adding one synthetic median or treating missing/partial slots as PASS would change the contract and is not valid. The current saved union lacks enough scores to do the full replay.
+- Delegated a bounded common-evidence site-first scheduler replay implementation using the two saved post-fix ledgers. It must preserve exact mutation identity, per-slot FoldX provenance, each protocol's own budget and explicit missing/conflicting evidence; it must not rerun models or modify historical jobs. Agent result remains pending; do not claim full replay until its code, test and output are reviewed.
+- Rendered the actual historical CTLA4 single-file offline HTML using the updated display projection: 7,501,177 bytes, with ledger references and VS001/VS008 identifiers present. This verifies rendering and compact projection only; ledger detail referenced as analysis.json requires the corresponding full artifact and was not tested as independently available when the HTML is separated from its bundle.
+- Fixed browser native budget controls: minimum and target previously had max=8 while API allowed 12, blocking valid 12/12/12 forms. Bounds now 12, adaptive label matches configured budget, and app/i18n cache versions updated. Browser test submitted 12/12/12 and passed; display API/UI tests 21 passed from repository parent.
+- Independently rebuilt the three exact parents for each of the four post-fix real-model selected triples from saved mutation options. All parents passed canonical sequence restrictions and complete chemical/exposure evidence checks; recomputed strongest-parent perturbation margins matched recorded values (0.401367, 0.439433, 0.075424, 0.278320). Every selected mutation option retained eligible finite single-SPURS evidence, and each triple's three FoldX slots, paired-model count and median matched the saved ledger with CONSENSUS_PASS. This verifies saved computational evidence, not experimental activity or the full same-evidence queue replay.
+- For all four selected post-fix CTLA4 triples, confirmed all 12 FoldX paired slots have recorded and existing WT model, mutant model, ddG file and BuildModel request paths; source evidence receipt exists. These paths were checked for presence, not experimentally validated.
+- Delegated common-evidence scheduler investigation returned without writing code or running tests. It identified that the single overlapping SPURS combination E94A/T67F/Y135W differs slightly between independent runs (0.4251680374145508 vs 0.4251681864261627) and that only 14 unique FoldX combinations with three saved slots each are available. A complete shared scheduler replay remains unimplemented; select and document any evidence conflict policy, preserve actual slot evidence, and do not impute absent scores. Difference is about 1.49e-7, not by itself evidence of a different qualification outcome.
+- Built a read-only-derived common evidence manifest at F:/UserData/haowen-chen/Temp/ctla4_common_evidence_manifest_20261112.json (script alongside it). It retains each original SPURS and FoldX ledger row, exact mutation identity, source run, all per-slot paired-model records, and both observations for the one differing SPURS value. Self-checks passed: 71 SPURS identities, 14 FoldX identities, one differing SPURS identity, finite scores, unique slots and matching score/slot/paired-model lengths. No conflict winner was selected and no missing score was imputed. This is input preparation, not scheduler replay or full acceptance.
+- Replayed current site-first scheduler with a shared saved-evidence manifest, exact original FoldX pairs, 100 SPURS/30 FoldX budget, saved source order (new-run first for the one duplicate SPURS identity), and re-created formal/display callbacks. Both paths reached the 30-slot reservation boundary without a missing requested score: v2 used 36 SPURS requests/21 actual FoldX slots and reached 7 lanes; perturbation used 36/21 and reached 8 lanes. This is a saved-evidence scheduler replay for the bounded CTLA4 diagnostic, not a broad scientific validation or full pipeline/export replay. The saved singles CSV omits warnings; audit against actual materialized candidate options found warning differences that must be reconstructed and verified before treating the replay as equivalent.
+- Replay exposed a real ledger defect: if FoldX budget stopped dispatch in the same round as a SPURS-review candidate advanced, that remaining ready lane was left STOPPED/ready and omitted from budget gaps. Fixed site_first_validation.py to mark all remaining ready/exhausted lanes budget-limited; regression 72 passed. Replayed lane totals now 7 reached/26 budget-limited for v2 and 8/25 for perturbation. Existing historical result files remain unchanged.
+- Resolved bounded shared-evidence replay's missing warnings by rebuilding them from saved residue review reasons and SASA/context fields using the same evidence.py rules. Against actual real-run candidates, 40/40 matching v2 and 36/36 perturbation candidates had zero differences in the compared mutation, eligibility/review/exclusion/warning, epitope, single SPURS/stability and regional/triple gate fields. Rerun retained 36 SPURS requests and 21 FoldX slots per protocol, no requested evidence missing; v2 7 reached/26 budget-limited, perturbation 8 reached/25 budget-limited. Scope remains bounded scheduler with recreated callbacks and first saved SPURS observation, not full pipeline/export or experimental validation. Scripts in temp: ctla4_union_heads_warnings_20261112.py and ctla4_scheduler_warnings_fidelity_20261112.py.
+- Current-code TestClient verified historical display endpoint: 6,346,498 bytes and all 321 ledger references resolve through the job's original analysis.json.
+- Offline task-site regression revealed online job_center.js was referenced without being bundled. Because it polls the live job API, exporter now removes its online-only script reference from offline pages. Offline site, display projection and recommendation exports: 13 passed from repository parent. Service 18765 has not loaded these newer Python changes.
+- Rechecked current site-first scheduler, adaptive engine, recommendation exports and offline site together after the budget-gap and offline fixes: 61 passed from the repository parent. Recommendation export tests exercise ledger references and queue-winner consistency; this is regression evidence, not a new real-model execution after the terminal-state fix.
+- Added a focused recommendation projection regression proving a budget-limited principle is exported in unavailable_principles and does not create a candidate. Site-first validation and recommendation export tests: 47 passed from the repository parent.
+- Started a new post-budget-state-fix real-model CTLA4 run PID 34092 with saved 1AH1 chain A, perturbation_v1, maximum four constructs, 100 SPURS requests, 30 FoldX slots and 30/22 Å region bounds. Separate output workspace_data/ctla4_budget_gap_validation_20261112; stdout/stderr are F:/UserData/haowen-chen/Temp/ctla4_budget_gap_validation_20261112.stdout.log and .stderr.log. Do not restart while live. After terminal COMPLETE, run temp ctla4_repair_verify_20261112.py and verify all unfinished ledger queues have budget_limited state and corresponding unavailable_principles in exported recommendations, preserving actual reasons for other terminal states. Outcome not yet checked.
+- Prepared read-only F:/UserData/haowen-chen/Temp/ctla4_budget_gap_verify_20261112.py to verify the real run has no ready lanes after FoldX budget exhaustion and every budget-limited ledger queue is present in both uncompleted_gaps and its sector recommendation's unavailable_principles without a candidate. On the earlier pre-fix real output it failed as expected at the known ready-lane defect. Apply to PID 34092 output only after terminal completion.
+- Fixed recommendation UI for queue budget gaps: adaptive records carry state rather than reason, so renderer now falls back to state and explains budget exhaustion in Chinese/English. Online and offline share renderer; recommendation/offline/presentation tests 12 passed and browser test passed. Updated app and renderer cache versions.
+- At approximately 08:42 local, latest CTLA4 budget-gap validation PID 34092 was observed live, trace had reached FoldX first pass then SPURS combination, and stderr was empty. No final outcome yet; next check the same PID/log no sooner than five minutes after this observation, without restarting.
+- Negative-control replay using a separate copy of the shared evidence manifest with all SPURS records removed: both protocols reported MISSING_SAVED_EVIDENCE (33 v2 and 32 perturbation missing requests) and zero FoldX passes; no original ledger or evidence was changed. This checks fail-closed behavior of the temporary bounded replay, not full protocol acceptance. Temp files: ctla4_evidence_missing_test_20261112.json and ctla4_scheduler_missing_test_20261112.py.
+- Negative-control bounded replay with saved SPURS retained and all FoldX records removed in a separate manifest copy: both protocols stopped with MISSING_SAVED_EVIDENCE and zero FoldX passes. Original evidence remains unchanged. This verifies missing FoldX is not silently treated as a pass; it does not establish full replay equivalence.
+- Negative-control shared-evidence replay with SPURS intact and paired FoldX slot 1 removed from each recorded combination: both protocols reported MISSING_SAVED_EVIDENCE with zero FoldX passes. This specifically tests incomplete repeat slots, in a disposable copy; original evidence was preserved.
+- Latest post-budget-fix CTLA4 real-model run PID 34092 completed with no stderr and passed both read-only validators: 11 connected regions/74 nodes; induced max 23.331 Å, Cα max 20.0209 Å; 4 selected; 108 provenance refs resolvable/in archive. Eight queues complete, 25 budget-limited, none ready; all 25 gaps match ledger gap records and recommendation unavailable_principles. Offline archive omits online job center and bundled renderer contains budget explanation. Seven of 36 candidates formally eligible; 29 without FoldX remain nonqualified. Output workspace_data/ctla4_budget_gap_validation_20261112; no historical output changed.
+- Started post-export-change preview pipeline fixture test as exec session 34638; final test result not yet observed.
+- Corrected README and method text that incorrectly suggested allow_spurs_only_final could waive FoldX for formal constructs. Actual _formal_candidate_reasons requires finite combination SPURS and FoldX plus a passing consensus; ProCaliper remains diagnostic/optional. No scientific gate was changed.
+- Replayed both bounded shared-evidence schedulers using the second saved SPURS observation instead of the first for overlapping identities. Aggregate result remained unchanged: each used 36 SPURS requests and 21 FoldX slots, no missing requested scores; v2 had seven FoldX-passed identities and lane states 7 reached/26 budget-limited, perturbation seven passed identities and 8 reached/25 budget-limited. This checks aggregate sensitivity to the small recorded SPURS difference, not full equality of every output or full pipeline equivalence. Temp variant: ctla4_scheduler_second_observation_20261112.py.
+- Compared bounded same-evidence scheduler replay lane-by-lane with actual ledgers: perturbation_v1 matches all 33 queue states and winner identities against the post-fix real run; v2 matches all winner identities against its pre-fix real run, with one expected state repair VS001/epitope_support from ready to budget_limited. This is exact queue comparison under the fixed four-construct, 100 SPURS/30 FoldX setup, not full pipeline/export equivalence. Temp read-only script ctla4_scheduler_compare_fixed_20261112.py.
+- Final current-worktree verification passed 382 tests and skipped 2 from the repository parent across the 25 changed/core regression files; the post-export preview pipeline test passed separately in 291.22 seconds. JavaScript syntax and job-center tests passed, and the intercepted browser submission test passed with 3 submissions and no page errors. Package-wide collection remains blocked only by five historical test files whose ignored workspace assets or optional `psutil` dependency are absent.
+- Final read-only validation of `workspace_data/ctla4_budget_gap_validation_20261112` passed: 11 unique connected regions/74 nodes, induced diameter 23.331 Å, Cα diameter 20.0209 Å, 4 selected, 108 references, 8 complete and 25 budget-limited queues with 25 verified gaps. Current artifacts: analysis 5,189,210 B; recommendations 2,313,234 B; selected panel 30,588,095 B; ZIP 27,683,591 B. No service listener existed on 18765 or 8767 at final check.
+- Exported selector evidence end-to-end: `panel_budget_curve_v411.csv` now includes coverage, physical and epitope-weighted field gains, field statuses, perturbation utility, sector-first, triple margin and triple role; the compact-panel UI explains the selector order and renders the per-construct gains. Focused regression 35 passed, 2 skipped from the repository parent. Values remain ranking proxies, not binding-loss predictions.
+- Completed the post-export CTLA4 perturbation_v1 acceptance: 456 passed and 2 skipped across the core/changed/API/display/export suite, full preview pipeline 4 passed in 219.43 s, JavaScript checks and 2/2 job-center tests passed, and the Windows Node browser regression returned PASS with 3 intercepted submissions and no page errors. Both read-only real-artifact validators still pass: 11 regions/74 nodes, 23.331 Å induced and 20.0209 Å Cα diameters, 4 selected, 108 refs, and 8 complete/25 budget-limited queues. Report: `docs/ctla4_perturbation_v1_acceptance_report_20261112.md`. Engineering acceptance only; no wet-lab or calibrated binding prediction, and the saved artifact predates the newest CSV fields/offline detail table.
+
+- Added sector-coverage-first FoldX scheduling for ordinary_site_first_perturbation_v1: a new sector is selected before a second batch slot in an already covered sector, and remaining live lanes become budget_limited when no candidate can be dispatched. Added scheduler and 11-sector/12-construct selector regressions; 107 tests passed and 1 skipped from the repository parent. The UI now defaults to maximum 12 constructs.
+- Launched a separate CTLA4 real-model rerun as exec session 6343 with saved 1AH1 chain A/P16410, ordinary_site_first_perturbation_v1, 4/12/12 construct budget, 100 SPURS requests, 300 FoldX slots and 30/22 Angstrom region bounds. Output: workspace_data/ctla4_sector_coverage_20261112; script: F:/UserData/haowen-chen/Temp/ctla4_sector_coverage_20261112.py. Outcome pending; do not overwrite the earlier 4-construct artifacts.
+- Stopped session 6343 during FoldX after deciding its 100 SPURS/300 FoldX budget was still undersized. Its partial output workspace_data/ctla4_sector_coverage_20261112 is preserved as aborted and is not a result.
+- Increased the adaptive FoldX hard cap from 300 to 1000, changed the ordinary protocol default to 600 FoldX slots, and kept SPURS at the 1000-request cap. Added a regression proving a 600-slot limit is honored; scheduler/adaptive/export suites 130 passed and 2 skipped from the repository parent. FoldX dispatch remains gated on finite passing SPURS combination evidence.
+- Launched the single replacement CTLA4 real-model run as exec session 47304 with saved 1AH1 chain A/P16410, ordinary_site_first_perturbation_v1, 4/12/12 constructs, 1000 SPURS requests, 600 FoldX slots and 30/22 Angstrom bounds. Output: workspace_data/ctla4_full_budget_20261112; script and logs: F:/UserData/haowen-chen/Temp/ctla4_full_budget_20261112.py, .stdout.log, .stderr.log. The 600 slots cover all 36 saved candidates at the 10-slot reservation. Outcome pending.
+- Session 47304 was interrupted by the execution-session lifetime after about 50 minutes at V4_SPURS_COMBINATION; no final artifacts were written, and workspace_data/ctla4_full_budget_20261112 is preserved as partial, not a result.
+- Launched a detached Windows process for the same 4/12/12, 1000-SPURS/600-FoldX protocol after the foreground session lifetime issue. Output: workspace_data/ctla4_full_budget_detached_20261112; logs: F:/UserData/haowen-chen/Temp/ctla4_full_budget_detached_20261112.stdout.log and .stderr.log. Saved request confirms the budgets; outcome pending.
+
+## CTLA4 full-budget sector coverage acceptance (2026-11-13)
+
+The completed `workspace_data/ctla4_full_budget_detached_20261112` run used `ordinary_site_first_perturbation_v1`, 4/12/12 constructs, 1000 SPURS requests and 600 FoldX slots. It produced 354 panel candidates, 32 formal candidates and 12 formal selected constructs; the first 11 cover the 11 distinct sectors and the twelfth supplements VS010. All 11 regional recommendations are formal. SPURS used 455 unique requests (zero failures; 101 prefetched unused), and FoldX used 163 slots (zero technical failures) on 45 combinations; all 45 have matching finite SPURS PASS evidence, with 32 FoldX PASS and 13 scientific failures. All 33 queues completed with no budget gaps. Selected combinations each have a matching FoldX PASS.
+
+Acceptance checks recomputed connectivity and induced graph diameter: 11 disjoint regions cover all 74 nodes, maximum induced diameter 23.331 A and maximum reported CA diameter 20.021 A. The panel CSV candidate order matches the JSON; the ZIP passed its CRC check and its selected panel, budget curve and sector recommendations match the standalone files. All 12 selections are STABILITY_FALLBACK; the supplemental candidate has positive marginal field coverage but negative net objective. These are computational results and do not establish experimental binding effects.
+
+## 2026-11-13 Latest run, DiscoTope, and task cancellation
+
+- Objective: explain mutation orders in the latest run, show saved DiscoTope evidence in recommendation cards, and allow stopping a chosen task.
+- Result: Q9NZQ7 job e0a33580e373 used v2 and selected 10 doubles and 2 triples; 215 residue scores were predicted. Cards now show native-residue raw and calibrated scores, including saved historical evidence. The task center can cancel queued, running, or AF3-waiting tasks; running jobs stop at the next progress checkpoint.
+- Verification: focused API, cancellation, recommendation, projection and offline tests 53 passed; Node task-center tests 2 passed, JavaScript syntax checks passed. No real model rerun. Existing outputs were retained.
+
+## 2026-11-13 Large job completion repair
+
+- Task 4fc14facfd14 failed after export because full in-memory candidates exceeded SQLite's single-value limit. Store the existing compact analysis projection instead and retain full candidate sidecars.
+- Restored the job from its completed saved analysis after checking its PASS receipt, 12 sector statuses, selected IDs and matching ZIP entries. Related job/API/projection regression: 25 passed.
+
+## 2026-11-13 Release acceptance in progress
+
+- Objective: finish acceptance and update the public GitHub version without publishing unrelated history or historical outputs.
+- Public release repository is `segayi1/ecd-epitope-scanner` (main, public); the working repository has a different origin and its local branch is 26 commits ahead. A direct push of the development branch would carry unrelated history.
+- Focused acceptance launched from the repository parent across scheduler, geometry, selection, reporting, API, offline display and cancellation tests. It had reached 46% with one skip at the last observation; final result has not been collected.
+- Next: collect the test result when returning, prepare an isolated public-release checkout from its current main, transplant only the new version's required code and tests, review for private data and portability, validate that checkout, then publish. No GitHub files or refs changed in this turn.
+
+- Focused release acceptance completed: 154 passed, 1 skipped, 1 warning in 39.86 seconds; job-center Node tests 2 passed and JavaScript syntax checks passed. Historical publication source was the independently prepared adjacent `ecd_epitope_scanner_open_release_v2`; its publication checkout was archived under `F:/ECD_archives/20261111/ecd_v2_acceptance_20261109.tar.zst`, and the public repository has separate history. No release has been published for this work.
+- Created a clean checkout of public main at `release_candidate_public` (commit 021dd49). The adjacent original release source is version 1.0.0; public main includes later 1.0.1 privacy and 1.0.2 model-setup changes. Public baseline and current development code differ across the selector, scheduler, geometry, reporting and engine; port must preserve release-specific privacy and portable model setup. No source has yet been transplanted or pushed.
+
+## 2026-11-14 Public release port in progress
+
+- Public baseline: `release_candidate_public`, GitHub `segayi1/ecd-epitope-scanner` main 021dd49, clean clone before edits. This is separate from the private development history and original user files.
+- Candidate now contains the new site-first perturbation selector, scheduler, geometry, evidence, 12-construct API/UI settings, DiscoTope presentation, cooperative cancellation and compact job-result storage. Public redaction and portable workers were retained explicitly; candidate version is 1.1.0, not published.
+- Verified isolated copied source under `release_validation/ecd_epitope_scanner`: original public suite 93 passed; new focused selector/dispatch/API/cancellation suite 79 passed; task-center Node tests 2 passed. The source was recopied after the first suite; final combined and installed-wheel tests remain required. These are mocked/fixture tests; no new model run or experiment.
+- Wheel build launched in exec session 28355 with Anaconda Python, output `release_artifacts`; check completion on a later turn. System Python lacks setuptools and project venv lacks pip. Do not repeat long-running sleep polls.
+- Next: inspect wheel build result and package contents; complete release-specific API/upload/CLI/browser and data-flow review, privacy scan using `scripts/check_export_privacy.py` including source and wheel plus private identifiers, clean up release documentation/version claims, build/install/test the wheel, compare scientific and public privacy behavior, run final test suite and browser check. Only then commit explicitly selected files in the release clone and push to the public repository; verify remote CI and release assets. Public main and releases have not changed.
+- Important: release-specific modifications were applied selectively and still need end-to-end review. `release_candidate_public` and `release_validation` are temporary working copies; preserve development workspace and historical outputs. Earlier `git status` in the release checkout shows line-ending-only files; use `git -c core.autocrlf=false diff` to distinguish and stage exact files. Do not stage the development workspace or release artifacts/temporary data.
+
+- 2026-11-14 continuation: fixed FoldX runtime reporting uncovered by mock end-to-end tests (10 passed), added accurate regional principle title, verified browser submission, source and final candidate wheel privacy, and confirmed public remote push access by dry run. Initial installed-wheel non-integration suite: 184 passed, 4 deselected; later upload API test passed 2/2. Source distribution rebuilt a wheel with identical payload before the final task-list identifier fix. Final wheel `release_artifacts/publish/ecd_epitope_scanner-1.1.0-py3-none-any.whl` installed under `release_publish_install`; final installed regression running session 88617, integration pipeline fixture running session 23445 on prior wheel (only subsequent code change is job-list identifier). Both test outcomes remain uncollected. Candidate source changes explicitly staged (38 paths) in `release_candidate_public`; cached diff whitespace check passed. No commit or push yet. Next: collect tests, rebuild source distribution and compare with final wheel, re-scan, update validation evidence, then commit and push, check GitHub Actions and publish assets if supported. Preserve existing artifacts and staged candidate.
+
+## 2026-11-14 Public release published
+
+- Public `main` and tag `v1.1.1` point to `e3f630b1f2e858c4ae5db70619128bb06d1e978d`; release page https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.1.1 contains its wheel and source archive. The earlier `v1.1.0` release and tag remain intact at `6336649a3dbcb9e2fb108f7bb925a00468c0cc17`.
+- Installed 1.1.0 candidate: 189 tests passed before a provenance correction; the corrected wheel passed four focused provenance tests. Final 1.1.1 installed wheel: ten API, cancellation, packaged-web and provenance tests passed with FastAPI 0.162.7, Starlette 1.10.0, httpx 0.28.1 and httpx2 2.16.0; 193 tests collected under that environment. Task-center Node: 2 passed. The source-rebuilt 1.1.1 wheel matched 138 members byte for byte and both archives passed privacy scans.
+- GitHub Actions for 1.1.0 failed during collection because current Starlette requires httpx2. Version 1.1.1 adds httpx and httpx2 to CI's test installation. The 1.1.1 remote Actions outcome has not been checked; inspect it on the next turn, respecting the no-polling policy.
+- Scientific limitations: no new external model calculation or wet-lab validation for this release. The previous development CTLA4 run remains computational evidence only. The original development working tree and historical runs were retained.
+
+## 2026-11-14 Post-release full verification in progress
+
+- Goal: verify the submitted release end to end and fix verified defects. Public main/tag/release remain v1.1.1 at e3f630b1f2e858c4ae5db70619128bb06d1e978d. At 01:05 PST all four v1.1.1 GitHub Actions jobs were in progress; no completion result has been retrieved. Follow the user policy: no repeated sleep-polling, at most one poll per turn, at least five minutes apart.
+- Isolated installed-wheel non-integration suite launched in session 87223 using `release_artifacts/ci_test_deps` and `release_artifacts/release_1_1_1/installed`; output showed 57 progress dots and no final result. Fresh venv creation was launched in session 65262, then fresh wheel dependency installation in session 75129; one early smoke test could not import the package and does not establish whether install eventually succeeded. On a subsequent turn, collect the relevant session results without overwriting anything. Full pipeline integration is running in GitHub CI; local 1.1.0 full suite was 189 passed before the final provenance correction.
+- Confirmed the published 1.1.1 wheel and source archive download byte-for-byte match the local release assets. In-process HTTP on the installed 1.1.1 wheel: health reports 1.1.1, homepage 200, job_center.js 200. Node task-center tests 2 passed. Saved CTLA4 full-budget output independently passed geometry/formal-evidence/reference checks: 11 regions, 74 nodes, max induced diameter 23.331 Å, 12 selected, 510 resolvable references; budget-limited historical run passed 25 gap checks. These are historical computational evidence, not wet-lab validation.
+- Found sdist omits README-linked `requirements-tested.txt`, external setup docs and PD-L1 inputs used by included integration tests; README also omits test dependencies `httpx httpx2`. In `release_candidate_public`, staged only `MANIFEST.in`, `README.md`, and `tests/test_induced_region_diameter.py`; no new commit or release. Manifest-check archive includes the missing files; source-rebuilt wheel has 138 identical members; new induced-path shortcut regression passed against the installed wheel and extracted sdist. Pending: inspect independent fresh installation and non-integration results, full installed-wheel/integration CI result, privacy-scan and regression-check final staged release snapshot, then version and publish a new immutable patch release if acceptance passes. Preserve existing published tags/assets and development history.
+- Independent reviewers found no concrete scientific gate bypass; public package does not contain the full historical CTLA4 evidence bundle, so it cannot by itself independently reproduce that run. The induced-graph shortcut counterexample has now been added to the candidate tests.
+
+## 2026-11-14 v1.1.2 release candidate checkpoint
+
+- Public v1.1.1 commit e3f630b1f2e858c4ae5db70619128bb06d1e978d has four successful GitHub Actions jobs (Python 3.11/3.12). Public main has not yet received the local patch.
+- Public-checkout local commit `707d80b` is version 1.1.2; no tag, push or release yet. It fixes source-distribution content, README test dependencies, tar-member privacy scanning, and adds induced-diameter and privacy regressions. Only intended files were committed; existing line-ending-only worktree changes and the development tree remain untouched.
+- Exact release artifacts and release notes: `release_artifacts/release_1_1_2_release/`; source snapshot `release_artifacts/snapshot_1_1_2_release/ecd_epitope_scanner/`. Source archive includes the required fixture/docs/constraints/checker; archive and wheel passed privacy scanning with local markers; rebuilt wheel matched all 138 members. Final installed wheel passed 191 non-integration tests, Node 2/2, actual HTTP health and home, and package/API/manifest version checks.
+- The fresh 1.1.2 isolated install is running via async exec cell 154, with its own completion notification; logs and environment are under `release_artifacts/fresh_acceptance_1_1_2*`. It uses PyPI and the locally cached docopt wheel because the dependency does not publish wheels. The final-wheel integration fixture is queued via async exec cell 163 and will notify when complete; logs under `release_artifacts/release_1_1_2_release/`. Do not sleep-poll. Do not declare either result until its notification arrives. Earlier environment installs did not complete and are not acceptance evidence.
+- After both completion notifications pass, push local commit to origin/main, create new `v1.1.2` tag and GitHub Release with the wheel and source archive and prepared release notes; verify the remote tag and downloaded artifacts. GitHub API authentication was verified with the existing Git credential manager; never display credentials. GitHub app connector lacks release/upload actions, so use an authenticated API client if needed. If a test fails, fix the cause and rebuild before publishing. Follow the per-turn polling limit when checking post-release CI.
+- CTLA4 historical full-budget saved results passed independent geometry/formal/reference verification; all remain computational. No new wet-lab or external-model validation.
+
+## 2026-11-14 fresh installation verified
+
+- `fresh_acceptance_1_1_2` installed the final 1.1.2 wheel and dependencies in a fresh Python 3.12 virtual environment. `pip check`, import, CLI help, and an actual HTTP server health and home-page check passed. One dependency, docopt, was supplied as a locally cached wheel; this is a fresh environment on the same machine, not a fresh machine.
+- The previous queued integration check produced no log. Restarted the final-wheel `test_pipeline_fixture.py` via async exec cell 2; it will write `release_artifacts/release_1_1_2_release/integration_test.log` on success or `integration_test_error.log` on failure and issue a completion notification. No result is yet confirmed. Respect the one-poll-per-turn / five-minute rule.
+- The local `707d80b1ff148b15ff9af17c7627ce2633b07a4f` commit is ready. Remote main remains at e3f630b1f2e858c4ae5db70619128bb06d1e978d and `v1.1.2` does not yet exist. Release notes now include the fresh-environment result. Once the integration test passes, push commit and new tag, publish the two final assets, and check their remote identity. Do not overwrite prior releases.
+
+## 2026-11-14 v1.1.2 published
+
+- Final installed-wheel end-to-end fixture completed: 4 passed in 143.01 seconds. Together with the 191 previously passing non-integration cases, all 195 final candidate Python tests passed on Windows. Node task-center tests: 2 passed.
+- The fresh Python 3.12 virtual environment installed the final wheel with its dependencies (using one locally cached docopt wheel); pip check, imports, CLI, real HTTP health and home-page checks passed.
+- Published GitHub main and `v1.1.2` at `707d80b1ff148b15ff9af17c7627ce2633b07a4f`; release: https://github.com/segayi1/ecd-epitope-scanner/releases/tag/v1.1.2 . Downloaded wheel and source archive match local release assets. Prior tags, assets, the development worktree, and historical runs were retained.
+- GitHub Actions for v1.1.1 passed on Python 3.11 and 3.12. Newly triggered v1.1.2 CI has not yet been checked: the five-minute/one-poll-per-turn rule applies. Verify its eventual result in a later turn or on notification. No new external-model or wet-lab validation was performed.

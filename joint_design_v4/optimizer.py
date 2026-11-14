@@ -125,18 +125,19 @@ def select_panel(
     risk_penalty_weights: dict[str, float] | None = None,
     panel_budget: dict | None = None,
     stop_parameters: dict | None = None,
+    epitope_priors: dict[int, float] | None = None,
 ) -> tuple[V4Panel, list[V4Candidate]]:
     return _select_panel(candidates, max_primary, higher_order_max, recommendations_per_sector,
                          epitope_priority_per_sector, stability_fallback_per_sector,
                          sectors, surface_areas, hypotheses, risk_penalty_weights,
-                         panel_budget, stop_parameters)
+                         panel_budget, stop_parameters, epitope_priors)
 
 
 def _select_panel(
     candidates, max_primary=7, higher_order_max=2, recommendations_per_sector=6,
     epitope_priority_per_sector=3, stability_fallback_per_sector=3,
     sectors=None, surface_areas=None, hypotheses=None, risk_penalty_weights=None,
-    panel_budget=None, stop_parameters=None,
+    panel_budget=None, stop_parameters=None, epitope_priors=None,
 ):
     candidates = [c for c in candidates if c.display_eligible
                   and c.qualification != "REVIEW_REQUIRED"
@@ -202,7 +203,7 @@ def _select_panel(
                          if surface_areas is not None and sectors is not None else surface_areas)
         selected, metrics, budget_decision = greedy_panel(
             candidates, hypotheses or [], effective_budget, max(0, higher_order_max),
-            _risk_penalty, risk_penalty_weights, stop_parameters, eligible_areas,
+            _risk_penalty, risk_penalty_weights, stop_parameters, eligible_areas, epitope_priors,
         )
         mean_response = metrics["coverage"]
         prior_weighted_response = metrics["weighted_coverage"]

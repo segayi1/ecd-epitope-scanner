@@ -43,6 +43,7 @@ def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path, monkeypatch):
     assert job["owner_id"] == "local"
     assert store.list(owner_id="another-user") == []
     assert store.summaries(owner_id="another-user") == []
+    assert store.summaries()[0]["identifier"] == "Q9NZQ7"
     monkeypatch.setattr(api_module, "STORE", store)
     monkeypatch.setattr(store, "get", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("list endpoint parsed the full job")
@@ -52,6 +53,7 @@ def test_job_list_is_a_small_summary_and_owner_scoped(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert all("result" not in item and "request" not in item for item in response.json())
     assert response.json()[0]["accession"] == "Q9NZQ7"
+    assert response.json()[0]["identifier"] == "Q9NZQ7"
     assert response.json()[0]["regions"] == 2
     assert response.json()[0]["recommended_constructs"] == 4
 
@@ -70,8 +72,9 @@ def test_upload_defaults_to_fixed_jurkat_fab_k562_antigen_profile(monkeypatch, t
     assert response.status_code == 202, response.text
     request = response.json()["request"]
     assert request["assay_profile"] == DEFAULT_ASSAY_PROFILE_ID
-    assert request["minimum_regions"] == 1
-    assert request["maximum_regions"] == 6
+    assert request["minimum_regions"] == 4
+    assert request["maximum_regions"] == 12
+    assert request["max_sectors"] == 12
     assert request["sequence"] is None
     assert request["accession"] is None
 

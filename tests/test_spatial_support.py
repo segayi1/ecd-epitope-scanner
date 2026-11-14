@@ -6,8 +6,13 @@ import pytest
 from ecd_epitope_scanner.joint_design_v4.models import CombinationStabilityEvidence, ResidueKey, V4Candidate, V4MutationOption, V4Sector
 from ecd_epitope_scanner.joint_design_v4.candidate_search import generate_candidates, hypothesis_balanced_shortlist
 from ecd_epitope_scanner.joint_design_v4.engine import _foldx_shortlist
+from ecd_epitope_scanner.joint_design_v4.identifiability import greedy_panel
+from ecd_epitope_scanner.joint_design_v4.regional_perturbation import PERTURBATION_SELECTOR_POLICY
 from ecd_epitope_scanner.joint_design_v4.sector_recommendations import build_sector_recommendations
-from ecd_epitope_scanner.joint_design_v4.spatial_support import annotate_spatial_support, spatial_shortlist, site_signature
+from ecd_epitope_scanner.joint_design_v4.spatial_support import (
+    annotate_pointwise_perturbation_fields, annotate_spatial_support,
+    spatial_shortlist, site_signature,
+)
 
 
 def option(position, mutant="A", risk=0.0):
@@ -35,6 +40,55 @@ def test_containment_zero_gain_even_with_nonidentical_neighborhoods():
     nine = pair.geometry_support["scenarios"]["geodesic_9"]
     assert nine["marginal_area_a2"] == 0
     assert nine["mean_pair_overlap_fraction"] == pytest.approx(2 / 3)
+
+
+def test_pointwise_field_keeps_physical_channel_separate_from_epitope_weight():
+    item = candidate("field", [2, 3])
+    for mutation in item.mutations:
+        mutation.chemical_descriptors = {
+            "charge_delta": 1., "volume_delta_a3": 50., "hydropathy_delta": 1.,
+            "donor_delta": 1., "acceptor_delta": 1., "aromatic_delta": 0.,
+        }
+        mutation.impact_evidence = {"sidechain_exposure": {"value": .8}}
+        mutation.epitope_evidence_status = "SCORED"
+        mutation.epitope_prior = .9
+    graph = chain()
+    areas = dict.fromkeys(graph, 10.)
+    annotate_spatial_support([item], graph, areas)
+    annotate_pointwise_perturbation_fields([item], areas, {1: .9, 5: .1})
+    field = item.impact_evidence["surface_perturbation_field"]
+    assert field["status"] == "SCORED"
+    assert field["epitope_status"] == "PARTIAL"
+    assert field["physical_field"]["1"] > 0
+    assert field["physical_field"]["5"] > 0
+    assert field["physical_field"]["1"] == pytest.approx(
+        field["epitope_weighted_field"]["1"] / 1.4)
+    assert field["epitope_weighted_field"]["5"] == pytest.approx(field["physical_field"]["5"] * .6)
+    assert field["epitope_weighted_field"]["2"] == pytest.approx(field["physical_field"]["2"])
+    assert field["epitope_mapping_basis"] == "target_surface_residue_prior"
+
+
+def test_selector_uses_incremental_point_field_area_when_utility_ties():
+    left, right = candidate("left_field", [1, 2]), candidate("right_field", [4, 5])
+    for item in (left, right):
+        item.impact_evidence["selector_policy"] = PERTURBATION_SELECTOR_POLICY
+        for mutation in item.mutations:
+            mutation.chemical_descriptors = {
+                "charge_delta": 1., "volume_delta_a3": 50., "hydropathy_delta": 1.,
+                "donor_delta": 1., "acceptor_delta": 1., "aromatic_delta": 0.,
+            }
+            mutation.impact_evidence = {"sidechain_exposure": {"value": .8}}
+            mutation.epitope_evidence_status = "SCORED"
+            mutation.epitope_prior = .5
+    graph = chain()
+    areas = {1: 1., 2: 1., 3: 1., 4: 50., 5: 50.}
+    annotate_spatial_support([left, right], graph, areas)
+    selected, _, decision = greedy_panel(
+        [left, right], [], {"minimum_constructs": 1, "target_constructs": 1,
+        "maximum_constructs": 1, "adaptive_budget": False}, 0, lambda *args: 0.,
+        surface_areas=areas)
+    assert selected == [right]
+    assert decision.budget_curve[0]["epitope_weighted_field_gain_area_a2"] > 0
 
 
 def test_triple_gain_compares_best_exact_pair_not_single():

@@ -457,6 +457,18 @@ def test_conservation_requires_three_orthologs(tmp_path: Path):
     assert "insufficient" in (tmp_path / "conservation.json").read_text(encoding="utf-8")
 
 
+def test_conservation_reports_zero_when_no_ortholog_matches(tmp_path: Path):
+    protein = make_protein("AAAA")
+    protein.raw = {"genes": [{"geneName": {"value": "TEST1"}}]}
+    payload = {"results": [
+        {"primaryAccession": f"P{i}", "sequence": {"value": "AAAD"}}
+        for i in range(1, 4)
+    ]}
+    scores = fetch_conservation(protein, _StubClient(payload), tmp_path)
+    assert scores[4] == 0.0
+    assert scores[1] == 1.0
+
+
 def test_conservation_without_gene_returns_none(tmp_path: Path):
     protein = make_protein("AAAA")
     assert fetch_conservation(protein, _StubClient({"results": []}), tmp_path) is None

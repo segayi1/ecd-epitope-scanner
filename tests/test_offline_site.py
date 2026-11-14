@@ -16,6 +16,7 @@ def test_task_site_is_local_complete_and_noncomputing(tmp_path):
     assert "window.APP_OFFLINE" in page
     assert "connect-src 'self' file: blob: data:" in page
     assert "type=\"module\"" not in page
+    assert "job_center.js" not in page
     assert not re.search(r'(?:href|src)="(?:/|https?:|//)|/api/', page, re.IGNORECASE)
     for attr, url in re.findall(r'\b(href|src)="([^"]+)"', page):
         if url.startswith(("./", "#")):

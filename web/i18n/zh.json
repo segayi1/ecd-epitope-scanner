@@ -28,7 +28,7 @@
   "form.partitionSizeHint": "总区数以4–12为软目标。按实际分析链长度分配每区表面残基数：<120 aa 目标7个；120–150 aa 目标8个；>150 aa 目标12个。各区独立推荐，分区须满足连通和直径限制。",
   "form.panelBudget": "可选全局精简面板",
   "form.panelBudgetHint": "以下预算仅控制附加全局面板；各分区按设计原则给出的合格推荐独立保留。",
-  "form.panelAdaptive": "精简面板自动选4–8个",
+  "form.panelAdaptive": "按预算自动选择精简面板",
   "form.partitionSurface": "表面测地直径上限 Å",
   "form.partitionCa": "Cα直径上限 Å",
   "form.partitionInvalid": "分区目标留空自动选择，或填写7–15之间的整数；两个直径上限必须为正数。",

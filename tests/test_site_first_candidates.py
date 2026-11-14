@@ -3,7 +3,8 @@ from types import SimpleNamespace
 
 from ecd_epitope_scanner.joint_design_v4.models import ResidueKey, V4Sector
 from ecd_epitope_scanner.joint_design_v4.site_first import (
-    POLICY, _exact_parent_mutations, _triple_precedes_parents, build_site_first_queues,
+    PERTURBATION_POLICY, POLICY, _exact_parent_mutations, _triple_precedes_parents,
+    build_site_first_queues,
 )
 
 
@@ -49,27 +50,28 @@ def test_site_count_and_geometry_are_independent_of_replacement_pool_size():
 
 
 def test_one_lane_head_never_crosses_site_set_and_expands_only_after_failures():
-    store = build_site_first_queues(*_inputs())
+    store = build_site_first_queues(*_inputs(), protocol=PERTURBATION_POLICY)
     sector, principle = "s", "epitope_support"
     head = store.head(sector, principle, limit=99)
-    assert len(head) <= 9
+    assert len(head) <= 27
     group_id = head[0].impact_evidence["site_set_id"]
     assert all(item.impact_evidence["site_set_id"] == group_id for item in head)
     before = store.ledger()["expanded_candidate_count"]
     for candidate in list(head):
         store.record_outcome(sector, principle, candidate.candidate_id, "SCIENTIFIC_FAILURE")
     expanded = store.ledger()["expanded_candidate_count"]
-    assert 0 < expanded <= 27
-    assert store.ledger()["initial_candidate_count"] == 9
-    assert expanded == 27  # 6 x 6 minus the already evaluated 3 x 3.
+    assert 0 < expanded <= 216
+    assert store.ledger()["initial_candidate_count"] == len(head)
+    assert expanded <= 216 - len(head)
     expanded_head = store.head(sector, principle, 999)
     assert all(c.impact_evidence["site_set_id"] == group_id for c in expanded_head)
+    assert not {c.candidate_id for c in head} & {c.candidate_id for c in expanded_head}
     for candidate in expanded_head:
         store.record_outcome(sector, principle, candidate.candidate_id, "SCIENTIFIC_FAILURE")
     deep_head = store.head(sector, principle, 999)
-    assert len(deep_head) == 13  # A 7 x 7 pass over the prior 6 x 6 failures.
-    assert all(c.impact_evidence["representative_tier"] == "deep" for c in deep_head)
-    assert store.ledger()["deep_candidate_count"] == 13
+    assert all(c.impact_evidence["representative_tier"] == "deep"
+               for c in deep_head if c.impact_evidence["site_set_id"] == group_id)
+    assert not {c.candidate_id for c in expanded_head} & {c.candidate_id for c in deep_head}
     store.close()
 
 
@@ -101,31 +103,115 @@ def test_joint_sequence_gate_and_deterministic_queue_order():
     one.close(); two.close()
 
 
-def test_triples_without_five_percent_gain_are_excluded():
+def test_triples_without_coverage_gain_still_require_positive_parent_enhancement():
     # Complete small triangle: every pair and triple covers the same area.
     graph = {1: {2: 1., 3: 1.}, 2: {1: 1., 3: 1.}, 3: {1: 1., 2: 1.}}
     sector = V4Sector("s", [1, 2, 3], 1, 30, 30, .5)
     store = build_site_first_queues(_pool([1, 2, 3]), [sector], graph,
-                                   {1: 10., 2: 10., 3: 10.}, "AAAAAA")
-    # All offered site sets remain pairs; no weak-parent fallback can admit a triple.
-    assert all(len(row["site_set_id"].split("|", 1)[1].split(",")) == 2
-               for row in store.ledger()["queues"] if row.get("site_set_id"))
-    assert not any(c.order == 3 for c in store.head("s", "sector_coverage", 999))
+                                   {1: 10., 2: 10., 3: 10.}, "AAAAAA",
+                                   protocol=PERTURBATION_POLICY)
     triple = next(group for group in store._lanes[("s", "sector_coverage")]["groups"] if group["order"] == 3)
     assert triple["triple_gain_gate_passed"] is False
+    assert triple["triple_enhancement_gate_passed"] is True
+    assert triple["triple_admitted"] is True
+    assert any(c.order == 3 and c.triple_role == "ENHANCEMENT"
+               for c in store.head("s", "sector_coverage", 999))
     store.close()
 
 
-def test_triple_upgrade_compares_with_strongest_exact_parent():
+def test_each_triple_representative_must_pass_its_own_parent_gate(monkeypatch):
+    from ecd_epitope_scanner.joint_design_v4 import site_first
+    graph = {1: {2: 1., 3: 1.}, 2: {1: 1., 3: 1.}, 3: {1: 1., 2: 1.}}
+    sector = V4Sector("s", [1, 2, 3], 1, 30, 30, .5)
+    store = build_site_first_queues(_pool([1, 2, 3]), [sector], graph,
+                                   {1: 10., 2: 10., 3: 10.}, "AAAAAA",
+                                   protocol=PERTURBATION_POLICY)
+    group = next(g for g in store._lanes[("s", "sector_coverage")]["groups"] if g["order"] == 3)
+    assert group["triple_admitted"] and not group["triple_gain_gate_passed"]
+    monkeypatch.setattr(site_first, "perturbation_margin", lambda *args, **kwargs: 0.0)
+    assert store._materialize_group(group, "sector_coverage", tier="initial") == []
+    store.close()
+
+
+def test_empty_triple_representatives_advance_to_pair(monkeypatch):
+    from ecd_epitope_scanner.joint_design_v4 import site_first
+    graph = {1: {2: 1., 3: 1.}, 2: {1: 1., 3: 1.}, 3: {1: 1., 2: 1.}}
+    sector = V4Sector("s", [1, 2, 3], 1, 30, 30, .5)
+    store = build_site_first_queues(_pool([1, 2, 3]), [sector], graph,
+                                   {1: 10., 2: 10., 3: 10.}, "AAAAAA",
+                                   protocol=PERTURBATION_POLICY)
+    groups = store._lanes[("s", "sector_coverage")]["groups"]
+    assert groups[0]["order"] == 3 and groups[0]["triple_admitted"]
+    monkeypatch.setattr(site_first, "perturbation_margin", lambda *args, **kwargs: 0.0)
+    result = store.head("s", "sector_coverage", 99)
+    assert result and all(candidate.order == 2 for candidate in result)
+    store.close()
+
+
+def test_triple_representative_rejects_illegal_exact_parent(monkeypatch):
+    from ecd_epitope_scanner.joint_design_v4 import coverage_profile
+    graph = {1: {2: 1., 3: 1.}, 2: {1: 1., 3: 1.}, 3: {1: 1., 2: 1.}}
+    sector = V4Sector("s", [1, 2, 3], 1, 30, 30, .5)
+    store = build_site_first_queues(_pool([1, 2, 3]), [sector], graph,
+                                   {1: 10., 2: 10., 3: 10.}, "AAAAAA",
+                                   protocol=PERTURBATION_POLICY)
+    group = next(g for g in store._lanes[("s", "sector_coverage")]["groups"] if g["order"] == 3)
+    original = coverage_profile.sequence_reasons
+    monkeypatch.setattr(coverage_profile, "sequence_reasons", lambda sequence, mutations:
+                        ["glycosylation-sequon-created"] if len(mutations) == 2
+                        else original(sequence, mutations))
+    assert store._materialize_group(group, "sector_coverage", tier="initial") == []
+    store.close()
+
+
+def test_real_sequon_created_by_exact_parent_blocks_triple():
+    from dataclasses import replace
+    from ecd_epitope_scanner.joint_design_v4.coverage_profile import sequence_reasons
+    sequence = "AATAAA"
+    triple = [(1, "A", "N"), (3, "T", "D"), (4, "A", "E")]
+    assert sequence_reasons(sequence, triple) == []
+    assert "glycosylation-sequon-created" in sequence_reasons(sequence, [triple[0], triple[2]])
+    rows = _pool([1, 3, 4])
+    for row in rows:
+        if row.residue.uniprot_pos == 3:
+            row.residue = replace(row.residue, one_letter="T")
+    rows[0].mutant_aa = "N"
+    graph = {1: {3: 1., 4: 1.}, 3: {1: 1., 4: 1.}, 4: {1: 1., 3: 1.}}
+    sector = V4Sector("s", [1, 3, 4], 1, 30, 30, .5)
+    store = build_site_first_queues(rows, [sector], graph, {1: 10., 3: 10., 4: 10.},
+                                    sequence, protocol=PERTURBATION_POLICY)
+    group = next(g for g in store._lanes[("s", "sector_coverage")]["groups"] if g["order"] == 3)
+    group["gain"] = .1
+    group["initial_options"] = [[("test", next(o for o in store._options[p] if o.mutant_aa == aa))]
+                                for p, _, aa in triple]
+    assert store._materialize_group(group, "sector_coverage", tier="initial") == []
+    store.close()
+
+
+def test_triple_upgrade_compares_with_strongest_exact_parent(monkeypatch):
     from types import SimpleNamespace
-    def mutations(order):
-        return [SimpleNamespace(epitope_evidence_status="SCORED", epitope_prior=.5) for _ in range(order)]
-    weak = SimpleNamespace(order=2, epitope_supported_sites=1, epitope_score=.2, candidate_id="weak", mutations=mutations(2))
-    strong = SimpleNamespace(order=2, epitope_supported_sites=2, epitope_score=2., candidate_id="strong", mutations=mutations(2))
-    triple = SimpleNamespace(order=3, epitope_supported_sites=3, epitope_score=3., candidate_id="triple", mutations=mutations(3))
-    assert not _triple_precedes_parents(triple, [weak, strong], "epitope_support", .06)
+    from ecd_epitope_scanner.joint_design_v4 import site_first
+    monkeypatch.setattr(site_first, "perturbation_margin", lambda *args, **kwargs: 0.0)
+    def mutations(positions):
+        return [SimpleNamespace(
+            residue=SimpleNamespace(uniprot_pos=position), mutant_aa="D",
+            epitope_evidence_status="SCORED", epitope_prior=.5,
+            chemical_descriptors={axis: .1 for axis in (
+                "charge_delta", "volume_delta_a3", "hydropathy_delta", "donor_delta",
+                "acceptor_delta", "aromatic_delta")},
+            impact_evidence={"sidechain_exposure": {"value": .5}},
+        ) for position in positions]
+    weak = SimpleNamespace(order=2, epitope_supported_sites=1, epitope_score=.2,
+                           candidate_id="weak", mutations=mutations((1, 2)))
+    strong = SimpleNamespace(order=2, epitope_supported_sites=2, epitope_score=2.,
+                             candidate_id="strong", mutations=mutations((1, 3)))
+    third = SimpleNamespace(order=2, epitope_supported_sites=1, epitope_score=.1,
+                            candidate_id="third", mutations=mutations((2, 3)))
+    triple = SimpleNamespace(order=3, epitope_supported_sites=3, epitope_score=3.,
+                             candidate_id="triple", mutations=mutations((1, 2, 3)))
+    assert not _triple_precedes_parents(triple, [weak, strong, third], "epitope_support", .06)
     strong.epitope_score = 0.
-    assert _triple_precedes_parents(triple, [weak, strong], "epitope_support", .06)
+    assert _triple_precedes_parents(triple, [weak, strong, third], "epitope_support", .06)
 
 
 def test_triple_parents_preserve_its_exact_mutant_amino_acids():
@@ -165,9 +251,10 @@ def test_epitope_priority_changes_first_site_when_geometry_is_tied():
         row.epitope_prior = 1.0 if supported else 0.0
     graph = {p: {q: 1.0 for q in (1, 2, 3, 4) if q != p} for p in (1, 2, 3, 4)}
     sector = V4Sector("tie", [1, 2, 3, 4], 1, 40, 40, .5)
-    store = build_site_first_queues(rows, [sector], graph, {p: 10. for p in graph}, "AAAAAA")
+    store = build_site_first_queues(rows, [sector], graph, {p: 10. for p in graph}, "AAAAAA",
+                                    protocol=PERTURBATION_POLICY)
     first = store.head("tie", "epitope_support", 1)[0]
-    assert first.impact_evidence["site_set_id"] == "tie|1,2"
+    assert first.impact_evidence["site_set_id"] == "tie|1,2,3"
     store.close()
 
 
@@ -254,6 +341,38 @@ def test_materialization_keeps_source_record_numbering_and_geometry_evidence():
     assert all(option.residue.auth_seq_id == option.residue.uniprot_pos + 100
                for option in candidate.mutations)
     store.close()
+
+
+def test_protocols_keep_legacy_triple_gate_and_label_their_own_provenance():
+    graph = {1: {2: 1., 3: 1.}, 2: {1: 1., 3: 1.}, 3: {1: 1., 2: 1.}}
+    sector = V4Sector("protocol", [1, 2, 3], 1, 30, 30, .5)
+    legacy = build_site_first_queues(_pool([1, 2, 3]), [sector], graph,
+                                     {1: 10., 2: 10., 3: 10.}, "AAAAAA")
+    perturbation = build_site_first_queues(
+        _pool([1, 2, 3]), [sector], graph, {1: 10., 2: 10., 3: 10.}, "AAAAAA",
+        protocol=PERTURBATION_POLICY)
+
+    legacy_group = next(group for group in legacy._lanes[("protocol", "sector_coverage")]["groups"]
+                        if group["order"] == 3)
+    new_group = next(group for group in perturbation._lanes[("protocol", "sector_coverage")]["groups"]
+                     if group["order"] == 3)
+    assert legacy_group["triple_gain_gate_passed"] is False
+    assert legacy_group["promoted"] is False
+    assert "triple_admitted" not in legacy_group
+    assert new_group["triple_admitted"] is True
+    assert new_group["triple_enhancement_gate_passed"] is True
+
+    legacy_candidate = legacy.head("protocol", "sector_coverage", 1)[0]
+    new_candidate = perturbation.head("protocol", "sector_coverage", 99)[-1]
+    assert legacy.ledger()["policy"] == POLICY
+    assert "selector_policy" not in legacy.ledger()
+    assert perturbation.ledger()["policy"] == PERTURBATION_POLICY
+    assert perturbation.ledger()["selector_policy"]
+    assert legacy_candidate.impact_evidence["protocol"] == POLICY
+    assert "selector_policy" not in legacy_candidate.impact_evidence
+    assert new_candidate.impact_evidence["protocol"] == PERTURBATION_POLICY
+    assert new_candidate.impact_evidence["selector_policy"] == perturbation.ledger()["selector_policy"]
+    legacy.close(); perturbation.close()
 
 
 def test_terminal_queue_gaps_include_missing_candidates_and_budget_once():

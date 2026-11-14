@@ -1,0 +1,48 @@
+{
+  "status": "VERIFIED",
+  "targets": [
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.csv",
+      "bytes": 430841454
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.json",
+      "bytes": 708894832
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.md",
+      "bytes": 410356581
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_priority_20261029\\report\\report.csv",
+      "bytes": 430841978
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_priority_20261029\\report\\report.json",
+      "bytes": 708897474
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.csv",
+      "bytes": 469122082
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.json",
+      "bytes": 810485362
+    },
+    {
+      "path": "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.md",
+      "bytes": 446006042
+    }
+  ],
+  "deleted": [
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.csv",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.json",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_20261029\\report\\report.md",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_priority_20261029\\report\\report.csv",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_13_cases_priority_20261029\\report\\report.json",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.csv",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.json",
+    "E:\\user\\New project\\ecd_epitope_scanner\\workspace_data\\site_first_four_optimized_20261029\\report\\report.md"
+  ],
+  "completed": 1793793707.8354013
+}

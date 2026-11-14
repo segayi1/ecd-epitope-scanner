@@ -15,8 +15,8 @@ def _repeat_protocol(analysis):
     if isinstance(protocol, str):
         protocol = {"name": protocol}
     name = protocol.get("name", protocol.get("policy", protocol.get("id", "")))
-    if name in {"ordinary_adaptive_v1", "ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2"}:
-        policy = "ordinary_site_first_v2" if name == "ordinary_site_first_v2" else "ordinary_adaptive_v1"
+    if name in {"ordinary_adaptive_v1", "ordinary_three_principle_adaptive_v1", "ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"}:
+        policy = name if name in {"ordinary_site_first_v2", "ordinary_site_first_perturbation_v1"} else "ordinary_adaptive_v1"
         slots = protocol.get("foldx_repeat_slots")
         count = protocol.get("foldx_repeat_count", len(slots) if isinstance(slots, list) else None)
         if isinstance(slots, list) and slots:

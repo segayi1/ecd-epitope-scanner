@@ -2,7 +2,7 @@
 
 版本日期：2026-11-03。算法源码基准：`f2b310e` 及本轮效率与召回修订（`codex/joint-v4-ml` 工作树）。
 
-本文描述普通 V4 流程中的双点、三点突变体筛选，以 `ordinary_site_first_v2` 为主体，并明确它与默认的 `ordinary_three_principle_adaptive_v1` 的区别。方法适用于基于结构的表面突变探针设计；输出包括逐区域、逐设计原则的合格突变体、全局精简实验面板，以及未完成推荐的原因。
+本文描述普通 V4 流程中的双点、三点突变体筛选。`ordinary_site_first_v2` 是当前生产默认协议，并保留对历史 `ordinary_three_principle_adaptive_v1` 结果的兼容。方法适用于基于结构的表面突变探针设计；输出包括逐区域、逐设计原则的合格突变体、全局精简实验面板，以及未完成推荐的原因。
 
 ## 1. 研究目标与方法概述
 
@@ -31,7 +31,9 @@ flowchart TD
 
 ## 2. 协议版本与适用范围
 
-当前源码中的生产默认值仍是 `ordinary_three_principle_adaptive_v1`。位点优先流程通过 `metadata.joint_v4_ml.execution_protocol.name` 显式选择 `ordinary_site_first_v2`。普通自适应调度只在 `strict` 且未进入专用表面物理扰动预览流程时启用。
+当前源码与新任务的生产默认值为 `ordinary_site_first_v2`。网页及任务 API 的 `execution_protocol` 可显式选择实验协议；Python 也可通过 `PipelineRequest.metadata.joint_v4_ml.execution_protocol.name` 指定。普通自适应调度只在 `strict` 且未进入专用表面物理扰动预览流程时启用。
+
+实验协议 `ordinary_site_first_perturbation_v1` 单独启用表面扰动代理排序和三点增强准入；它不改变默认 v2 的选择规则。每个展开的三点代表须有三个序列合法、证据完整的精确双点父本，并满足区域覆盖增益门或相对最强父本的正扰动边际，随后仍须通过组合 SPURS、FoldX 和正式展示门。逐表面残基的表位先验用于软权重，缺失时中性；扰动场是基于测地支持与化学变化的未校准代理，不代表实测结合损失。新协议的真实模型和完整协议对照验收状态以项目记忆中的最新记录为准。
 
 | 项目 | 普通自适应 v1 | 位点优先 v2 |
 | --- | --- | --- |
@@ -58,7 +60,7 @@ flowchart TD
         "display_prefilter": "known_review_v1",
         "repeat_confirmation_policy": "ten_slot_median_v1",
         "spurs_unique_request_limit": 1000,
-        "foldx_slot_limit": 300
+        "foldx_slot_limit": 600
       }
     }
   }

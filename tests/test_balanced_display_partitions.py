@@ -33,7 +33,7 @@ def pdl1():
     return saved_inputs('pdl1_balanced_display.json')
 
 
-def assert_partition(result, surface, graph, records, geo=30, ca=22):
+def assert_partition(result, surface, graph, records, geo=30, ca=22, induced=True):
     assigned = [p for row in result for p in row.residue_positions]
     assert len(assigned) == len(set(assigned)) == len(graph) and set(assigned) == set(graph)
     areas = {row.residue.uniprot_pos: row.mapped_surface_area_a2 for row in surface}
@@ -42,7 +42,7 @@ def assert_partition(result, surface, graph, records, geo=30, ca=22):
         assert len(group) >= 4 and sum(areas[p] for p in group) >= 50
         assert set(module._distance(graph, min(group), group)) == group
         for p in group:
-            distances = module._distance(graph, p, set(graph))
+            distances = module._distance(graph, p, group if induced else set(graph))
             for q in group:
                 assert distances[q] <= geo
                 assert np.linalg.norm(np.asarray(records[p].ca) - records[q].ca) <= ca
@@ -68,25 +68,24 @@ def test_new_defaults_only_change_display_scale_and_preferences():
     assert params['candidate_search']['maximum_geodesic_span_a'] == 24.0
 
 
-def test_saved_pdl1_balances_nine_regions_without_small_exceptions(pdl1):
+def test_saved_pdl1_meets_induced_diameter(pdl1):
     surface, epitope, graph, records = pdl1
     audit = {}
     result = module.build_epitope_sectors(*pdl1, diagnostics=audit)
-    assert len(graph) == 103 and len(result) == 9
-    assert [len(row.residue_positions) for row in result] == [11, 10, 10, 12, 12, 11, 13, 13, 11]
+    assert len(graph) == 103
     assert_partition(result, surface, graph, records)
     assert audit['version'] == 'balanced_connected_v4'
     assert audit['optimization_status'] == 'LOCAL_SEARCH_COMPLETE'
-    assert not audit['size_exceptions']
     assert audit['search_states'] <= 100_000
     assert len(audit['initializations']) == 4
-    assert any(row['repair_type'] == 'BALANCED_TRANSFER' for row in audit['repairs'])
-    assert audit['objective'][0] == 0
+    assert audit['diameter_basis'] == 'induced_eligible_residue_graph_shortest_paths'
     assert len(audit['region_metrics']) == len(result)
     for row, metrics in zip(result, audit['region_metrics']):
         assert row.sector_id == metrics['sector_id']
         assert metrics['full_graph_geodesic_diameter_a'] <= 30
         assert metrics['induced_graph_geodesic_diameter_a'] >= metrics['full_graph_geodesic_diameter_a']
+        assert metrics['induced_graph_geodesic_diameter_a'] <= 30
+        assert row.geodesic_diameter_a == round(metrics['induced_graph_geodesic_diameter_a'], 3)
         assert metrics['ca_diameter_a'] <= 22
 
 
@@ -128,12 +127,42 @@ def test_explicit_old_scale_is_hard_and_does_not_claim_full_size_success(pdl1):
 
 def test_legacy_policy_retains_saved_pdl1_and_distinguishes_path_metrics(pdl1):
     audit = {}
-    result = module.build_epitope_sectors(*pdl1, parameters={'policy': 'connected_bounded_v3'}, diagnostics=audit)
+    result = module.build_epitope_sectors(*pdl1, max_sectors=7, parameters={'policy': 'connected_bounded_v3'}, diagnostics=audit)
     assert [len(row.residue_positions) for row in result] == [7, 8, 8, 4, 13, 8, 4, 4, 7, 13, 6, 9, 8, 4]
-    assert_partition(result, pdl1[0], pdl1[2], pdl1[3], 26, 18)
+    assert_partition(result, pdl1[0], pdl1[2], pdl1[3], 26, 18, induced=False)
     assert audit['version'] == 'connected_bounded_v3'
     metrics = next(row for row in audit['region_metrics'] if row['sector_id'] == 'VS010')
     assert metrics['full_graph_geodesic_diameter_a'] < 26 < metrics['induced_graph_geodesic_diameter_a']
+
+
+def test_saved_ctla4_diagnostic_replay_obeys_region_paths_and_is_deterministic():
+    name = 'ctla4_1d812aa2f9be_partition.json'
+    inputs = saved_inputs(name)
+    params = json.loads((Path(__file__).parent / 'fixtures' / name).read_text(encoding='utf-8'))['parameters']
+    audit, repeat = {}, {}
+    result = module.build_epitope_sectors(*inputs, max_sectors=12, parameters=params, diagnostics=audit)
+    other = module.build_epitope_sectors(*inputs, max_sectors=12, parameters=params, diagnostics=repeat)
+    assert len(inputs[2]) == 74
+    assert_partition(result, inputs[0], inputs[2], inputs[3])
+    assert result == other and audit == repeat
+    assert all(row.geodesic_diameter_a == round(metric['induced_graph_geodesic_diameter_a'], 3)
+               for row, metric in zip(result, audit['region_metrics']))
+
+
+def test_region_path_cannot_use_another_regions_shortcut():
+    surface, _, graph, records = line_inputs(5)
+    for left in range(1, 4):
+        graph[left][left + 1] = graph[left + 1][left] = 10.0
+    graph[4].pop(5)
+    graph[5].pop(4)
+    graph[1][5] = graph[5][1] = 1.0
+    graph[4][5] = graph[5][4] = 1.0
+    distances = {p: module._distance(graph, p, set(graph)) for p in graph}
+    by_position = {row.residue.uniprot_pos: row for row in surface}
+    args = ([{1, 2, 3, 4}], by_position, {}, graph, records, distances, 1, 4, 50, 25, 22)
+    assert module._sector_outputs(*args)[0].geodesic_diameter_a == 12
+    with pytest.raises(ValueError, match='diameter constraints'):
+        module._sector_outputs(*args, strict_diameter=True)
 
 
 @pytest.mark.parametrize('ca', [None, (float('nan'), 0, 0), (float('inf'), 0, 0), (1, 2),

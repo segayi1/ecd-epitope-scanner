@@ -1,4 +1,4 @@
-import { createRecommendationRenderer } from "./recommendations.js?v=regional-qualified-20261025-v1";
+import { createRecommendationRenderer } from "./recommendations.js?v=discotope-20261113-v1";
 
 /* ECD Epitope Workbench — frontend (rewrite v4: full-page i18n + interaction fixes)
  *
@@ -125,7 +125,7 @@ async function loadI18n() {
     return;
   }
   for (const lang of ["zh", "en"]) {
-    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=job-eta-20261026-v1`); }
+    try { state.i18n[lang] = await api(`/assets/i18n/${lang}.json?v=panel-budget-20261112-v1`); }
     catch (e) { console.error(`i18n load failed for ${lang}`, e); state.i18n[lang] = {}; }
   }
   const saved = localStorage.getItem("ecd.lang");
@@ -206,11 +206,12 @@ function singleChoiceScore(choice) {
 function setJob(status, message, progress = 0, error = null, estimate = null) {
   const names = {
     QUEUED: t("status.QUEUED", "排队中"), RUNNING: t("status.RUNNING", "运行中"),
+    CANCELLING: state.lang === "zh" ? "正在终止" : "Stopping", CANCELLED: state.lang === "zh" ? "已终止" : "Stopped",
     COMPLETE: t("status.COMPLETE", "完成"), WAITING_FOR_AF3_UPLOAD: t("status.WAITING", "等待 AF3"),
     FAILED: t("status.FAILED", "失败"), DEMO: t("status.DEMO", "冻结示例"),
   };
   const cls = {
-    QUEUED: "running", RUNNING: "running", COMPLETE: "complete",
+    QUEUED: "running", RUNNING: "running", CANCELLING: "running", CANCELLED: "failed", COMPLETE: "complete",
     WAITING_FOR_AF3_UPLOAD: "waiting", FAILED: "failed", DEMO: "",
   };
   const badge = $("job-state");
@@ -222,7 +223,7 @@ function setJob(status, message, progress = 0, error = null, estimate = null) {
   $("job-progress").style.width = `${percent}%`;
   $("job-error").hidden = !error;
   $("job-error").textContent = error || "";
-  $("run-button").disabled = status === "RUNNING" || status === "QUEUED";
+  $("run-button").disabled = ["RUNNING", "QUEUED", "CANCELLING"].includes(status);
   $("btn-export-offline").disabled = status !== "COMPLETE";
   const eta = $("job-eta");
   eta.hidden = !["RUNNING", "QUEUED"].includes(status);
@@ -305,7 +306,7 @@ async function loadSavedJob(jobId) {
     setJob(job.status, job.message || "", job.progress || 0, job.error || "", job.time_estimate);
     if (job.status === "COMPLETE" && job.result) {
       adoptResult(job.result, { demo: false, jobId });
-    } else if (job.status === "RUNNING" || job.status === "QUEUED") {
+    } else if (["RUNNING", "QUEUED", "CANCELLING"].includes(job.status)) {
       state.jobId = jobId;
       watchJob(jobId);
     }
@@ -327,7 +328,7 @@ function watchJob(jobId) {
     try {
       const u = JSON.parse(event.data);
       setJob(u.status, u.message, u.progress, u.error, u.time_estimate);
-      if (["COMPLETE", "FAILED", "WAITING_FOR_AF3_UPLOAD"].includes(u.status)) {
+      if (["COMPLETE", "FAILED", "CANCELLED", "WAITING_FOR_AF3_UPLOAD"].includes(u.status)) {
         source.close();
         const job = await api(`/api/jobs/${jobId}?view=display`);
         if (state.eventSource !== source) return;
@@ -348,12 +349,11 @@ function watchJob(jobId) {
   };
 }
 
-function panelBudgetInput(strategy = $("surface-strategy")?.value, optimizationProfile = $("optimization-profile")?.value) {
+function panelBudgetInput() {
   const minimum = Number($("budget-minimum")?.value || 4);
   const target = Number($("budget-target")?.value || 7);
-  const maximum = Number($("budget-maximum")?.value || 8);
-  if (["coverage_scan_v2_preview", "coverage_scan_v3_preview"].includes(optimizationProfile)) strategy = "surface_perturbation_v1_preview";
-  const ceiling = strategy === "surface_perturbation_v1_preview" ? 12 : 8;
+  const maximum = Number($("budget-maximum")?.value || 12);
+  const ceiling = 12;
   if (![minimum, target, maximum].every(Number.isInteger) || minimum < 1 || minimum > target || target > maximum || maximum > ceiling) {
     throw new Error(`构建体预算需要满足 1 ≤ 最少目标 ≤ 常见目标 ≤ 硬上限 ≤ ${ceiling}`);
   }
@@ -390,6 +390,7 @@ async function submitRun(event) {
         allow_partial: false,
         design_engine: designEngine,
         ml_mode: $("ml-mode").value,
+        execution_protocol: $("execution-protocol").value || null,
         surface_strategy: $("surface-strategy").value,
         optimization_profile: $("optimization-profile").value,
         max_sectors: 12,
@@ -432,12 +433,13 @@ async function submitUpload(event) {
   }
   form.append("design_engine", "joint_v4_ml");
   form.append("ml_mode", $("upload-ml-mode").value);
+  if ($("upload-execution-protocol").value) form.append("execution_protocol", $("upload-execution-protocol").value);
   form.append("surface_strategy", $("upload-surface-strategy").value);
   form.append("optimization_profile", $("upload-optimization-profile").value);
   form.append("max_sectors", "12");
   try {
     Object.entries(displayPartitionInput()).forEach(([key, value]) => form.append(key, String(value)));
-    Object.entries(panelBudgetInput($("upload-surface-strategy").value, $("upload-optimization-profile").value)).forEach(([key, value]) => form.append(key, String(value)));
+    Object.entries(panelBudgetInput()).forEach(([key, value]) => form.append(key, String(value)));
     setJob("QUEUED", t("msg.uploading", "上传结构并创建作业…"), 0.02);
     const job = await api(folderMode ? "/api/jobs/af3-directory" : "/api/jobs/upload", { method: "POST", body: form });
     state.jobId = job.id;
@@ -1447,6 +1449,33 @@ function renderStep5() {
     : t("design.note", "选择推荐组合以查看结构位置、序列及评分证据。");
   const minimumNote = coveragePolicy ? "；可用合格候选不足，未达到最少目标" : "；合格候选或信息增益不足，未达到最少目标";
   const budgetText = budget ? `入选 ${budget.selected_constructs} 个；目标 ${budget.minimum_constructs}–${budget.maximum_constructs}，常见目标 ${budget.target_constructs}。${budgetReasons[budget.stop_reason] || budget.stop_reason}${budget.minimum_target_met ? "" : minimumNote}` : "";
+  const selectorActive = Boolean(budget?.selection_priority?.includes("epitope_weighted_perturbation"));
+  const fieldValue = (value) => value === null || value === undefined || !Number.isFinite(Number(value))
+    ? "—" : Number(value).toFixed(3);
+  const selectorRows = selectorActive ? (budget.budget_curve || []).map((row) => `<tr>
+    <td>${h(row.construct_count ?? "—")}</td>
+    <td>${h(row.candidate_id ?? "—")}</td>
+    <td>${h(row.sector_first ? recommendationLabel("是", "Yes") : recommendationLabel("否", "No"))}</td>
+    <td>${h(fieldValue(row.physical_field_gain_area_a2))}</td>
+    <td>${h(fieldValue(row.epitope_weighted_field_gain_area_a2))}</td>
+    <td>${h(fieldValue(row.triple_enhancement_delta))}</td>
+    <td>${h(fieldValue(row.perturbation_utility))}</td>
+    <td>${h(row.triple_role || "—")}</td>
+    <td>${h(row.surface_field_epitope_status || "—")}</td>
+  </tr>`).join("") : "";
+  const selectorHtml = selectorActive ? `<details><summary>${h(recommendationLabel("选择依据与逐构建体场增益", "Selection rationale and per-construct field gains"))}</summary>
+    <p>${h(recommendationLabel(
+      "排序顺序：分区优先 → 表位加权扰动场新增量 → 物理扰动场新增量 → 三点相对最强双点父本的边际 → 扰动效用 → 设计面积 → 信息量 → 风险。扰动值和表位权重均为排序代理，不是结合损失或实验效应。",
+      "Order: sector-first → epitope-weighted field gain → physical field gain → triple margin over its strongest double parent → perturbation utility → designable area → information → risk. Perturbation and epitope weights are ranking proxies, not binding loss or measured effects."
+    ))}</p>
+    <div class="table-wrap"><table class="audit"><thead><tr>
+      <th>${h(recommendationLabel("序号", "Index"))}</th><th>${h(recommendationLabel("候选", "Candidate"))}</th>
+      <th>${h(recommendationLabel("新分区", "New region"))}</th><th>${h(recommendationLabel("物理场增益 Å²", "Physical gain Å²"))}</th>
+      <th>${h(recommendationLabel("表位加权场增益 Å²", "Epitope-weighted gain Å²"))}</th>
+      <th>${h(recommendationLabel("三点边际", "Triple margin"))}</th><th>${h(recommendationLabel("扰动效用", "Perturbation utility"))}</th>
+      <th>${h(recommendationLabel("三点角色", "Triple role"))}</th>
+      <th>${h(recommendationLabel("表位来源", "Epitope source"))}</th>
+    </tr></thead><tbody>${selectorRows}</tbody></table></div></details>` : "";
   const designs = [...state.result.designs].sort((left, right) =>
     (left.region_id ?? 999) - (right.region_id ?? 999) || left.id.localeCompare(right.id));
   const renderCard = (design, patch) => {
@@ -1503,8 +1532,8 @@ function renderStep5() {
       ${series.map((design) => renderCard(design, patch)).join("")}
     </section>`).join("") || `<div class="empty">${h(t("design.none", "没有推荐组合。"))}</div>`);
   const budgetHtml = budgetText ? coveragePolicy
-    ? `<details class="compact-panel-budget"><summary>${h(recommendationLabel("附加全局精简面板（不限制逐区推荐）", "Additional compact panel (does not limit regional recommendations)"))}</summary><p>${h(budgetText)}</p></details>`
-    : `<div class="note">${h(budgetText)}</div>` : "";
+    ? `<details class="compact-panel-budget"><summary>${h(recommendationLabel("附加全局精简面板（不限制逐区推荐）", "Additional compact panel (does not limit regional recommendations)"))}</summary><p>${h(budgetText)}</p>${selectorHtml}</details>`
+    : `<div class="note">${h(budgetText)}${selectorHtml}</div>` : "";
   $("design-list").innerHTML = sectorHtml + legacySeries + budgetHtml + renderRunDiagnostics();
   document.querySelectorAll("[data-copy-candidate]").forEach((el) => {
     el.addEventListener("click", async () => {

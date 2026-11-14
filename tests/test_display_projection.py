@@ -11,7 +11,9 @@ def test_display_projection_preserves_cards_and_does_not_mutate_saved_evidence()
              "git_tracked_modifications": [" M requirements.txt"]}
     card = {"candidate_id": "C1", "status": "PASSED", "gate_checks": [{"passed": True}],
             "site_details": [{"position": 8}], "stability_evidence": {"foldx": 0.1},
-            "provenance": {"models": {"spurs_multi": {"provenance": model}}},
+            "provenance": {"source": {"ordinary_adaptive_ledger": {"batches": [1, 2]}},
+                           "models": {"spurs_multi": {"provenance": model},
+                                      "foldx": {"provenance": {"adaptive_ledger": {"batches": [3]}}}}},
             "alternatives": [{"candidate_id": "C2", "status": "NEAR_THRESHOLD",
                               "provenance": {"source_files_sha256": {"analysis.json": "replay-source-hash"},
                                              "model_files_sha256_reference": {"file": "old-model.json", "count": 5}}}]}
@@ -41,6 +43,13 @@ def test_display_projection_preserves_cards_and_does_not_mutate_saved_evidence()
     assert shown["alternatives"][0]["provenance"]["model_files_sha256_reference"] == {
         "file": "old-model.json", "count": 5}
     shown_model = shown["provenance"]["models"]["spurs_multi"]["provenance"]
+    for provenance, field in ((shown["provenance"]["source"], "ordinary_adaptive_ledger"),
+                              (shown["provenance"]["models"]["foldx"]["provenance"], "adaptive_ledger")):
+        ref = provenance[field + "_reference"]
+        original = analysis
+        for part in ref["json_path"]:
+            original = original[part]
+        assert ref["file"] == "analysis.json" and len(original) == ref["count"]
     assert shown_model["version"] == "1.0.0" and shown_model["weights_sha256"] == "weight-hash"
     ref = shown_model["source_files_sha256_reference"]
     assert ref["file"] == "analysis.json"
